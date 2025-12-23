@@ -69,20 +69,27 @@ export default function LikedItemsPage() {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        const transformedItems: LikedItem[] = data.map(like => ({
-          id: like.catalog_items.id,
-          title: like.catalog_items.title,
-          image_url: like.catalog_items.image_url,
-          product_url: like.catalog_items.product_url,
-          price: like.catalog_items.price,
-          seller: like.catalog_items.seller,
-          catalog_id: like.catalog_items.catalog_id,
-          catalog_name: like.catalog_items.catalogs.name,
-          catalog_owner: like.catalog_items.catalogs.profiles.username,
-          like_count: like.catalog_items.like_count || 0,
-          created_at: like.created_at,
-          is_liked: true
-        }));
+        const transformedItems: LikedItem[] = data.map(like => {
+          const item = Array.isArray(like.catalog_items) ? like.catalog_items[0] : like.catalog_items;
+          const catalog = Array.isArray(item?.catalogs) ? item.catalogs[0] : item?.catalogs;
+          const owner = Array.isArray(catalog?.profiles) ? catalog.profiles[0] : catalog?.profiles;
+
+          return {
+            id: item?.id,
+            title: item?.title,
+            image_url: item?.image_url,
+            product_url: item?.product_url,
+            price: item?.price,
+            seller: item?.seller,
+            catalog_id: item?.catalog_id,
+            like_count: item?.like_count,
+            catalog_name: catalog?.name || 'Unknown',
+            catalog_owner: owner?.username || 'Unknown',
+            created_at: like.created_at,
+            is_liked: true
+          };
+        });
+
         setLikedItems(transformedItems);
       }
     } catch (error) {

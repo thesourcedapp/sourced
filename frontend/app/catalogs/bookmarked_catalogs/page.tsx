@@ -39,48 +39,54 @@ export default function BookmarkedCatalogsPage() {
   }
 
   async function loadBookmarkedCatalogs() {
-    if (!currentUserId) return;
+  if (!currentUserId) return;
 
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('bookmarked_catalogs')
-        .select(`
-          catalogs!inner(
-            id,
-            name,
-            description,
-            image_url,
-            bookmark_count,
-            profiles!inner(username, full_name, avatar_url),
-            catalog_items(count)
-          ),
-          created_at
-        `)
-        .eq('user_id', currentUserId)
-        .order('created_at', { ascending: false });
+  setLoading(true);
+  try {
+    const { data, error } = await supabase
+      .from('bookmarked_catalogs')
+      .select(`
+        catalogs!inner(
+          id,
+          name,
+          description,
+          image_url,
+          bookmark_count,
+          profiles!inner(username, full_name, avatar_url),
+          catalog_items(count)
+        ),
+        created_at
+      `)
+      .eq('user_id', currentUserId)
+      .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        const transformedCatalogs: BookmarkedCatalog[] = data.map(bookmark => ({
-          id: bookmark.catalogs.id,
-          name: bookmark.catalogs.name,
-          description: bookmark.catalogs.description,
-          image_url: bookmark.catalogs.image_url,
-          username: bookmark.catalogs.profiles.username,
-          full_name: bookmark.catalogs.profiles.full_name,
-          avatar_url: bookmark.catalogs.profiles.avatar_url,
-          item_count: bookmark.catalogs.catalog_items?.[0]?.count || 0,
-          bookmark_count: bookmark.catalogs.bookmark_count || 0,
+    if (!error && data) {
+      const transformedCatalogs: BookmarkedCatalog[] = data.map(bookmark => {
+        const catalog = Array.isArray(bookmark.catalogs) ? bookmark.catalogs[0] : bookmark.catalogs;
+        const owner = Array.isArray(catalog?.profiles) ? catalog.profiles[0] : catalog?.profiles;
+
+        return {
+          id: catalog?.id,
+          name: catalog?.name,
+          description: catalog?.description,
+          image_url: catalog?.image_url,
+          bookmark_count: catalog?.bookmark_count,
+          item_count: catalog?.catalog_items?.[0]?.count || 0,
+          username: owner?.username || 'Unknown',
+          full_name: owner?.full_name || null,
+          avatar_url: owner?.avatar_url || null,
           created_at: bookmark.created_at
-        }));
-        setBookmarkedCatalogs(transformedCatalogs);
-      }
-    } catch (error) {
-      console.error('Error loading bookmarked catalogs:', error);
-    } finally {
-      setLoading(false);
+        };
+      });
+
+      setBookmarkedCatalogs(transformedCatalogs);
     }
+  } catch (error) {
+    console.error('Error loading bookmarked catalogs:', error);
+  } finally {
+    setLoading(false);
   }
+}
 
   async function unbookmarkCatalog(catalogId: string) {
     if (!currentUserId) return;

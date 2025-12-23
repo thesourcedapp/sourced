@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import AuthWidget from "../components/AuthWidget";
-import SignupModal from "./SignupModal";
+import SignupModal from "../components/SignupModal";
 import TopNav from "../components/TopNav";
 import MobileBottomNav from "../components/MobileBottomNav";
 import Link from "next/link";

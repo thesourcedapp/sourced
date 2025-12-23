@@ -30,11 +30,11 @@ type BookmarkedCatalog = {
   name: string;
   description: string | null;
   image_url: string | null;
-  username: string;
+  bookmark_count: number;
+  username: string | null;
   full_name: string | null;
   item_count: number;
-  bookmark_count: number;
-  created_at: string;
+  created_at?: string; // optional
 };
 
 type LikedItem = {
@@ -324,18 +324,27 @@ export default function ProfilePage() {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        const transformedCatalogs: BookmarkedCatalog[] = data.map(bookmark => ({
-          id: bookmark.catalogs.id,
-          name: bookmark.catalogs.name,
-          description: bookmark.catalogs.description,
-          image_url: bookmark.catalogs.image_url,
-          username: bookmark.catalogs.profiles.username,
-          full_name: bookmark.catalogs.profiles.full_name,
-          item_count: bookmark.catalogs.catalog_items?.[0]?.count || 0,
-          bookmark_count: bookmark.catalogs.bookmark_count || 0,
-          created_at: bookmark.created_at
-        }));
-        setBookmarkedCatalogs(transformedCatalogs);
+        const transformedCatalogs: BookmarkedCatalog[] = data
+  .map(bookmark => {
+    const catalog = bookmark.catalogs?.[0];
+    if (!catalog) return null;
+
+    return {
+      id: catalog.id,
+      name: catalog.name,
+      description: catalog.description,
+      image_url: catalog.image_url,
+      bookmark_count: catalog.bookmark_count,
+      username: catalog.profiles?.[0]?.username ?? "",
+      full_name: catalog.profiles?.[0]?.full_name ?? "",
+      item_count: catalog.catalog_items?.[0]?.count ?? 0,
+      created_at: bookmark.created_at,
+    };
+  })
+  .filter(Boolean) as BookmarkedCatalog[];
+
+setBookmarkedCatalogs(transformedCatalogs);
+
       }
     } catch (error) {
       console.error('Error loading bookmarked catalogs:', error);
@@ -359,19 +368,27 @@ export default function ProfilePage() {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        const transformedItems: LikedItem[] = data.map(like => ({
-          id: like.catalog_items.id,
-          title: like.catalog_items.title,
-          image_url: like.catalog_items.image_url,
-          product_url: like.catalog_items.product_url,
-          price: like.catalog_items.price,
-          seller: like.catalog_items.seller,
-          catalog_id: like.catalog_items.catalog_id,
-          catalog_name: like.catalog_items.catalogs.name,
-          catalog_owner: like.catalog_items.catalogs.profiles.username,
-          like_count: like.catalog_items.like_count || 0,
-          created_at: like.created_at
-        }));
+        const transformedItems: LikedItem[] = data.map(like => {
+          const item = like.catalog_items[0];
+          const catalog = item.catalogs[0];
+
+          return {
+            id: item.id,
+            title: item.title,
+            image_url: item.image_url,
+            product_url: item.product_url,
+            price: item.price,
+            seller: item.seller,
+
+            catalog_id: item.catalog_id,
+            catalog_name: catalog.name,
+            catalog_owner: catalog.profiles[0]?.username ?? null,
+
+            like_count: item.like_count,
+            created_at: like.created_at,
+          };
+        });
+
         setLikedItems(transformedItems);
       }
     } catch (error) {
@@ -394,15 +411,22 @@ export default function ProfilePage() {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        const transformedFollowers: FollowUser[] = data.map(follow => ({
-          id: follow.profiles.id,
-          username: follow.profiles.username,
-          full_name: follow.profiles.full_name,
-          avatar_url: follow.profiles.avatar_url,
-          followers_count: follow.profiles.followers_count || 0,
-          following_count: follow.profiles.following_count || 0,
-          created_at: follow.created_at
-        }));
+          const transformedFollowers: FollowUser[] = data.map(follow => {
+          const profile = follow.profiles[0];
+
+          return {
+            id: profile.id,
+            username: profile.username,
+            full_name: profile.full_name,
+            avatar_url: profile.avatar_url,
+
+            followers_count: profile.followers_count,
+            following_count: profile.following_count,
+            created_at: follow.created_at,
+          };
+        });
+
+
         setFollowers(transformedFollowers);
       }
     } catch (error) {
@@ -425,15 +449,20 @@ export default function ProfilePage() {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        const transformedFollowing: FollowUser[] = data.map(follow => ({
-          id: follow.profiles.id,
-          username: follow.profiles.username,
-          full_name: follow.profiles.full_name,
-          avatar_url: follow.profiles.avatar_url,
-          followers_count: follow.profiles.followers_count || 0,
-          following_count: follow.profiles.following_count || 0,
-          created_at: follow.created_at
-        }));
+          const transformedFollowing: FollowUser[] = data.map(follow => {
+          const profile = follow.profiles[0];
+
+          return {
+            id: profile.id,
+            username: profile.username,
+            full_name: profile.full_name,
+            avatar_url: profile.avatar_url,
+            followers_count: profile.followers_count,
+            following_count: profile.following_count,
+            created_at: follow.created_at,
+          };
+        });
+
         setFollowing(transformedFollowing);
       }
     } catch (error) {

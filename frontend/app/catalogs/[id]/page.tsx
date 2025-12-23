@@ -201,8 +201,8 @@ export default function CatalogDetailPage() {
       if (error) throw error;
 
       const catalogData: CatalogData = {
-        ...data,
-        owner: data.profiles
+         ...data,
+        owner: Array.isArray(data.profiles) ? data.profiles[0] : data.profiles
       };
 
       setCatalog(catalogData);
@@ -573,6 +573,8 @@ function handleProductUrlChange(url: string) {
     );
   }
 
+
+
   if (!catalog) {
     return (
       <>
@@ -643,26 +645,26 @@ function handleProductUrlChange(url: string) {
                   onClick={() => router.push(`/profiles/${catalog.owner_id}`)}
                 >
                   <div className="w-10 h-10 border border-black overflow-hidden">
-                    {catalog.owner.avatar_url ? (
-                      <img
-                        src={catalog.owner.avatar_url}
-                        alt={catalog.owner.username}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-black/5 flex items-center justify-center">
-                        <span className="text-xs opacity-20">👤</span>
-                      </div>
-                    )}
-                  </div>
+                      {catalog?.owner?.avatar_url ? (
+                        <img
+                          src={catalog.owner.avatar_url}
+                          alt={catalog.owner.username}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-black/5 flex items-center justify-center">
+                          <span className="text-xs opacity-20">👤</span>
+                        </div>
+                      )}
+                    </div>
                   <div>
-                    <p className="text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                      @{catalog.owner.username}
-                    </p>
-                    {catalog.owner.full_name && (
-                      <p className="text-xs opacity-60">{catalog.owner.full_name}</p>
-                    )}
-                  </div>
+                  <p className="text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                    @{catalog?.owner?.username || 'Unknown'}
+                  </p>
+                  {catalog?.owner?.full_name && (
+                    <p className="text-xs opacity-60">{catalog.owner.full_name}</p>
+                  )}
+                </div>
                 </div>
 
                 {/* Description */}
