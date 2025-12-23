@@ -1,0 +1,13 @@
+playwright
+rapidfuzz
+openai
+numpy
+scikit-learn
+tqdm
+qdrant-client
+pillow
+torch
+torchvision
+sentence-transformers
+serpapi
+firecrawl
