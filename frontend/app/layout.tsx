@@ -65,7 +65,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="flex-1 pb-24 md:pb-0">{children}</main>
 
         {/* Footer - Always at bottom */}
-        <footer className="bg-white border-t border-black/10 py-8 px-4 md:px-10 mb-20 md:mb-0">
+        <footer className="bg-white border-t border-black/10 py-8 px-4 md:px-10">
           <div className="max-w-7xl mx-auto">
             {/* Footer Links */}
             <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm">

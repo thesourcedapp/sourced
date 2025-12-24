@@ -112,7 +112,7 @@ export default function AuthWidget({ showUsername = false }: AuthWidgetProps) {
         return;
       }
 
-      const response = await fetch("https://sourced-5ovn.onrender.com/delete-user", {
+      const response = await fetch("/api/delete-user", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
