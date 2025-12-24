@@ -177,6 +177,7 @@ export default function ProfilePage() {
   const [imageError, setImageError] = useState('');
 
   // Followers/Following Modal
+  const [showShareCopied, setShowShareCopied] = useState(false);
   const [showFollowersModal, setShowFollowersModal] = useState(false);
   const [followersModalType, setFollowersModalType] = useState<'followers' | 'following'>('followers');
   const [followersSearchQuery, setFollowersSearchQuery] = useState('');
@@ -307,94 +308,148 @@ export default function ProfilePage() {
   }
 
   async function loadBookmarkedCatalogs() {
-    if (!profileId) return;
+  if (!profileId) return;
 
-    try {
-      const { data, error } = await supabase
-        .from('bookmarked_catalogs')
-        .select(`
-          catalogs!inner(
-            id, name, description, image_url, bookmark_count,
-            profiles!inner(username, full_name),
-            catalog_items(count)
-          ),
-          created_at
-        `)
-        .eq('user_id', profileId)
-        .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('bookmarked_catalogs')
+      .select('catalog_id, created_at')
+      .eq('user_id', profileId);
 
-      if (!error && data) {
-        const transformedCatalogs: BookmarkedCatalog[] = data
-  .map(bookmark => {
-    const catalog = bookmark.catalogs?.[0];
-    if (!catalog) return null;
-
-    return {
-      id: catalog.id,
-      name: catalog.name,
-      description: catalog.description,
-      image_url: catalog.image_url,
-      bookmark_count: catalog.bookmark_count,
-      username: catalog.profiles?.[0]?.username ?? "",
-      full_name: catalog.profiles?.[0]?.full_name ?? "",
-      item_count: catalog.catalog_items?.[0]?.count ?? 0,
-      created_at: bookmark.created_at,
-    };
-  })
-  .filter(Boolean) as BookmarkedCatalog[];
-
-setBookmarkedCatalogs(transformedCatalogs);
-
-      }
-    } catch (error) {
-      console.error('Error loading bookmarked catalogs:', error);
+    if (error || !data) {
+      console.error('Error loading bookmarks:', error);
+      return;
     }
+
+    const catalogIds = data.map(b => b.catalog_id);
+
+    if (catalogIds.length === 0) {
+      setBookmarkedCatalogs([]);
+      return;
+    }
+
+    const { data: catalogsData, error: catalogsError } = await supabase
+      .from('catalogs')
+      .select('id, name, description, image_url, bookmark_count, owner_id, visibility, catalog_items(count)')
+      .in('id', catalogIds);
+
+    if (catalogsError || !catalogsData) {
+      console.error('Error loading catalog details:', catalogsError);
+      return;
+    }
+
+    const ownerIds = [...new Set(catalogsData.map(c => c.owner_id))];
+    const { data: ownersData } = await supabase
+      .from('profiles')
+      .select('id, username, full_name')
+      .in('id', ownerIds);
+
+    const ownersMap = new Map(ownersData?.map(o => [o.id, o]) || []);
+
+    const transformedCatalogs: BookmarkedCatalog[] = catalogsData
+      .filter(catalog => isOwner || catalog.visibility === 'public')
+      .map(catalog => {
+        const owner = ownersMap.get(catalog.owner_id);
+        const bookmark = data.find(b => b.catalog_id === catalog.id);
+
+        return {
+          id: catalog.id,
+          name: catalog.name,
+          description: catalog.description,
+          image_url: catalog.image_url,
+          bookmark_count: catalog.bookmark_count || 0,
+          username: owner?.username || 'unknown',
+          full_name: owner?.full_name,
+          item_count: catalog.catalog_items?.[0]?.count || 0,
+          created_at: bookmark?.created_at || '',
+        };
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    setBookmarkedCatalogs(transformedCatalogs);
+  } catch (error) {
+    console.error('Error loading bookmarked catalogs:', error);
   }
+}
 
   async function loadLikedItems() {
-    if (!profileId) return;
+  if (!profileId) return;
 
-    try {
-      const { data, error } = await supabase
-        .from('liked_items')
-        .select(`
-          catalog_items!inner(
-            id, title, image_url, product_url, price, seller, catalog_id, like_count,
-            catalogs!inner(name, profiles!inner(username))
-          ),
-          created_at
-        `)
-        .eq('user_id', profileId)
-        .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('liked_items')
+      .select('item_id, created_at')
+      .eq('user_id', profileId);
 
-      if (!error && data) {
-        const transformedItems: LikedItem[] = data.map(like => {
-          const item = like.catalog_items[0];
-          const catalog = item.catalogs[0];
-
-          return {
-            id: item.id,
-            title: item.title,
-            image_url: item.image_url,
-            product_url: item.product_url,
-            price: item.price,
-            seller: item.seller,
-
-            catalog_id: item.catalog_id,
-            catalog_name: catalog.name,
-            catalog_owner: catalog.profiles[0]?.username ?? null,
-
-            like_count: item.like_count,
-            created_at: like.created_at,
-          };
-        });
-
-        setLikedItems(transformedItems);
-      }
-    } catch (error) {
-      console.error('Error loading liked items:', error);
+    if (error || !data) {
+      console.error('Error loading likes:', error);
+      return;
     }
+
+    const itemIds = data.map(l => l.item_id);
+
+    if (itemIds.length === 0) {
+      setLikedItems([]);
+      return;
+    }
+
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('catalog_items')
+      .select('id, title, image_url, product_url, price, seller, catalog_id, like_count')
+      .in('id', itemIds);
+
+    if (itemsError || !itemsData) {
+      console.error('Error loading item details:', itemsError);
+      return;
+    }
+
+    const catalogIds = [...new Set(itemsData.map(i => i.catalog_id))];
+    const { data: catalogsData } = await supabase
+      .from('catalogs')
+      .select('id, name, owner_id, visibility')
+      .in('id', catalogIds);
+
+    const catalogsMap = new Map(catalogsData?.map(c => [c.id, c]) || []);
+
+    const ownerIds = [...new Set(catalogsData?.map(c => c.owner_id) || [])];
+    const { data: ownersData } = await supabase
+      .from('profiles')
+      .select('id, username')
+      .in('id', ownerIds);
+
+    const ownersMap = new Map(ownersData?.map(o => [o.id, o]) || []);
+
+    const transformedItems: LikedItem[] = itemsData
+      .filter(item => {
+        const catalog = catalogsMap.get(item.catalog_id);
+        return isOwner || catalog?.visibility === 'public';
+      })
+      .map(item => {
+        const catalog = catalogsMap.get(item.catalog_id);
+        const owner = catalog ? ownersMap.get(catalog.owner_id) : null;
+        const like = data.find(l => l.item_id === item.id);
+
+        return {
+          id: item.id,
+          title: item.title,
+          image_url: item.image_url,
+          product_url: item.product_url,
+          price: item.price,
+          seller: item.seller,
+          catalog_id: item.catalog_id,
+          catalog_name: catalog?.name || 'Unknown',
+          catalog_owner: owner?.username || 'unknown',
+          like_count: item.like_count || 0,
+          created_at: like?.created_at || '',
+        };
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    setLikedItems(transformedItems);
+  } catch (error) {
+    console.error('Error loading liked items:', error);
   }
+}
 
   async function loadFollowers() {
     if (!profileId) return;
@@ -470,71 +525,131 @@ setBookmarkedCatalogs(transformedCatalogs);
     }
   }
 
+  function handleShareProfile() {
+  const profileUrl = `${window.location.origin}/profiles/${profileId}`;
+  navigator.clipboard.writeText(profileUrl);
+  setShowShareCopied(true);
+  setTimeout(() => setShowShareCopied(false), 2000);
+}
+
   async function toggleFollow() {
-    if (!currentUserId || !profile) return;
+  if (!currentUserId || !profile) return;
 
-    try {
-      if (profile.is_following) {
-        // Unfollow
-        await supabase
-          .from('followers')
-          .delete()
-          .eq('follower_id', currentUserId)
-          .eq('following_id', profileId);
-      } else {
-        // Follow
-        await supabase
-          .from('followers')
-          .insert({
-            follower_id: currentUserId,
-            following_id: profileId
-          });
-      }
-
-      // Reload profile data to get accurate counts from database
-      await loadProfile();
-      await loadFollowers();
-      await loadFollowing();
-    } catch (error) {
-      console.error('Error toggling follow:', error);
-    }
-  }
-
-  async function removeFollower(followerId: string) {
-    if (!currentUserId || !isOwner) return;
-
-    try {
-      await supabase
-        .from('followers')
-        .delete()
-        .eq('follower_id', followerId)
-        .eq('following_id', profileId);
-
-      // Reload data to get accurate counts from database
-      await loadProfile();
-      await loadFollowers();
-    } catch (error) {
-      console.error('Error removing follower:', error);
-    }
-  }
-
-  async function unfollow(followingId: string) {
-    if (!currentUserId || !isOwner) return;
-
-    try {
+  try {
+    if (profile.is_following) {
       await supabase
         .from('followers')
         .delete()
         .eq('follower_id', currentUserId)
-        .eq('following_id', followingId);
+        .eq('following_id', profileId);
 
-      // Reload data to get accurate counts from database
-      await loadProfile();
-      await loadFollowing();
-    } catch (error) {
-      console.error('Error unfollowing user:', error);
+      await supabase
+        .from('profiles')
+        .update({ following_count: Math.max(0, (profile.following_count || 0) - 1) })
+        .eq('id', currentUserId);
+
+      const currentFollowerCount = profile.followers_count || 0;
+      await supabase
+        .from('profiles')
+        .update({ followers_count: Math.max(0, currentFollowerCount - 1) })
+        .eq('id', profileId);
+    } else {
+      await supabase
+        .from('followers')
+        .insert({
+          follower_id: currentUserId,
+          following_id: profileId
+        });
+
+      const { data: currentUserProfile } = await supabase
+        .from('profiles')
+        .select('following_count')
+        .eq('id', currentUserId)
+        .single();
+
+      await supabase
+        .from('profiles')
+        .update({ following_count: (currentUserProfile?.following_count || 0) + 1 })
+        .eq('id', currentUserId);
+
+      const currentFollowerCount = profile.followers_count || 0;
+      await supabase
+        .from('profiles')
+        .update({ followers_count: currentFollowerCount + 1 })
+        .eq('id', profileId);
     }
+
+    await loadProfile();
+    await loadFollowers();
+    await loadFollowing();
+  } catch (error) {
+    console.error('Error toggling follow:', error);
   }
+}
+
+  async function removeFollower(followerId: string) {
+  if (!currentUserId || !isOwner) return;
+
+  try {
+    await supabase
+      .from('followers')
+      .delete()
+      .eq('follower_id', followerId)
+      .eq('following_id', profileId);
+
+    const follower = followers.find(f => f.id === followerId);
+    if (follower) {
+      await supabase
+        .from('profiles')
+        .update({ following_count: Math.max(0, follower.following_count - 1) })
+        .eq('id', followerId);
+    }
+
+    if (profile) {
+      await supabase
+        .from('profiles')
+        .update({ followers_count: Math.max(0, profile.followers_count - 1) })
+        .eq('id', profileId);
+    }
+
+    await loadProfile();
+    await loadFollowers();
+  } catch (error) {
+    console.error('Error removing follower:', error);
+  }
+}
+
+  async function unfollow(followingId: string) {
+  if (!currentUserId || !isOwner) return;
+
+  try {
+    await supabase
+      .from('followers')
+      .delete()
+      .eq('follower_id', currentUserId)
+      .eq('following_id', followingId);
+
+    const followedUser = following.find(f => f.id === followingId);
+    if (followedUser) {
+      await supabase
+        .from('profiles')
+        .update({ followers_count: Math.max(0, followedUser.followers_count - 1) })
+        .eq('id', followingId);
+    }
+
+    if (profile) {
+      await supabase
+        .from('profiles')
+        .update({ following_count: Math.max(0, profile.following_count - 1) })
+        .eq('id', currentUserId);
+    }
+
+    await loadProfile();
+    await loadFollowing();
+  } catch (error) {
+    console.error('Error unfollowing user:', error);
+  }
+}
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -748,7 +863,7 @@ setBookmarkedCatalogs(transformedCatalogs);
 
             <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
               {/* Profile Avatar */}
-              <div className="w-32 h-32 border-2 border-black overflow-hidden flex-shrink-0">
+              <div className="w-32 h-32 rounded-full border-2 border-black overflow-hidden flex-shrink-0">
                 {profile.avatar_url ? (
                   <img
                     src={profile.avatar_url}
@@ -777,6 +892,13 @@ setBookmarkedCatalogs(transformedCatalogs);
                   </div>
 
                   <div className="flex gap-2">
+                                      <button
+                      onClick={handleShareProfile}
+                      className="px-4 py-2 border border-black hover:bg-black hover:text-white transition-all text-xs tracking-[0.4em] font-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      {showShareCopied ? 'COPIED!' : 'SHARE'}
+                    </button>
                     {isOwner ? (
                       <>
                         <button
