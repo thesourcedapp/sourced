@@ -17,7 +17,7 @@ export default function LoginModal({ close }: { close: () => void }) {
       const { data, error: signInError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: "https://www.thesourcedapp.com",
+          redirectTo: "https://www.thesourcedapp.com/auth/callback",
         },
       });
 
