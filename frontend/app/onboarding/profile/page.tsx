@@ -31,14 +31,10 @@ function validateUsername(username: string): { valid: boolean; error?: string } 
   return { valid: true };
 }
 
- Function to check username against banned words via API
+// Function to check username against banned words via API
 async function checkUsernameSafety(username: string): Promise<{ safe: boolean; error?: string }> {
-  Temporarily disabled - just allow all usernames
-  return { safe: true };
-
-
   try {
-    const response = await fetch('/api/check-username', {
+    const response = await fetch('https://sourced-5ovn.onrender.com/check-username', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username }),
@@ -46,6 +42,7 @@ async function checkUsernameSafety(username: string): Promise<{ safe: boolean; e
 
     if (!response.ok) {
       console.error('Username check failed:', response.status);
+      // Fail open - allow username if check fails
       return { safe: true };
     }
 
@@ -53,9 +50,9 @@ async function checkUsernameSafety(username: string): Promise<{ safe: boolean; e
     return data;
   } catch (error) {
     console.error('Error checking username safety:', error);
+    // Fail open - allow username if check fails
     return { safe: true };
   }
-
 }
 
 export default function OnboardingPage() {
@@ -91,7 +88,7 @@ export default function OnboardingPage() {
 
       if (profile?.is_onboarded) {
         // Already onboarded, redirect to featured
-        window.location.href = "https://www.thesourcedapp.com/featured";
+        window.location.href = "https://www.thesourcedapp.com";
         return;
       }
 
@@ -110,58 +107,48 @@ export default function OnboardingPage() {
       return;
     }
 
-    // Only do basic validation while typing
+    // First do basic validation
     const validation = validateUsername(username);
     setUsernameValidation(validation);
 
-    // Don't check availability while typing - only on blur
-  }, [username]);
-
-  // Check availability when user leaves the input field
-  async function handleUsernameBlur() {
-    if (!username || username.length < 6 || !usernameValidation.valid) {
-      return;
-    }
-
-    setCheckingUsername(true);
-
-    // Check safety first (currently disabled, returns immediately)
-    const safetyCheck = await checkUsernameSafety(username);
-    if (!safetyCheck.safe) {
-      setUsernameValidation({ valid: false, error: safetyCheck.error || "Username not allowed" });
+    if (!validation.valid || username.length < 6) {
       setUsernameAvailable(null);
-      setCheckingUsername(false);
       return;
     }
 
-    // Then check availability with timeout
-    try {
-      const { data, error } = await Promise.race([
-        supabase
-          .from("profiles")
-          .select("username")
-          .eq("username", username.trim().toLowerCase())
-          .maybeSingle(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), 5000)
-        )
-      ]) as any;
+    const checkUsername = async () => {
+      setCheckingUsername(true);
+
+      // Check safety first
+      const safetyCheck = await checkUsernameSafety(username);
+      if (!safetyCheck.safe) {
+        setUsernameValidation({ valid: false, error: safetyCheck.error || "Username not allowed" });
+        setUsernameAvailable(null); // Set to null instead of false
+        setCheckingUsername(false);
+        return;
+      }
+
+      // Then check availability
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("username", username.trim().toLowerCase())
+        .maybeSingle();
 
       setCheckingUsername(false);
 
       if (error) {
         console.error("Error checking username:", error);
-        setUsernameAvailable(null);
         return;
       }
 
-      setUsernameAvailable(data === null);
-    } catch (timeoutError) {
-      console.error("Username check timeout");
-      setCheckingUsername(false);
-      setUsernameAvailable(null);
-    }
-  }
+      setUsernameAvailable(data === null); // Available if no user found
+    };
+
+    // Debounce the check
+    const timeoutId = setTimeout(checkUsername, 500);
+    return () => clearTimeout(timeoutId);
+  }, [username]);
 
   async function handleFinishOnboarding() {
     if (!session) return;
@@ -202,7 +189,7 @@ export default function OnboardingPage() {
 
       // Success! Redirect to featured page
       await supabase.auth.refreshSession();
-      window.location.href = "https://www.thesourcedapp.com/featured";
+      window.location.href = "https://www.thesourcedapp.com";
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
       setSaving(false);
@@ -299,7 +286,6 @@ export default function OnboardingPage() {
                 placeholder="choose wisely"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                onBlur={handleUsernameBlur}
                 className={`w-full px-0 py-4 bg-transparent border-b-2 focus:outline-none focus:border-b-4 transition-all text-xl tracking-wider text-white placeholder-white/30 ${
                   username.length > 0 && !usernameValidation.valid
                     ? 'border-red-400'
