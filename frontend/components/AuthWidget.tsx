@@ -82,6 +82,15 @@ export default function AuthWidget({ showUsername = false }: AuthWidgetProps) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handleClick = () => setMenuOpen(false);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [menuOpen]);
+
   // Logout handler
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -186,8 +195,11 @@ export default function AuthWidget({ showUsername = false }: AuthWidgetProps) {
         )}
 
         <button
-          onClick={() => setMenuOpen(!menuOpen)}
-          className="w-10 h-10 border-2 border-black bg-white text-black hover:bg-black hover:text-white transition-all flex items-center justify-center text-lg font-black overflow-hidden"
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen(!menuOpen);
+          }}
+          className="w-10 h-10 rounded-full border-2 border-black bg-white hover:border-4 transition-all flex items-center justify-center text-lg font-black overflow-hidden relative group"
           title={profile?.username || "Account"}
         >
           {profile?.avatar_url ? (
@@ -197,24 +209,37 @@ export default function AuthWidget({ showUsername = false }: AuthWidgetProps) {
               className="w-full h-full object-cover"
             />
           ) : (
-            <span>{profile?.username ? profile.username[0]?.toUpperCase() : "U"}</span>
+            <span className="text-black group-hover:scale-110 transition-transform">
+              {profile?.username ? profile.username[0]?.toUpperCase() : "U"}
+            </span>
           )}
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 top-12 bg-black border-2 border-white p-4 w-48 z-50 shadow-lg">
-            <div className="absolute -top-1 -right-1 w-full h-full border border-white opacity-30 pointer-events-none"></div>
+          <div
+            className="absolute right-0 top-14 bg-black border border-white/20 w-64 z-50 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Accent line */}
+            <div className="h-[2px] bg-white"></div>
 
-            <div className="space-y-4 relative z-10">
-              <div className="border-b border-white/20 pb-3">
-                <div className="text-[9px] tracking-[0.4em] opacity-40 mb-1" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                  USER
+            <div className="p-6 space-y-6">
+              {/* User info */}
+              <div className="space-y-2">
+                <div
+                  className="text-[9px] tracking-[0.5em] text-white/40"
+                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                >
+                  LOGGED IN AS
                 </div>
-                <div className="text-sm font-black tracking-wide text-white" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                <div
+                  className="text-2xl font-black tracking-tight text-white"
+                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                >
                   @{profile?.username || "loading..."}
                 </div>
                 {profile?.full_name && (
-                  <div className="text-[10px] opacity-60 mt-1">
+                  <div className="text-xs text-white/60 tracking-wide">
                     {profile.full_name}
                   </div>
                 )}
@@ -222,36 +247,62 @@ export default function AuthWidget({ showUsername = false }: AuthWidgetProps) {
                 {!profile?.username && (
                   <button
                     onClick={refreshProfile}
-                    className="text-[8px] opacity-40 hover:opacity-100 mt-2"
+                    className="text-[9px] text-white/40 hover:text-white transition-colors tracking-wider mt-2"
+                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                   >
                     [REFRESH]
                   </button>
                 )}
               </div>
 
+              {/* Divider */}
+              <div className="border-t border-white/10"></div>
+
+              {/* Menu actions */}
               <div className="space-y-2">
                 <button
                   onClick={handleViewProfile}
-                  className="w-full py-2 border border-white text-white hover:bg-white hover:text-black transition-all text-[10px] tracking-[0.4em]"
-                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                  className="w-full group relative overflow-hidden"
                 >
-                  VIEW PROFILE
+                  <div className="py-3 px-4 border border-white/30 hover:border-white transition-all text-left">
+                    <span
+                      className="text-[11px] tracking-[0.3em] text-white"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      VIEW PROFILE
+                    </span>
+                  </div>
+                  <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
                 </button>
 
                 <button
                   onClick={handleLogout}
-                  className="w-full py-2 border border-white text-white hover:bg-white hover:text-black transition-all text-[10px] tracking-[0.4em]"
-                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                  className="w-full group relative overflow-hidden"
                 >
-                  LOG OUT
+                  <div className="py-3 px-4 border border-white/30 hover:border-white transition-all text-left">
+                    <span
+                      className="text-[11px] tracking-[0.3em] text-white"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      LOG OUT
+                    </span>
+                  </div>
+                  <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
                 </button>
 
                 <button
                   onClick={handleDelete}
-                  className="w-full py-2 border border-red-500 text-red-500 hover:bg-red-500 hover:text-black transition-all text-[10px] tracking-[0.4em]"
-                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                  className="w-full group relative overflow-hidden"
                 >
-                  DELETE
+                  <div className="py-3 px-4 border border-red-500/50 hover:border-red-500 transition-all text-left">
+                    <span
+                      className="text-[11px] tracking-[0.3em] text-red-400"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      DELETE ACCOUNT
+                    </span>
+                  </div>
+                  <div className="absolute inset-0 bg-red-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
                 </button>
               </div>
             </div>

@@ -11,6 +11,9 @@ export default function OnboardingLayout({
         /* Hide parent header and navigation */
         header { display: none !important; }
         nav { display: none !important; }
+
+        /* Hide mobile bottom nav */
+        .md\\:hidden.fixed.bottom-0 { display: none !important; }
       `}</style>
 
       {/* Main content - no header/nav */}
