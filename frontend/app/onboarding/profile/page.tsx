@@ -69,7 +69,7 @@ export default function OnboardingPage() {
 
       if (!session) {
         // Not logged in, redirect to home
-        router.push("/");
+        window.location.href = "https://www.thesourcedapp.com";
         return;
       }
 
@@ -170,9 +170,8 @@ export default function OnboardingPage() {
       }
 
       // Success! Redirect to main app
-     await supabase.auth.refreshSession(); // important
-    router.push("/");
-    router.refresh();
+      await supabase.auth.refreshSession(); // important
+      window.location.href = "https://www.thesourcedapp.com";
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
       setSaving(false);
@@ -217,7 +216,7 @@ export default function OnboardingPage() {
               Click the verification link sent to your email to continue.
             </p>
             <button
-              onClick={() => router.push("/")}
+              onClick={() => window.location.href = "https://www.thesourcedapp.com"}
               className="px-8 py-3 border-2 border-white hover:bg-white hover:text-black transition-all text-xs tracking-[0.4em]"
               style={{ fontFamily: 'Bebas Neue, sans-serif' }}
             >

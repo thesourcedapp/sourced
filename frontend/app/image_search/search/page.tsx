@@ -27,7 +27,7 @@ export default function SearchPage() {
     setError(null);
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/search", {
+      const res = await fetch("https://sourced-5ovn.onrender.com/search", {
         method: "POST",
         body: formData,
       });
