@@ -31,42 +31,6 @@ function validateUsername(username: string): { valid: boolean; error?: string } 
   return { valid: true };
 }
 
-// Function to check username against banned words via API
-async function checkUsernameSafety(username: string): Promise<{ safe: boolean; error?: string }> {
-  try {
-    // Wake up the backend first (don't wait for response)
-    fetch('https://sourced-5ovn.onrender.com/', { method: 'GET' }).catch(() => {});
-
-    // Add timeout to prevent infinite waiting
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000); // 7 second timeout
-
-    const response = await fetch('https://sourced-5ovn.onrender.com/check-username', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.error('Username check failed:', response.status);
-      return { safe: true };
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      console.error('Username check timed out');
-    } else {
-      console.error('Error checking username safety:', error);
-    }
-    // Fail open - allow username if check fails
-    return { safe: true };
-  }
-}
 export default function OnboardingPage() {
   const router = useRouter();
   const [session, setSession] = useState<any>(null);
@@ -111,7 +75,43 @@ export default function OnboardingPage() {
     load();
   }, [router]);
 
-  // Check username availability and safety as user types
+  // Check username availability on blur
+  async function handleUsernameBlur() {
+    if (!username || username.length < 6 || !usernameValidation.valid) {
+      return;
+    }
+
+    setCheckingUsername(true);
+
+    try {
+      const { data, error } = await Promise.race([
+        supabase
+          .from("profiles")
+          .select("username")
+          .eq("username", username.trim().toLowerCase())
+          .maybeSingle(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout')), 5000)
+        )
+      ]) as any;
+
+      setCheckingUsername(false);
+
+      if (error) {
+        console.error("Error checking username:", error);
+        setUsernameAvailable(null);
+        return;
+      }
+
+      setUsernameAvailable(data === null);
+    } catch (timeoutError) {
+      console.error("Username check timeout");
+      setCheckingUsername(false);
+      setUsernameAvailable(null);
+    }
+  }
+
+  // Validate username format as user types
   useEffect(() => {
     if (!username) {
       setUsernameAvailable(null);
@@ -119,47 +119,9 @@ export default function OnboardingPage() {
       return;
     }
 
-    // First do basic validation
+    // Only do basic validation while typing
     const validation = validateUsername(username);
     setUsernameValidation(validation);
-
-    if (!validation.valid || username.length < 6) {
-      setUsernameAvailable(null);
-      return;
-    }
-
-    const checkUsername = async () => {
-      setCheckingUsername(true);
-
-      // Check safety first
-      const safetyCheck = await checkUsernameSafety(username);
-      if (!safetyCheck.safe) {
-        setUsernameValidation({ valid: false, error: safetyCheck.error || "Username not allowed" });
-        setUsernameAvailable(null); // Set to null instead of false
-        setCheckingUsername(false);
-        return;
-      }
-
-      // Then check availability
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("username")
-        .eq("username", username.trim().toLowerCase())
-        .maybeSingle();
-
-      setCheckingUsername(false);
-
-      if (error) {
-        console.error("Error checking username:", error);
-        return;
-      }
-
-      setUsernameAvailable(data === null); // Available if no user found
-    };
-
-    // Debounce the check
-    const timeoutId = setTimeout(checkUsername, 500);
-    return () => clearTimeout(timeoutId);
   }, [username]);
 
   async function handleFinishOnboarding() {
@@ -168,14 +130,6 @@ export default function OnboardingPage() {
     setSaving(true);
     setError(null);
 
-    // Final safety check before submission
-    const safetyCheck = await checkUsernameSafety(username);
-    if (!safetyCheck.safe) {
-      setError(safetyCheck.error || "Username not allowed");
-      setSaving(false);
-      return;
-    }
-
     try {
       // Update the profile with username, full_name, and mark as onboarded
       const { error: updateError } = await supabase
@@ -183,7 +137,7 @@ export default function OnboardingPage() {
         .update({
           username: username.trim().toLowerCase(),
           full_name: fullName.trim(),
-          is_onboarded: true, // Set to true immediately - no email verification
+          is_onboarded: true,
         })
         .eq("id", session.user.id);
 
@@ -298,6 +252,7 @@ export default function OnboardingPage() {
                 placeholder="choose wisely"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                onBlur={handleUsernameBlur}
                 className={`w-full px-0 py-4 bg-transparent border-b-2 focus:outline-none focus:border-b-4 transition-all text-xl tracking-wider text-white placeholder-white/30 ${
                   username.length > 0 && !usernameValidation.valid
                     ? 'border-red-400'
@@ -307,7 +262,7 @@ export default function OnboardingPage() {
                 }`}
               />
 
-              {/* Username validation feedback - always visible when typing */}
+              {/* Username validation feedback */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-[9px] tracking-wider opacity-40">

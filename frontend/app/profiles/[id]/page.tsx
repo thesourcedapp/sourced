@@ -1024,21 +1024,8 @@ export default function ProfilePage() {
                     {bookmarkedCatalogs.map((catalog) => (
                       <div
                         key={catalog.id}
-                        className="group border border-black/20 hover:border-black transition-all relative"
+                        className="group border border-black/20 hover:border-black transition-all"
                       >
-                        {/* Bookmark button - top right */}
-                        {currentUserId && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleBookmark(catalog.id);
-                            }}
-                            className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center bg-black text-white hover:bg-white hover:text-black border border-white transition-all opacity-0 group-hover:opacity-100"
-                          >
-                            🔖
-                          </button>
-                        )}
-
                         <div
                           className="cursor-pointer"
                           onClick={() => router.push(`/catalogs/${catalog.id}`)}
@@ -1070,6 +1057,22 @@ export default function ProfilePage() {
                             </div>
                           </div>
                         </div>
+
+                        {/* Bookmark button BELOW image on solid background */}
+                        {currentUserId && (
+                          <div className="p-3 border-t border-black/10">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleBookmark(catalog.id);
+                              }}
+                              className="w-full py-2 border border-black hover:bg-black hover:text-white transition-all text-xs tracking-[0.4em] font-black"
+                              style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                            >
+                              🔖 UNBOOKMARK
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1094,21 +1097,8 @@ export default function ProfilePage() {
                     {likedItems.map((item) => (
                       <div
                         key={item.id}
-                        className="group border border-black/20 hover:border-black transition-all relative"
+                        className="group border border-black/20 hover:border-black transition-all"
                       >
-                        {/* Like button - top right */}
-                        {currentUserId && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleLike(item.id);
-                            }}
-                            className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center bg-black/80 text-white hover:bg-white hover:text-black border border-white transition-all opacity-0 group-hover:opacity-100"
-                          >
-                            ♥
-                          </button>
-                        )}
-
                         {/* Desktop - clickable for expand */}
                         <div
                           className="relative aspect-square bg-white overflow-hidden cursor-pointer hidden md:block"
@@ -1162,13 +1152,28 @@ export default function ProfilePage() {
                             {item.price && <span className="ml-auto">{item.price}</span>}
                           </div>
 
-                          {/* Mobile expand button */}
-                          <button
-                            onClick={() => setExpandedItem(item)}
-                            className="md:hidden w-full py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs"
-                          >
-                            ⊕ VIEW
-                          </button>
+                          {/* View and Unlike buttons */}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setExpandedItem(item)}
+                              className="flex-1 py-1.5 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs font-black"
+                              style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                            >
+                              ⊕ VIEW
+                            </button>
+                            {currentUserId && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleLike(item.id);
+                                }}
+                                className="px-3 py-1.5 border border-black hover:bg-black hover:text-white transition-all text-xs font-black"
+                                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                              >
+                                ♥
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1182,27 +1187,27 @@ export default function ProfilePage() {
         {/* Edit Profile Modal */}
         {showEditModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-            <div className="w-full max-w-2xl relative">
+            <div className="w-full max-w-md md:max-w-2xl relative max-h-[85vh] md:max-h-[80vh]">
               <button
                 onClick={() => setShowEditModal(false)}
-                className="absolute -top-16 right-0 text-[10px] tracking-[0.4em] text-white hover:opacity-50 transition-opacity"
+                className="absolute -top-10 md:-top-16 right-0 text-[10px] tracking-[0.4em] text-white hover:opacity-50 transition-opacity"
                 style={{ fontFamily: 'Bebas Neue, sans-serif' }}
               >
                 [ESC]
               </button>
 
-              <div className="border-2 border-white p-8 md:p-12 bg-black relative text-white max-h-[80vh] overflow-y-auto">
-                <div className="space-y-8">
+              <div className="border-2 border-white p-6 md:p-12 bg-black relative text-white overflow-y-auto max-h-[85vh] md:max-h-[80vh]">
+                <div className="space-y-6 md:space-y-8">
                   <div className="space-y-2">
                     <div className="text-[10px] tracking-[0.5em] opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                       EDIT PROFILE
                     </div>
-                    <h2 className="text-4xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                    <h2 className="text-3xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
                       UPDATE
                     </h2>
                   </div>
 
-                  <form onSubmit={handleUpdateProfile} className="space-y-6">
+                  <form onSubmit={handleUpdateProfile} className="space-y-4 md:space-y-6">
                     {/* Full Name */}
                     <div className="space-y-2">
                       <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
@@ -1212,7 +1217,7 @@ export default function ProfilePage() {
                         type="text"
                         value={editFullName}
                         onChange={(e) => setEditFullName(e.target.value)}
-                        className="w-full px-0 py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40"
+                        className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm md:text-base"
                       />
                     </div>
 
@@ -1226,8 +1231,8 @@ export default function ProfilePage() {
                         onChange={(e) => setEditBio(e.target.value)}
                         rows={4}
                         maxLength={300}
-                        className="w-full px-0 py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40 resize-none"
-                        placeholder="Tell us about yourself... (Links will be automatically highlighted)"
+                        className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40 resize-none text-sm md:text-base"
+                        placeholder="Tell us about yourself..."
                       />
                       <p className="text-[9px] tracking-wider opacity-40">
                         {editBio.length}/300 characters
@@ -1243,7 +1248,7 @@ export default function ProfilePage() {
                         <button
                           type="button"
                           onClick={() => setUploadMethod('file')}
-                          className={`px-4 py-2 text-xs tracking-wider font-black transition-all ${
+                          className={`px-3 md:px-4 py-1.5 md:py-2 text-xs tracking-wider font-black transition-all ${
                             uploadMethod === 'file'
                               ? 'bg-white text-black'
                               : 'border border-white text-white hover:bg-white/10'
@@ -1255,7 +1260,7 @@ export default function ProfilePage() {
                         <button
                           type="button"
                           onClick={() => setUploadMethod('url')}
-                          className={`px-4 py-2 text-xs tracking-wider font-black transition-all ${
+                          className={`px-3 md:px-4 py-1.5 md:py-2 text-xs tracking-wider font-black transition-all ${
                             uploadMethod === 'url'
                               ? 'bg-white text-black'
                               : 'border border-white text-white hover:bg-white/10'
@@ -1274,7 +1279,7 @@ export default function ProfilePage() {
                           type="file"
                           accept="image/*"
                           onChange={handleFileSelect}
-                          className="w-full px-0 py-3 bg-transparent border-b-2 border-white focus:outline-none text-white file:mr-4 file:py-1 file:px-3 file:border-0 file:bg-white file:text-black file:text-xs file:tracking-wider file:font-black"
+                          className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none text-white file:mr-4 file:py-1 file:px-3 file:border-0 file:bg-white file:text-black file:text-xs file:tracking-wider file:font-black"
                         />
                         <p className="text-[9px] tracking-wider opacity-40">
                           JPG, PNG, or GIF. Max size 5MB.
@@ -1290,7 +1295,7 @@ export default function ProfilePage() {
                           value={editAvatarUrl}
                           onChange={(e) => setEditAvatarUrl(e.target.value)}
                           placeholder="https://example.com/image.jpg"
-                          className="w-full px-0 py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40"
+                          className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm md:text-base"
                         />
                         <p className="text-[9px] tracking-wider opacity-40">
                           Paste a link to your avatar image
@@ -1304,17 +1309,17 @@ export default function ProfilePage() {
                         <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                           PREVIEW
                         </label>
-                        <div className="flex items-center gap-4 p-4 border border-white/20">
+                        <div className="flex items-center gap-4 p-3 md:p-4 border border-white/20">
                           <img
                             src={uploadMethod === 'url' ? editAvatarUrl : previewUrl!}
                             alt="Preview"
-                            className="w-16 h-16 border-2 border-white object-cover"
+                            className="w-12 h-12 md:w-16 md:h-16 border-2 border-white object-cover"
                             onError={(e) => {
                               e.currentTarget.style.display = 'none';
                             }}
                           />
                           <div className="text-xs opacity-60">
-                            This is how your avatar will appear
+                            Avatar preview
                           </div>
                         </div>
                       </div>
@@ -1327,11 +1332,11 @@ export default function ProfilePage() {
                       </div>
                     )}
 
-                    <div className="flex gap-4 pt-4">
+                    <div className="flex gap-3 md:gap-4 pt-4">
                       <button
                         type="button"
                         onClick={() => setShowEditModal(false)}
-                        className="flex-1 py-4 border-2 border-white text-white hover:bg-white hover:text-black transition-all text-xs tracking-[0.4em] font-black"
+                        className="flex-1 py-3 md:py-4 border-2 border-white text-white hover:bg-white hover:text-black transition-all text-xs tracking-[0.4em] font-black"
                         style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                       >
                         CANCEL
@@ -1340,10 +1345,10 @@ export default function ProfilePage() {
                       <button
                         type="submit"
                         disabled={saving}
-                        className="flex-1 py-4 bg-white text-black hover:bg-black hover:text-white hover:border-white border-2 border-white transition-all text-xs tracking-[0.4em] font-black disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="flex-1 py-3 md:py-4 bg-white text-black hover:bg-black hover:text-white hover:border-white border-2 border-white transition-all text-xs tracking-[0.4em] font-black disabled:opacity-30 disabled:cursor-not-allowed"
                         style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                       >
-                        {saving ? 'SAVING...' : 'SAVE CHANGES'}
+                        {saving ? 'SAVING...' : 'SAVE'}
                       </button>
                     </div>
                   </form>
@@ -1463,17 +1468,17 @@ export default function ProfilePage() {
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
             onClick={() => setExpandedItem(null)}
           >
-            <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="relative max-w-lg md:max-w-4xl max-h-[85vh] md:max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() => setExpandedItem(null)}
-                className="absolute -top-12 right-0 text-white text-xs tracking-[0.4em] hover:opacity-50"
+                className="absolute -top-10 md:-top-12 right-0 text-white text-xs tracking-[0.4em] hover:opacity-50"
                 style={{ fontFamily: 'Bebas Neue, sans-serif' }}
               >
                 [ESC]
               </button>
 
-              <div className="bg-white border-2 border-white overflow-hidden">
-                <div className="grid md:grid-cols-2 gap-0">
+              <div className="bg-white border-2 border-white overflow-hidden max-h-[85vh] md:max-h-[90vh] overflow-y-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
                   {/* Image */}
                   <div
                     className="aspect-square bg-black/5 overflow-hidden cursor-pointer"
@@ -1491,23 +1496,23 @@ export default function ProfilePage() {
                   </div>
 
                   {/* Details */}
-                  <div className="p-8 space-y-6">
-                    <h2 className="text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                  <div className="p-6 md:p-8 space-y-4 md:space-y-6">
+                    <h2 className="text-2xl md:text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
                       {expandedItem.title}
                     </h2>
 
-                    <p className="text-sm tracking-wider opacity-60" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                    <p className="text-xs md:text-sm tracking-wider opacity-60" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                       FROM @{expandedItem.catalog_owner} / {expandedItem.catalog_name}
                     </p>
 
                     {expandedItem.seller && (
-                      <p className="text-sm tracking-wider opacity-60">
+                      <p className="text-xs md:text-sm tracking-wider opacity-60">
                         SELLER: {expandedItem.seller}
                       </p>
                     )}
 
                     {expandedItem.price && (
-                      <p className="text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                      <p className="text-xl md:text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                         {expandedItem.price}
                       </p>
                     )}
@@ -1520,7 +1525,7 @@ export default function ProfilePage() {
                       {expandedItem.product_url && (
                         <button
                           onClick={() => window.open(expandedItem.product_url!, '_blank')}
-                          className="w-full py-3 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-xs tracking-[0.4em] font-black"
+                          className="w-full py-2.5 md:py-3 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-xs tracking-[0.4em] font-black"
                           style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                         >
                           VIEW PRODUCT ↗
@@ -1529,7 +1534,7 @@ export default function ProfilePage() {
 
                       <button
                         onClick={() => router.push(`/catalogs/${expandedItem.catalog_id}`)}
-                        className="w-full py-3 border-2 border-black hover:bg-black hover:text-white transition-all text-xs tracking-[0.4em] font-black"
+                        className="w-full py-2.5 md:py-3 border-2 border-black hover:bg-black hover:text-white transition-all text-xs tracking-[0.4em] font-black"
                         style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                       >
                         VIEW CATALOG
