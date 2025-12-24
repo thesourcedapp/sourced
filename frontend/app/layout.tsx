@@ -62,7 +62,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
 
-        <main className="flex-1 pb-24 md:pb-0">{children}</main>
+        <main className="flex-1 pb-6 md:pb-0">{children}</main>
 
         {/* Footer - Always at bottom */}
         <footer className="bg-white border-t border-black/10 py-8 px-4 md:px-10">
