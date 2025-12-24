@@ -31,12 +31,12 @@ function validateUsername(username: string): { valid: boolean; error?: string } 
   return { valid: true };
 }
 
-// Function to check username against banned words via API
+ Function to check username against banned words via API
 async function checkUsernameSafety(username: string): Promise<{ safe: boolean; error?: string }> {
-  // Temporarily disabled - just allow all usernames
+  Temporarily disabled - just allow all usernames
   return { safe: true };
 
-  /*
+
   try {
     const response = await fetch('/api/check-username', {
       method: 'POST',
@@ -55,7 +55,7 @@ async function checkUsernameSafety(username: string): Promise<{ safe: boolean; e
     console.error('Error checking username safety:', error);
     return { safe: true };
   }
-  */
+
 }
 
 export default function OnboardingPage() {
