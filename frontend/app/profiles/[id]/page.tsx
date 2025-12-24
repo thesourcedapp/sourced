@@ -31,10 +31,10 @@ type BookmarkedCatalog = {
   description: string | null;
   image_url: string | null;
   bookmark_count: number;
-  username: string | null;
+  username: string;
   full_name: string | null;
   item_count: number;
-  created_at?: string; // optional
+  created_at: string;
 };
 
 type LikedItem = {
@@ -60,40 +60,6 @@ type FollowUser = {
   following_count: number;
   created_at: string;
 };
-
-// Function to check image safety via API
-async function checkImageSafety(imageUrl: string): Promise<{ safe: boolean; error?: string }> {
-  try {
-    const response = await fetch('https://sourced-5ovn.onrender.com/check-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_url: imageUrl }),
-    });
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error checking image safety:', error);
-    return { safe: false, error: "Failed to verify image safety" };
-  }
-}
-
-// Function to check username/text safety via API
-async function checkTextSafety(text: string): Promise<{ safe: boolean; error?: string }> {
-  try {
-    const response = await fetch('https://sourced-5ovn.onrender.com/check-username', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: text }),
-    });
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error checking text safety:', error);
-    return { safe: false, error: "Failed to verify text safety" };
-  }
-}
 
 // Function to upload file to Supabase Storage
 async function uploadImageToStorage(file: File, userId: string): Promise<{ url: string | null; error?: string }> {
@@ -159,7 +125,8 @@ export default function ProfilePage() {
   const [following, setFollowing] = useState<FollowUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'catalogs' | 'bookmarks' | 'liked' | 'followers' | 'following'>('catalogs');
+  const [activeTab, setActiveTab] = useState<'catalogs' | 'bookmarks' | 'liked'>('catalogs');
+  const [expandedItem, setExpandedItem] = useState<LikedItem | null>(null);
 
   // Edit Profile Modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -170,10 +137,6 @@ export default function ProfilePage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploadMethod, setUploadMethod] = useState<'url' | 'file'>('file');
   const [saving, setSaving] = useState(false);
-  const [nameError, setNameError] = useState('');
-  const [bioError, setBioError] = useState('');
-  const [checkingImage, setCheckingImage] = useState(false);
-  const [imageValid, setImageValid] = useState<boolean | null>(null);
   const [imageError, setImageError] = useState('');
 
   // Followers/Following Modal
@@ -201,7 +164,6 @@ export default function ProfilePage() {
     initProfile();
   }, [profileId]);
 
-  // Reload profile when currentUserId changes
   useEffect(() => {
     if (currentUserId && profileId) {
       loadProfile();
@@ -209,7 +171,6 @@ export default function ProfilePage() {
   }, [currentUserId]);
 
   useEffect(() => {
-    // Filter followers based on search
     if (followersSearchQuery.trim()) {
       setFilteredFollowers(
         followers.filter(user =>
@@ -223,7 +184,6 @@ export default function ProfilePage() {
   }, [followers, followersSearchQuery]);
 
   useEffect(() => {
-    // Filter following based on search
     if (followersSearchQuery.trim()) {
       setFilteredFollowing(
         following.filter(user =>
@@ -254,7 +214,6 @@ export default function ProfilePage() {
       if (!error && data) {
         let profileWithFollowing = { ...data, is_following: false };
 
-        // Check if current user is following this profile
         if (currentUserId && currentUserId !== profileId) {
           const { data: followData } = await supabase
             .from('followers')
@@ -267,8 +226,6 @@ export default function ProfilePage() {
         }
 
         setProfile(profileWithFollowing);
-
-        // Pre-fill edit form if this is the owner
         setEditFullName(data.full_name || '');
         setEditBio(data.bio || '');
         setEditAvatarUrl(data.avatar_url || '');
@@ -308,148 +265,148 @@ export default function ProfilePage() {
   }
 
   async function loadBookmarkedCatalogs() {
-  if (!profileId) return;
+    if (!profileId) return;
 
-  try {
-    const { data, error } = await supabase
-      .from('bookmarked_catalogs')
-      .select('catalog_id, created_at')
-      .eq('user_id', profileId);
+    try {
+      const { data, error } = await supabase
+        .from('bookmarked_catalogs')
+        .select('catalog_id, created_at')
+        .eq('user_id', profileId);
 
-    if (error || !data) {
-      console.error('Error loading bookmarks:', error);
-      return;
+      if (error || !data) {
+        console.error('Error loading bookmarks:', error);
+        return;
+      }
+
+      const catalogIds = data.map(b => b.catalog_id);
+
+      if (catalogIds.length === 0) {
+        setBookmarkedCatalogs([]);
+        return;
+      }
+
+      const { data: catalogsData, error: catalogsError } = await supabase
+        .from('catalogs')
+        .select('id, name, description, image_url, bookmark_count, owner_id, visibility, catalog_items(count)')
+        .in('id', catalogIds);
+
+      if (catalogsError || !catalogsData) {
+        console.error('Error loading catalog details:', catalogsError);
+        return;
+      }
+
+      const ownerIds = [...new Set(catalogsData.map(c => c.owner_id))];
+      const { data: ownersData } = await supabase
+        .from('profiles')
+        .select('id, username, full_name')
+        .in('id', ownerIds);
+
+      const ownersMap = new Map(ownersData?.map(o => [o.id, o]) || []);
+
+      const transformedCatalogs: BookmarkedCatalog[] = catalogsData
+        .filter(catalog => catalog.visibility === 'public')
+        .map(catalog => {
+          const owner = ownersMap.get(catalog.owner_id);
+          const bookmark = data.find(b => b.catalog_id === catalog.id);
+
+          return {
+            id: catalog.id,
+            name: catalog.name,
+            description: catalog.description,
+            image_url: catalog.image_url,
+            bookmark_count: catalog.bookmark_count || 0,
+            username: owner?.username || 'unknown',
+            full_name: owner?.full_name,
+            item_count: catalog.catalog_items?.[0]?.count || 0,
+            created_at: bookmark?.created_at || '',
+          };
+        })
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setBookmarkedCatalogs(transformedCatalogs);
+    } catch (error) {
+      console.error('Error loading bookmarked catalogs:', error);
     }
-
-    const catalogIds = data.map(b => b.catalog_id);
-
-    if (catalogIds.length === 0) {
-      setBookmarkedCatalogs([]);
-      return;
-    }
-
-    const { data: catalogsData, error: catalogsError } = await supabase
-      .from('catalogs')
-      .select('id, name, description, image_url, bookmark_count, owner_id, visibility, catalog_items(count)')
-      .in('id', catalogIds);
-
-    if (catalogsError || !catalogsData) {
-      console.error('Error loading catalog details:', catalogsError);
-      return;
-    }
-
-    const ownerIds = [...new Set(catalogsData.map(c => c.owner_id))];
-    const { data: ownersData } = await supabase
-      .from('profiles')
-      .select('id, username, full_name')
-      .in('id', ownerIds);
-
-    const ownersMap = new Map(ownersData?.map(o => [o.id, o]) || []);
-
-    const transformedCatalogs: BookmarkedCatalog[] = catalogsData
-      .filter(catalog => isOwner || catalog.visibility === 'public')
-      .map(catalog => {
-        const owner = ownersMap.get(catalog.owner_id);
-        const bookmark = data.find(b => b.catalog_id === catalog.id);
-
-        return {
-          id: catalog.id,
-          name: catalog.name,
-          description: catalog.description,
-          image_url: catalog.image_url,
-          bookmark_count: catalog.bookmark_count || 0,
-          username: owner?.username || 'unknown',
-          full_name: owner?.full_name,
-          item_count: catalog.catalog_items?.[0]?.count || 0,
-          created_at: bookmark?.created_at || '',
-        };
-      })
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    setBookmarkedCatalogs(transformedCatalogs);
-  } catch (error) {
-    console.error('Error loading bookmarked catalogs:', error);
   }
-}
 
   async function loadLikedItems() {
-  if (!profileId) return;
+    if (!profileId) return;
 
-  try {
-    const { data, error } = await supabase
-      .from('liked_items')
-      .select('item_id, created_at')
-      .eq('user_id', profileId);
+    try {
+      const { data, error } = await supabase
+        .from('liked_items')
+        .select('item_id, created_at')
+        .eq('user_id', profileId);
 
-    if (error || !data) {
-      console.error('Error loading likes:', error);
-      return;
+      if (error || !data) {
+        console.error('Error loading likes:', error);
+        return;
+      }
+
+      const itemIds = data.map(l => l.item_id);
+
+      if (itemIds.length === 0) {
+        setLikedItems([]);
+        return;
+      }
+
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('catalog_items')
+        .select('id, title, image_url, product_url, price, seller, catalog_id, like_count')
+        .in('id', itemIds);
+
+      if (itemsError || !itemsData) {
+        console.error('Error loading item details:', itemsError);
+        return;
+      }
+
+      const catalogIds = [...new Set(itemsData.map(i => i.catalog_id))];
+      const { data: catalogsData } = await supabase
+        .from('catalogs')
+        .select('id, name, owner_id, visibility')
+        .in('id', catalogIds);
+
+      const catalogsMap = new Map(catalogsData?.map(c => [c.id, c]) || []);
+
+      const ownerIds = [...new Set(catalogsData?.map(c => c.owner_id) || [])];
+      const { data: ownersData } = await supabase
+        .from('profiles')
+        .select('id, username')
+        .in('id', ownerIds);
+
+      const ownersMap = new Map(ownersData?.map(o => [o.id, o]) || []);
+
+      const transformedItems: LikedItem[] = itemsData
+        .filter(item => {
+          const catalog = catalogsMap.get(item.catalog_id);
+          return catalog?.visibility === 'public';
+        })
+        .map(item => {
+          const catalog = catalogsMap.get(item.catalog_id);
+          const owner = catalog ? ownersMap.get(catalog.owner_id) : null;
+          const like = data.find(l => l.item_id === item.id);
+
+          return {
+            id: item.id,
+            title: item.title,
+            image_url: item.image_url,
+            product_url: item.product_url,
+            price: item.price,
+            seller: item.seller,
+            catalog_id: item.catalog_id,
+            catalog_name: catalog?.name || 'Unknown',
+            catalog_owner: owner?.username || 'unknown',
+            like_count: item.like_count || 0,
+            created_at: like?.created_at || '',
+          };
+        })
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setLikedItems(transformedItems);
+    } catch (error) {
+      console.error('Error loading liked items:', error);
     }
-
-    const itemIds = data.map(l => l.item_id);
-
-    if (itemIds.length === 0) {
-      setLikedItems([]);
-      return;
-    }
-
-    const { data: itemsData, error: itemsError } = await supabase
-      .from('catalog_items')
-      .select('id, title, image_url, product_url, price, seller, catalog_id, like_count')
-      .in('id', itemIds);
-
-    if (itemsError || !itemsData) {
-      console.error('Error loading item details:', itemsError);
-      return;
-    }
-
-    const catalogIds = [...new Set(itemsData.map(i => i.catalog_id))];
-    const { data: catalogsData } = await supabase
-      .from('catalogs')
-      .select('id, name, owner_id, visibility')
-      .in('id', catalogIds);
-
-    const catalogsMap = new Map(catalogsData?.map(c => [c.id, c]) || []);
-
-    const ownerIds = [...new Set(catalogsData?.map(c => c.owner_id) || [])];
-    const { data: ownersData } = await supabase
-      .from('profiles')
-      .select('id, username')
-      .in('id', ownerIds);
-
-    const ownersMap = new Map(ownersData?.map(o => [o.id, o]) || []);
-
-    const transformedItems: LikedItem[] = itemsData
-      .filter(item => {
-        const catalog = catalogsMap.get(item.catalog_id);
-        return isOwner || catalog?.visibility === 'public';
-      })
-      .map(item => {
-        const catalog = catalogsMap.get(item.catalog_id);
-        const owner = catalog ? ownersMap.get(catalog.owner_id) : null;
-        const like = data.find(l => l.item_id === item.id);
-
-        return {
-          id: item.id,
-          title: item.title,
-          image_url: item.image_url,
-          product_url: item.product_url,
-          price: item.price,
-          seller: item.seller,
-          catalog_id: item.catalog_id,
-          catalog_name: catalog?.name || 'Unknown',
-          catalog_owner: owner?.username || 'unknown',
-          like_count: item.like_count || 0,
-          created_at: like?.created_at || '',
-        };
-      })
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    setLikedItems(transformedItems);
-  } catch (error) {
-    console.error('Error loading liked items:', error);
   }
-}
 
   async function loadFollowers() {
     if (!profileId) return;
@@ -466,22 +423,18 @@ export default function ProfilePage() {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-          const transformedFollowers: FollowUser[] = data.map(follow => {
+        const transformedFollowers: FollowUser[] = data.map(follow => {
           const profile = follow.profiles[0];
-
           return {
             id: profile.id,
             username: profile.username,
             full_name: profile.full_name,
             avatar_url: profile.avatar_url,
-
             followers_count: profile.followers_count,
             following_count: profile.following_count,
             created_at: follow.created_at,
           };
         });
-
-
         setFollowers(transformedFollowers);
       }
     } catch (error) {
@@ -504,9 +457,8 @@ export default function ProfilePage() {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-          const transformedFollowing: FollowUser[] = data.map(follow => {
+        const transformedFollowing: FollowUser[] = data.map(follow => {
           const profile = follow.profiles[0];
-
           return {
             id: profile.id,
             username: profile.username,
@@ -517,7 +469,6 @@ export default function ProfilePage() {
             created_at: follow.created_at,
           };
         });
-
         setFollowing(transformedFollowing);
       }
     } catch (error) {
@@ -526,130 +477,206 @@ export default function ProfilePage() {
   }
 
   function handleShareProfile() {
-  const profileUrl = `${window.location.origin}/profiles/${profileId}`;
-  navigator.clipboard.writeText(profileUrl);
-  setShowShareCopied(true);
-  setTimeout(() => setShowShareCopied(false), 2000);
-}
+    const profileUrl = `${window.location.origin}/profiles/${profileId}`;
+    navigator.clipboard.writeText(profileUrl);
+    setShowShareCopied(true);
+    setTimeout(() => setShowShareCopied(false), 2000);
+  }
 
   async function toggleFollow() {
-  if (!currentUserId || !profile) return;
+    if (!currentUserId || !profile) return;
 
-  try {
-    if (profile.is_following) {
+    try {
+      if (profile.is_following) {
+        await supabase
+          .from('followers')
+          .delete()
+          .eq('follower_id', currentUserId)
+          .eq('following_id', profileId);
+
+        await supabase
+          .from('profiles')
+          .update({ following_count: Math.max(0, (profile.following_count || 0) - 1) })
+          .eq('id', currentUserId);
+
+        const currentFollowerCount = profile.followers_count || 0;
+        await supabase
+          .from('profiles')
+          .update({ followers_count: Math.max(0, currentFollowerCount - 1) })
+          .eq('id', profileId);
+      } else {
+        await supabase
+          .from('followers')
+          .insert({
+            follower_id: currentUserId,
+            following_id: profileId
+          });
+
+        const { data: currentUserProfile } = await supabase
+          .from('profiles')
+          .select('following_count')
+          .eq('id', currentUserId)
+          .single();
+
+        await supabase
+          .from('profiles')
+          .update({ following_count: (currentUserProfile?.following_count || 0) + 1 })
+          .eq('id', currentUserId);
+
+        const currentFollowerCount = profile.followers_count || 0;
+        await supabase
+          .from('profiles')
+          .update({ followers_count: currentFollowerCount + 1 })
+          .eq('id', profileId);
+      }
+
+      await loadProfile();
+      await loadFollowers();
+      await loadFollowing();
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+    }
+  }
+
+  async function removeFollower(followerId: string) {
+    if (!currentUserId || !isOwner) return;
+
+    try {
+      await supabase
+        .from('followers')
+        .delete()
+        .eq('follower_id', followerId)
+        .eq('following_id', profileId);
+
+      const follower = followers.find(f => f.id === followerId);
+      if (follower) {
+        await supabase
+          .from('profiles')
+          .update({ following_count: Math.max(0, follower.following_count - 1) })
+          .eq('id', followerId);
+      }
+
+      if (profile) {
+        await supabase
+          .from('profiles')
+          .update({ followers_count: Math.max(0, profile.followers_count - 1) })
+          .eq('id', profileId);
+      }
+
+      await loadProfile();
+      await loadFollowers();
+    } catch (error) {
+      console.error('Error removing follower:', error);
+    }
+  }
+
+  async function unfollow(followingId: string) {
+    if (!currentUserId || !isOwner) return;
+
+    try {
       await supabase
         .from('followers')
         .delete()
         .eq('follower_id', currentUserId)
-        .eq('following_id', profileId);
+        .eq('following_id', followingId);
 
-      await supabase
-        .from('profiles')
-        .update({ following_count: Math.max(0, (profile.following_count || 0) - 1) })
-        .eq('id', currentUserId);
+      const followedUser = following.find(f => f.id === followingId);
+      if (followedUser) {
+        await supabase
+          .from('profiles')
+          .update({ followers_count: Math.max(0, followedUser.followers_count - 1) })
+          .eq('id', followingId);
+      }
 
-      const currentFollowerCount = profile.followers_count || 0;
-      await supabase
-        .from('profiles')
-        .update({ followers_count: Math.max(0, currentFollowerCount - 1) })
-        .eq('id', profileId);
-    } else {
-      await supabase
-        .from('followers')
-        .insert({
-          follower_id: currentUserId,
-          following_id: profileId
-        });
+      if (profile) {
+        await supabase
+          .from('profiles')
+          .update({ following_count: Math.max(0, profile.following_count - 1) })
+          .eq('id', currentUserId);
+      }
 
-      const { data: currentUserProfile } = await supabase
-        .from('profiles')
-        .select('following_count')
-        .eq('id', currentUserId)
+      await loadProfile();
+      await loadFollowing();
+    } catch (error) {
+      console.error('Error unfollowing user:', error);
+    }
+  }
+
+  async function toggleBookmark(catalogId: string) {
+    if (!currentUserId) return;
+
+    try {
+      // Check if already bookmarked
+      const { data: existingBookmark } = await supabase
+        .from('bookmarked_catalogs')
+        .select('id')
+        .eq('user_id', currentUserId)
+        .eq('catalog_id', catalogId)
         .single();
 
-      await supabase
-        .from('profiles')
-        .update({ following_count: (currentUserProfile?.following_count || 0) + 1 })
-        .eq('id', currentUserId);
+      if (existingBookmark) {
+        // Remove bookmark
+        await supabase
+          .from('bookmarked_catalogs')
+          .delete()
+          .eq('user_id', currentUserId)
+          .eq('catalog_id', catalogId);
 
-      const currentFollowerCount = profile.followers_count || 0;
-      await supabase
-        .from('profiles')
-        .update({ followers_count: currentFollowerCount + 1 })
-        .eq('id', profileId);
+        setBookmarkedCatalogs(prev => prev.filter(c => c.id !== catalogId));
+      } else {
+        // Add bookmark
+        await supabase
+          .from('bookmarked_catalogs')
+          .insert({
+            user_id: currentUserId,
+            catalog_id: catalogId
+          });
+
+        // Reload bookmarks to get updated list
+        await loadBookmarkedCatalogs();
+      }
+    } catch (error) {
+      console.error('Error toggling bookmark:', error);
     }
-
-    await loadProfile();
-    await loadFollowers();
-    await loadFollowing();
-  } catch (error) {
-    console.error('Error toggling follow:', error);
   }
-}
 
-  async function removeFollower(followerId: string) {
-  if (!currentUserId || !isOwner) return;
+  async function toggleLike(itemId: string) {
+    if (!currentUserId) return;
 
-  try {
-    await supabase
-      .from('followers')
-      .delete()
-      .eq('follower_id', followerId)
-      .eq('following_id', profileId);
+    try {
+      // Check if already liked
+      const { data: existingLike } = await supabase
+        .from('liked_items')
+        .select('id')
+        .eq('user_id', currentUserId)
+        .eq('item_id', itemId)
+        .single();
 
-    const follower = followers.find(f => f.id === followerId);
-    if (follower) {
-      await supabase
-        .from('profiles')
-        .update({ following_count: Math.max(0, follower.following_count - 1) })
-        .eq('id', followerId);
+      if (existingLike) {
+        // Remove like
+        await supabase
+          .from('liked_items')
+          .delete()
+          .eq('user_id', currentUserId)
+          .eq('item_id', itemId);
+
+        setLikedItems(prev => prev.filter(i => i.id !== itemId));
+      } else {
+        // Add like
+        await supabase
+          .from('liked_items')
+          .insert({
+            user_id: currentUserId,
+            item_id: itemId
+          });
+
+        // Reload likes to get updated list
+        await loadLikedItems();
+      }
+    } catch (error) {
+      console.error('Error toggling like:', error);
     }
-
-    if (profile) {
-      await supabase
-        .from('profiles')
-        .update({ followers_count: Math.max(0, profile.followers_count - 1) })
-        .eq('id', profileId);
-    }
-
-    await loadProfile();
-    await loadFollowers();
-  } catch (error) {
-    console.error('Error removing follower:', error);
   }
-}
-
-  async function unfollow(followingId: string) {
-  if (!currentUserId || !isOwner) return;
-
-  try {
-    await supabase
-      .from('followers')
-      .delete()
-      .eq('follower_id', currentUserId)
-      .eq('following_id', followingId);
-
-    const followedUser = following.find(f => f.id === followingId);
-    if (followedUser) {
-      await supabase
-        .from('profiles')
-        .update({ followers_count: Math.max(0, followedUser.followers_count - 1) })
-        .eq('id', followingId);
-    }
-
-    if (profile) {
-      await supabase
-        .from('profiles')
-        .update({ following_count: Math.max(0, profile.following_count - 1) })
-        .eq('id', currentUserId);
-    }
-
-    await loadProfile();
-    await loadFollowing();
-  } catch (error) {
-    console.error('Error unfollowing user:', error);
-  }
-}
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -667,7 +694,6 @@ export default function ProfilePage() {
 
     setSelectedFile(file);
     setImageError('');
-    setImageValid(null);
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -676,71 +702,16 @@ export default function ProfilePage() {
     reader.readAsDataURL(file);
   }
 
-  async function handleImageUrlChange(url: string) {
-    setEditAvatarUrl(url);
-    setImageValid(null);
-    setImageError('');
-    setPreviewUrl(null);
-    setSelectedFile(null);
-
-    if (!url.trim()) return;
-
-    try {
-      new URL(url);
-    } catch {
-      setImageValid(false);
-      setImageError("Invalid URL format");
-      return;
-    }
-
-    setCheckingImage(true);
-
-    setTimeout(async () => {
-      const safetyCheck = await checkImageSafety(url);
-      setCheckingImage(false);
-
-      if (!safetyCheck.safe) {
-        setImageValid(false);
-        setImageError(safetyCheck.error || "Image contains inappropriate content");
-      } else {
-        setImageValid(true);
-      }
-    }, 500);
-  }
-
   async function handleUpdateProfile(e: React.FormEvent) {
     e.preventDefault();
     if (!currentUserId) return;
 
     setSaving(true);
-    setNameError('');
-    setBioError('');
     setImageError('');
 
     try {
-      // Validate full name
-      if (editFullName.trim()) {
-        const nameCheck = await checkTextSafety(editFullName);
-        if (!nameCheck.safe) {
-          setNameError('Name contains inappropriate content');
-          setSaving(false);
-          return;
-        }
-      }
-
-      // Validate bio
-      if (editBio.trim()) {
-        const bioCheck = await checkTextSafety(editBio);
-        if (!bioCheck.safe) {
-          setBioError('Bio contains inappropriate content');
-          setSaving(false);
-          return;
-        }
-      }
-
       let finalAvatarUrl = editAvatarUrl;
 
-      // Handle file upload
       if (uploadMethod === 'file' && selectedFile) {
         const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
 
@@ -751,25 +722,8 @@ export default function ProfilePage() {
         }
 
         finalAvatarUrl = uploadResult.url;
-
-        // Check uploaded image safety
-        const safetyCheck = await checkImageSafety(finalAvatarUrl);
-        if (!safetyCheck.safe) {
-          setImageError(safetyCheck.error || "Image contains inappropriate content");
-          setSaving(false);
-          return;
-        }
-      } else if (uploadMethod === 'url' && editAvatarUrl.trim()) {
-        // Final safety check for URL method
-        const safetyCheck = await checkImageSafety(editAvatarUrl);
-        if (!safetyCheck.safe) {
-          setImageError(safetyCheck.error || "Image contains inappropriate content");
-          setSaving(false);
-          return;
-        }
       }
 
-      // Update profile
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -781,7 +735,6 @@ export default function ProfilePage() {
 
       if (error) throw error;
 
-      // Refresh profile data
       await loadProfile();
       setShowEditModal(false);
     } catch (error) {
@@ -892,7 +845,7 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="flex gap-2">
-                                      <button
+                    <button
                       onClick={handleShareProfile}
                       className="px-4 py-2 border border-black hover:bg-black hover:text-white transition-all text-xs tracking-[0.4em] font-black"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
@@ -993,7 +946,6 @@ export default function ProfilePage() {
         {/* Content */}
         <div className="p-6 md:p-10">
           <div className="max-w-7xl mx-auto">
-
             {/* Public Catalogs Tab */}
             {activeTab === 'catalogs' && (
               <div className="space-y-6">
@@ -1072,33 +1024,50 @@ export default function ProfilePage() {
                     {bookmarkedCatalogs.map((catalog) => (
                       <div
                         key={catalog.id}
-                        className="group cursor-pointer border border-black/20 hover:border-black hover:scale-105 transform transition-all duration-200"
-                        onClick={() => router.push(`/catalogs/${catalog.id}`)}
+                        className="group border border-black/20 hover:border-black transition-all relative"
                       >
-                        <div className="aspect-square bg-white overflow-hidden">
-                          {catalog.image_url ? (
-                            <img
-                              src={catalog.image_url}
-                              alt={catalog.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-black/5 flex items-center justify-center">
-                              <span className="text-6xl opacity-20">✦</span>
-                            </div>
-                          )}
-                        </div>
+                        {/* Bookmark button - top right */}
+                        {currentUserId && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleBookmark(catalog.id);
+                            }}
+                            className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center bg-black text-white hover:bg-white hover:text-black border border-white transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            🔖
+                          </button>
+                        )}
 
-                        <div className="p-4 border-t border-black/20">
-                          <h3 className="text-lg font-black tracking-wide uppercase truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                            {catalog.name}
-                          </h3>
-                          <p className="text-xs tracking-wider opacity-40 mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                            BY @{catalog.username}
-                          </p>
-                          <div className="flex items-center justify-between text-xs tracking-wider opacity-60">
-                            <span>🔖 {catalog.bookmark_count} bookmarks</span>
-                            <span>{catalog.item_count} items</span>
+                        <div
+                          className="cursor-pointer"
+                          onClick={() => router.push(`/catalogs/${catalog.id}`)}
+                        >
+                          <div className="aspect-square bg-white overflow-hidden">
+                            {catalog.image_url ? (
+                              <img
+                                src={catalog.image_url}
+                                alt={catalog.name}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-black/5 flex items-center justify-center">
+                                <span className="text-6xl opacity-20">✦</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="p-4 border-t border-black/20">
+                            <h3 className="text-lg font-black tracking-wide uppercase truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                              {catalog.name}
+                            </h3>
+                            <p className="text-xs tracking-wider opacity-40 mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                              BY @{catalog.username}
+                            </p>
+                            <div className="flex items-center justify-between text-xs tracking-wider opacity-60">
+                              <span>🔖 {catalog.bookmark_count} bookmarks</span>
+                              <span>{catalog.item_count} items</span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1125,10 +1094,26 @@ export default function ProfilePage() {
                     {likedItems.map((item) => (
                       <div
                         key={item.id}
-                        className="group cursor-pointer border border-black/20 hover:border-black hover:scale-105 transform transition-all duration-200"
-                        onClick={() => router.push(`/catalogs/${item.catalog_id}`)}
+                        className="group border border-black/20 hover:border-black transition-all relative"
                       >
-                        <div className="relative aspect-square bg-white overflow-hidden">
+                        {/* Like button - top right */}
+                        {currentUserId && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleLike(item.id);
+                            }}
+                            className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center bg-black/80 text-white hover:bg-white hover:text-black border border-white transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            ♥
+                          </button>
+                        )}
+
+                        {/* Desktop - clickable for expand */}
+                        <div
+                          className="relative aspect-square bg-white overflow-hidden cursor-pointer hidden md:block"
+                          onClick={() => setExpandedItem(item)}
+                        >
                           <img
                             src={item.image_url}
                             alt={item.title}
@@ -1138,22 +1123,26 @@ export default function ProfilePage() {
                             }}
                           />
 
-                          {/* Product link overlay */}
-                          {item.product_url && (
-                            <button
-                              className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-white/80 hover:bg-white border border-black transition-all opacity-0 group-hover:opacity-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(item.product_url!, '_blank');
-                              }}
-                            >
-                              <span className="text-black text-xs">↗</span>
-                            </button>
-                          )}
-
-                          {/* Like count badge */}
                           {item.like_count > 0 && (
-                            <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/80 text-white text-[8px] tracking-wider font-black">
+                            <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/80 text-white text-[8px] tracking-wider font-black">
+                              ♥ {item.like_count}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Mobile - not clickable, has button instead */}
+                        <div className="relative aspect-square bg-white overflow-hidden md:hidden">
+                          <img
+                            src={item.image_url}
+                            alt={item.title}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+
+                          {item.like_count > 0 && (
+                            <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/80 text-white text-[8px] tracking-wider font-black">
                               ♥ {item.like_count}
                             </div>
                           )}
@@ -1168,10 +1157,18 @@ export default function ProfilePage() {
                             FROM @{item.catalog_owner} / {item.catalog_name}
                           </p>
 
-                          <div className="flex items-center justify-between text-[10px] tracking-wider opacity-60">
+                          <div className="flex items-center justify-between text-[10px] tracking-wider opacity-60 mb-2">
                             {item.seller && <span className="truncate">{item.seller}</span>}
                             {item.price && <span className="ml-auto">{item.price}</span>}
                           </div>
+
+                          {/* Mobile expand button */}
+                          <button
+                            onClick={() => setExpandedItem(item)}
+                            className="md:hidden w-full py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs"
+                          >
+                            ⊕ VIEW
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -1215,13 +1212,8 @@ export default function ProfilePage() {
                         type="text"
                         value={editFullName}
                         onChange={(e) => setEditFullName(e.target.value)}
-                        className={`w-full px-0 py-3 bg-transparent border-b-2 focus:outline-none transition-all text-white placeholder-white/40 ${
-                          nameError ? 'border-red-400' : 'border-white focus:border-white'
-                        }`}
+                        className="w-full px-0 py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40"
                       />
-                      {nameError && (
-                        <p className="text-red-400 text-xs tracking-wide">{nameError}</p>
-                      )}
                     </div>
 
                     {/* Bio */}
@@ -1234,19 +1226,12 @@ export default function ProfilePage() {
                         onChange={(e) => setEditBio(e.target.value)}
                         rows={4}
                         maxLength={300}
-                        className={`w-full px-0 py-3 bg-transparent border-b-2 focus:outline-none transition-all text-white placeholder-white/40 resize-none ${
-                          bioError ? 'border-red-400' : 'border-white focus:border-white'
-                        }`}
+                        className="w-full px-0 py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40 resize-none"
                         placeholder="Tell us about yourself... (Links will be automatically highlighted)"
                       />
-                      <div className="flex items-center justify-between">
-                        <p className="text-[9px] tracking-wider opacity-40">
-                          {editBio.length}/300 characters
-                        </p>
-                      </div>
-                      {bioError && (
-                        <p className="text-red-400 text-xs tracking-wide">{bioError}</p>
-                      )}
+                      <p className="text-[9px] tracking-wider opacity-40">
+                        {editBio.length}/300 characters
+                      </p>
                     </div>
 
                     {/* Upload Method Selection */}
@@ -1303,45 +1288,18 @@ export default function ProfilePage() {
                         <input
                           type="url"
                           value={editAvatarUrl}
-                          onChange={(e) => handleImageUrlChange(e.target.value)}
+                          onChange={(e) => setEditAvatarUrl(e.target.value)}
                           placeholder="https://example.com/image.jpg"
-                          className={`w-full px-0 py-3 bg-transparent border-b-2 focus:outline-none transition-all text-white placeholder-white/40 ${
-                            editAvatarUrl && imageValid === false
-                              ? 'border-red-400'
-                              : editAvatarUrl && imageValid === true
-                              ? 'border-green-400'
-                              : 'border-white focus:border-white'
-                          }`}
+                          className="w-full px-0 py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40"
                         />
-
-                        <div className="flex items-center justify-between">
-                          <p className="text-[9px] tracking-wider opacity-40">
-                            Paste a link to your avatar image
-                          </p>
-                          {checkingImage && (
-                            <span className="text-xs tracking-wider opacity-40">verifying...</span>
-                          )}
-                        </div>
-
-                        {editAvatarUrl && !checkingImage && imageValid === false && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-red-400 text-xs">✗</span>
-                            <p className="text-red-400 text-xs tracking-wide">{imageError}</p>
-                          </div>
-                        )}
-
-                        {editAvatarUrl && !checkingImage && imageValid === true && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-green-400 text-xs">✓</span>
-                            <p className="text-green-400 text-xs tracking-wide">Image verified</p>
-                          </div>
-                        )}
+                        <p className="text-[9px] tracking-wider opacity-40">
+                          Paste a link to your avatar image
+                        </p>
                       </div>
                     )}
 
                     {/* Preview */}
-                    {((uploadMethod === 'url' && editAvatarUrl && imageValid === true) ||
-                      (uploadMethod === 'file' && previewUrl)) && (
+                    {((uploadMethod === 'url' && editAvatarUrl) || (uploadMethod === 'file' && previewUrl)) && (
                       <div className="space-y-3">
                         <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                           PREVIEW
@@ -1381,7 +1339,7 @@ export default function ProfilePage() {
 
                       <button
                         type="submit"
-                        disabled={saving || !!nameError || !!bioError}
+                        disabled={saving}
                         className="flex-1 py-4 bg-white text-black hover:bg-black hover:text-white hover:border-white border-2 border-white transition-all text-xs tracking-[0.4em] font-black disabled:opacity-30 disabled:cursor-not-allowed"
                         style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                       >
@@ -1492,6 +1450,91 @@ export default function ProfilePage() {
                         </p>
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Expanded Item Modal */}
+        {expandedItem && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+            onClick={() => setExpandedItem(null)}
+          >
+            <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={() => setExpandedItem(null)}
+                className="absolute -top-12 right-0 text-white text-xs tracking-[0.4em] hover:opacity-50"
+                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+              >
+                [ESC]
+              </button>
+
+              <div className="bg-white border-2 border-white overflow-hidden">
+                <div className="grid md:grid-cols-2 gap-0">
+                  {/* Image */}
+                  <div
+                    className="aspect-square bg-black/5 overflow-hidden cursor-pointer"
+                    onClick={() => {
+                      if (expandedItem.product_url) {
+                        window.open(expandedItem.product_url, '_blank');
+                      }
+                    }}
+                  >
+                    <img
+                      src={expandedItem.image_url}
+                      alt={expandedItem.title}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+
+                  {/* Details */}
+                  <div className="p-8 space-y-6">
+                    <h2 className="text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                      {expandedItem.title}
+                    </h2>
+
+                    <p className="text-sm tracking-wider opacity-60" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                      FROM @{expandedItem.catalog_owner} / {expandedItem.catalog_name}
+                    </p>
+
+                    {expandedItem.seller && (
+                      <p className="text-sm tracking-wider opacity-60">
+                        SELLER: {expandedItem.seller}
+                      </p>
+                    )}
+
+                    {expandedItem.price && (
+                      <p className="text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        {expandedItem.price}
+                      </p>
+                    )}
+
+                    <div className="space-y-3">
+                      <p className="text-xs opacity-60">
+                        ♥ {expandedItem.like_count} {expandedItem.like_count === 1 ? 'LIKE' : 'LIKES'}
+                      </p>
+
+                      {expandedItem.product_url && (
+                        <button
+                          onClick={() => window.open(expandedItem.product_url!, '_blank')}
+                          className="w-full py-3 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-xs tracking-[0.4em] font-black"
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                        >
+                          VIEW PRODUCT ↗
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => router.push(`/catalogs/${expandedItem.catalog_id}`)}
+                        className="w-full py-3 border-2 border-black hover:bg-black hover:text-white transition-all text-xs tracking-[0.4em] font-black"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        VIEW CATALOG
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
