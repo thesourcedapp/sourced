@@ -40,6 +40,12 @@ async function checkUsernameSafety(username: string): Promise<{ safe: boolean; e
       body: JSON.stringify({ username }),
     });
 
+    if (!response.ok) {
+      console.error('Username check failed:', response.status);
+      // Fail open - allow username if check fails
+      return { safe: true };
+    }
+
     const data = await response.json();
     return data;
   } catch (error) {
@@ -70,6 +76,19 @@ export default function OnboardingPage() {
       if (!session) {
         // Not logged in, redirect to home
         window.location.href = "https://www.thesourcedapp.com";
+        return;
+      }
+
+      // Check if user is already onboarded
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("is_onboarded")
+        .eq("id", session.user.id)
+        .single();
+
+      if (profile?.is_onboarded) {
+        // Already onboarded, redirect to featured
+        window.location.href = "https://www.thesourcedapp.com/featured";
         return;
       }
 
@@ -150,14 +169,13 @@ export default function OnboardingPage() {
       const { error: updateError } = await supabase
         .from("profiles")
         .update({
-          username: username.trim().toLowerCase(), // Store usernames in lowercase for consistency
+          username: username.trim().toLowerCase(),
           full_name: fullName.trim(),
-          is_onboarded: true,
+          is_onboarded: true, // Set to true immediately - no email verification
         })
         .eq("id", session.user.id);
 
       if (updateError) {
-        // Check if it's a unique constraint error (username already taken)
         if (updateError.message.includes("duplicate key") ||
             updateError.message.includes("unique constraint") ||
             updateError.code === "23505") {
@@ -169,9 +187,9 @@ export default function OnboardingPage() {
         return;
       }
 
-      // Success! Redirect to main app
-      await supabase.auth.refreshSession(); // important
-      window.location.href = "https://www.thesourcedapp.com";
+      // Success! Redirect to featured page
+      await supabase.auth.refreshSession();
+      window.location.href = "https://www.thesourcedapp.com/featured";
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
       setSaving(false);
