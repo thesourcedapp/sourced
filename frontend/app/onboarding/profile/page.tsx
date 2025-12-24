@@ -189,7 +189,7 @@ export default function OnboardingPage() {
 
       // Success! Redirect to featured page
       await supabase.auth.refreshSession();
-      window.location.href = "https://www.thesourcedapp.com/featured";
+      window.location.href = "https://www.thesourcedapp.com";
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
       setSaving(false);
