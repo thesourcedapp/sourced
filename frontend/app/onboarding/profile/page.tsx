@@ -34,7 +34,7 @@ function validateUsername(username: string): { valid: boolean; error?: string } 
 // Function to check username against banned words via API
 async function checkUsernameSafety(username: string): Promise<{ safe: boolean; error?: string }> {
   try {
-    const response = await fetch('/api/check-username', {
+    const response = await fetch('https://sourced-5ovn.onrender.com/api/check-username', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username }),
@@ -88,7 +88,7 @@ export default function OnboardingPage() {
 
       if (profile?.is_onboarded) {
         // Already onboarded, redirect to featured
-        window.location.href = "https://www.thesourcedapp.com/featured";
+        window.location.href = "https://www.thesourcedapp.com";
         return;
       }
 
