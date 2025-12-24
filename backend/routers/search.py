@@ -14,7 +14,6 @@ router = APIRouter()
 
 class Product(BaseModel):
     name: str
-    price: str
     seller: str
     image_url: str
     item_url: str
@@ -28,10 +27,9 @@ def search(file: UploadFile = File(...)):
         products = [
             {
                 "name": item.get("name", ""),
-                "price": item.get("price", ""),
                 "seller": item.get("seller", ""),
-                "image_url": item.get("image") or item.get("thumbnail") or "",
-                "item_url": item.get("real_url") or item.get("product_link") or "",
+                "image_url": item.get("image_url") or item.get("thumbnail") or "",
+                "item_url": item.get("item_url") or item.get("product_link") or "",
             }
             for item in items
         ]

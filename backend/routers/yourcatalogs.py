@@ -81,7 +81,7 @@ async def create_catalog_endpoint(
             return JSONResponse(status_code=400, content={"error": "Invalid image type"})
 
         catalog_data = create_catalog(
-            owner_id="22ca65f1-8a37-4836-bd94-69f90ab57b60",
+            owner_id=owner_id,
             title=title,
             image=final_image_url,
             visibility=visibility

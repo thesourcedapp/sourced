@@ -15,7 +15,7 @@ LEET_MAP = {
 
 def load_banned_words() -> set[str]:
     """Load banned words from file"""
-    path = Path(__file__).parent.parent.parent / "catalogs" / "bannedwords.txt"
+    path = Path(__file__).resolve().parent.parent / "catalogs" / "bannedwords.txt"
 
     banned = set()
     try:

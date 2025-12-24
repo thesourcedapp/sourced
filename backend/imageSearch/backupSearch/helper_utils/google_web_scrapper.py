@@ -1,115 +1,79 @@
-import asyncio
 import requests
-from playwright.async_api import async_playwright
-from backend.config import SERPAPI_KEY
+import re
+from urllib.parse import urlparse
+from backend.config import FIRECRAWL_API_KEY
+
+API_KEY = FIRECRAWL_API_KEY
 
 
-def serpapi_shopping_search(query: str, limit: int):
-    """Get top products from SerpAPI Google Shopping search, skipping eBay/Poshmark sellers."""
-    url = "https://serpapi.com/search"
+def clean_title(title: str) -> str:
+    if not title:
+        return ""
+    return re.split(r"[|\-–]+", title)[0].strip()
 
-    params = {
-        "engine": "google_shopping",
-        "q": query,
-        "api_key": SERPAPI_KEY,
-        "hl": "en",
-        "gl": "us"
+
+def extract_seller(url: str) -> str:
+    if not url:
+        return ""
+
+    netloc = urlparse(url).netloc.lower()
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
+
+    return netloc.split(".")[0]
+
+
+def scrape(query: str, max_items: int = 6):
+    endpoint = "https://api.firecrawl.dev/v2/search"
+
+    payload = {
+        "query": query,
+        "sources": ["images"],
+        "limit": max_items * 2  # overfetch to handle filtering
     }
 
-    response = requests.get(url, params=params)
-    data = response.json()
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-    results = data.get("shopping_results", [])
-    cleaned = []
+    response = requests.post(endpoint, json=payload, headers=headers)
 
-    for item in results[:limit]:
-        seller = item.get("source", "").lower()
-        if "ebay" in seller or "poshmark" in seller:
-            continue  # skip these sellers
+    if response.status_code != 200:
+        print("❌ Firecrawl API error:", response.text)
+        return []
 
-        google_product_link = (
-            item.get("product_link") or
-            (item.get("rich_product_summary") or {}).get("product_link")
-        )
+    image_results = response.json().get("data", {}).get("images", [])
 
-        cleaned.append({
-            "name": item.get("title"),
-            "seller": item.get("source"),
-            "price": item.get("price"),
-            "image": item.get("thumbnail"),
-            "product_link": google_product_link,  # temporary for Playwright
-        })
+    final_items = []
+    seen_urls = set()
 
-    return cleaned
+    for item in image_results:
+        if len(final_items) >= max_items:
+            break
 
+        item_url = item.get("url")
+        img = item.get("imageUrl")
+        title = clean_title(item.get("title"))
 
-async def get_first_seller_href(product_link: str):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=["--disable-blink-features=AutomationControlled"]
-        )
-        page = await browser.new_page()
-
-        await page.goto(product_link, wait_until="networkidle")
-
-        # Force lazy-loaded sections
-        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        await asyncio.sleep(1)
-
-        selectors = [
-            '[jsname="wN9W3"]',
-            'a[href*="/shopping/product"]',
-            'a[href^="http"]'
-        ]
-
-        seller_href = None
-
-        for _ in range(5):  # retry loop
-            for selector in selectors:
-                try:
-                    locator = page.locator(selector)
-                    if await locator.count() > 0:
-                        seller_href = await locator.first.get_attribute("href")
-                        if seller_href:
-                            break
-                except:
-                    pass
-
-            if seller_href:
-                break
-
-            await asyncio.sleep(1)
-
-        await browser.close()
-
-        if not seller_href:
-            raise RuntimeError("Failed to extract seller href")
-
-        return seller_href
-
-
-async def get_real_seller_urls_for_items(items):
-    """Given a list of SerpAPI items, get real seller URLs using Playwright."""
-    results = []
-    for item in items:
-        if not item.get("product_link"):
+        if not item_url or not img:
             continue
 
-        real_url = await get_first_seller_href(item["product_link"])
-        results.append({
-            "name": item["name"],
-            "seller": item["seller"],
-            "price": item["price"],
-            "image": item["image"],
-            "real_url": real_url
+        # Basic sanity check (avoid Google cache / junk)
+        parsed = urlparse(item_url)
+        if not parsed.scheme.startswith("http"):
+            continue
+
+        if item_url in seen_urls:
+            continue
+
+        final_items.append({
+            "name": title,
+            "item_url": item_url,
+            "image_url": img,
+            "seller": extract_seller(item_url)
         })
-    return results
 
+        seen_urls.add(item_url)
 
-def scrape_items(query: str, limit: int):
-    """Main function: get structured shopping items with real seller URLs, skipping eBay/Poshmark."""
-    items = serpapi_shopping_search(query, limit)
-    formatted_items = asyncio.run(get_real_seller_urls_for_items(items))
-    return formatted_items
-
+    return final_items
