@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Checking username:', username);
 
     // Call your FastAPI backend
-    const backendUrl = 'https://sourced-5ovn.onrender.com/check-username';
+    const backendUrl = "https://sourced-5ovn.onrender.com/check-username";
     console.log('📡 Calling backend:', backendUrl);
 
     const response = await fetch(backendUrl, {
