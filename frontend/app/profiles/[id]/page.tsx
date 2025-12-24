@@ -64,7 +64,7 @@ type FollowUser = {
 // Function to check image safety via API
 async function checkImageSafety(imageUrl: string): Promise<{ safe: boolean; error?: string }> {
   try {
-    const response = await fetch('/api/check-image', {
+    const response = await fetch('https://sourced-5ovn.onrender.com/check-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image_url: imageUrl }),
@@ -81,7 +81,7 @@ async function checkImageSafety(imageUrl: string): Promise<{ safe: boolean; erro
 // Function to check username/text safety via API
 async function checkTextSafety(text: string): Promise<{ safe: boolean; error?: string }> {
   try {
-    const response = await fetch('/api/check-username', {
+    const response = await fetch('https://sourced-5ovn.onrender.com/check-username', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: text }),

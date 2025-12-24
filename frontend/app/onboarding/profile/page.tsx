@@ -34,27 +34,39 @@ function validateUsername(username: string): { valid: boolean; error?: string } 
 // Function to check username against banned words via API
 async function checkUsernameSafety(username: string): Promise<{ safe: boolean; error?: string }> {
   try {
+    // Wake up the backend first (don't wait for response)
+    fetch('https://sourced-5ovn.onrender.com/', { method: 'GET' }).catch(() => {});
+
+    // Add timeout to prevent infinite waiting
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 7000); // 7 second timeout
+
     const response = await fetch('https://sourced-5ovn.onrender.com/check-username', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.error('Username check failed:', response.status);
-      // Fail open - allow username if check fails
       return { safe: true };
     }
 
     const data = await response.json();
     return data;
-  } catch (error) {
-    console.error('Error checking username safety:', error);
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.error('Username check timed out');
+    } else {
+      console.error('Error checking username safety:', error);
+    }
     // Fail open - allow username if check fails
     return { safe: true };
   }
 }
-
 export default function OnboardingPage() {
   const router = useRouter();
   const [session, setSession] = useState<any>(null);
