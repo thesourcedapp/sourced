@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 type Product = {
   name: string;
@@ -11,6 +12,7 @@ type Product = {
 };
 
 export default function SearchPage() {
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -21,9 +23,10 @@ export default function SearchPage() {
 
   useEffect(() => {
     // Check authentication status
+    // Replace this with your actual auth check logic
     const checkAuth = async () => {
       try {
-        // Replace this with your actual auth check logic
+        // Example: Check if user is logged in and onboarded
         // const response = await fetch('/api/auth/check');
         // const data = await response.json();
         // setIsAuthenticated(data.isLoggedIn && data.is_onboarded);
@@ -123,18 +126,38 @@ export default function SearchPage() {
 
                 {/* Content */}
                 <div className="p-6 md:p-8 space-y-6">
-                  <div className="text-center py-12 md:py-16">
-                    <div className="text-7xl md:text-8xl mb-6">🔒</div>
-                    <p className="text-2xl md:text-3xl tracking-wide mb-3" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                      YOU MUST BE LOGGED IN TO USE THIS FEATURE
+                  <div className="text-center py-8">
+                    <div className="text-6xl md:text-7xl mb-4">🔒</div>
+                    <p className="text-lg md:text-xl tracking-wide mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                      YOU MUST BE LOGGED IN
                     </p>
+                    <p className="text-sm opacity-60">
+                      Sign in to use the image search feature
+                    </p>
+                  </div>
 
+                  {/* Action Buttons */}
+                  <div className="space-y-3">
                     <button
-                      onClick={() => setShowAuthPopup(false)}
-                      className="mt-6 bg-black text-white px-12 py-4 font-black tracking-wider hover:bg-black/90 transition-all border-2 border-black"
+                      onClick={() => router.push('/login')}
+                      className="w-full bg-black text-white py-4 font-black tracking-wider hover:bg-black/90 transition-all border-2 border-black"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
-                      GOT IT
+                      LOG IN
+                    </button>
+                    <button
+                      onClick={() => router.push('/signup')}
+                      className="w-full bg-white text-black py-4 font-black tracking-wider hover:bg-black/5 transition-all border-2 border-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      CREATE ACCOUNT
+                    </button>
+                    <button
+                      onClick={() => setShowAuthPopup(false)}
+                      className="w-full text-center py-3 text-sm tracking-wider opacity-60 hover:opacity-100 transition-all"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      CANCEL
                     </button>
                   </div>
                 </div>
