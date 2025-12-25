@@ -105,7 +105,7 @@ export default function OnboardingPage() {
         return;
       }
 
-      // Then check moderation endpoint
+      // Then check moderation endpoint for inappropriate content
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
@@ -128,8 +128,9 @@ export default function OnboardingPage() {
 
       const moderationData = await moderationResponse.json();
 
-      // Username passes both database and moderation checks
-      setUsernameAvailable(moderationData.available === true);
+      // Check if username is safe (doesn't contain banned words)
+      // safe: true means it's appropriate, safe: false means it contains inappropriate content
+      setUsernameAvailable(moderationData.safe === true);
       setCheckingUsername(false);
 
     } catch (error: any) {
