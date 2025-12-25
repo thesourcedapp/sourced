@@ -151,7 +151,9 @@ export default function DiscoverPage() {
         .limit(20);
 
       catalogs?.forEach(cat => {
-        const profile = cat.profiles;
+        const profile = Array.isArray(cat.profiles) ? cat.profiles[0] : cat.profiles;
+        if (!profile) return;
+
         feedItems.push({
           id: `catalog_${cat.id}`,
           type: 'catalog_created',
@@ -183,15 +185,18 @@ export default function DiscoverPage() {
         .limit(20);
 
       likes?.forEach(like => {
+        const profile = Array.isArray(like.profiles) ? like.profiles[0] : like.profiles;
         const item = like.catalog_items;
-        if (item?.catalogs?.visibility === 'public') {
+        if (!profile || !item?.catalogs) return;
+
+        if (item.catalogs.visibility === 'public') {
           feedItems.push({
             id: `like_${like.item_id}_${like.user_id}`,
             type: 'item_liked',
             user_id: like.user_id,
-            username: like.profiles.username,
-            user_avatar: like.profiles.avatar_url,
-            full_name: like.profiles.full_name,
+            username: profile.username,
+            user_avatar: profile.avatar_url,
+            full_name: profile.full_name,
             item_id: item.id,
             item_title: item.title,
             item_image: item.image_url,
@@ -218,15 +223,18 @@ export default function DiscoverPage() {
         .limit(20);
 
       bookmarks?.forEach(bookmark => {
+        const profile = Array.isArray(bookmark.profiles) ? bookmark.profiles[0] : bookmark.profiles;
         const cat = bookmark.catalogs;
-        if (cat?.visibility === 'public') {
+        if (!profile || !cat) return;
+
+        if (cat.visibility === 'public') {
           feedItems.push({
             id: `bookmark_${bookmark.catalog_id}_${bookmark.user_id}`,
             type: 'catalog_bookmarked',
             user_id: bookmark.user_id,
-            username: bookmark.profiles.username,
-            user_avatar: bookmark.profiles.avatar_url,
-            full_name: bookmark.profiles.full_name,
+            username: profile.username,
+            user_avatar: profile.avatar_url,
+            full_name: profile.full_name,
             catalog_id: cat.id,
             catalog_name: cat.name,
             catalog_image: cat.image_url,
@@ -265,16 +273,19 @@ export default function DiscoverPage() {
         .order('bookmark_count', { ascending: false })
         .limit(12);
 
-      setTrendingCatalogs(catalogs?.map(cat => ({
-        id: cat.id,
-        name: cat.name,
-        description: cat.description,
-        image_url: cat.image_url,
-        owner_username: cat.profiles.username,
-        owner_avatar: cat.profiles.avatar_url,
-        bookmark_count: cat.bookmark_count || 0,
-        item_count: cat.catalog_items?.[0]?.count || 0
-      })) || []);
+      setTrendingCatalogs(catalogs?.map(cat => {
+        const profile = Array.isArray(cat.profiles) ? cat.profiles[0] : cat.profiles;
+        return {
+          id: cat.id,
+          name: cat.name,
+          description: cat.description,
+          image_url: cat.image_url,
+          owner_username: profile?.username || 'unknown',
+          owner_avatar: profile?.avatar_url || null,
+          bookmark_count: cat.bookmark_count || 0,
+          item_count: cat.catalog_items?.[0]?.count || 0
+        };
+      }) || []);
 
       // Get trending items (most liked)
       const { data: items } = await supabase
@@ -290,17 +301,20 @@ export default function DiscoverPage() {
         .order('like_count', { ascending: false })
         .limit(20);
 
-      setTrendingItems(items?.filter(item => item.catalogs?.visibility === 'public').map(item => ({
-        id: item.id,
-        title: item.title,
-        image_url: item.image_url,
-        price: item.price,
-        seller: item.seller,
-        catalog_name: item.catalogs!.name,
-        catalog_owner: item.catalogs!.profiles.username,
-        like_count: item.like_count || 0,
-        catalog_id: item.catalog_id
-      })) || []);
+      setTrendingItems(items?.filter(item => item.catalogs?.visibility === 'public').map(item => {
+        const profile = item.catalogs?.profiles ? (Array.isArray(item.catalogs.profiles) ? item.catalogs.profiles[0] : item.catalogs.profiles) : null;
+        return {
+          id: item.id,
+          title: item.title,
+          image_url: item.image_url,
+          price: item.price,
+          seller: item.seller,
+          catalog_name: item.catalogs!.name,
+          catalog_owner: profile?.username || 'unknown',
+          like_count: item.like_count || 0,
+          catalog_id: item.catalog_id
+        };
+      }) || []);
     } catch (error) {
       console.error('Error loading trending:', error);
     } finally {
@@ -345,11 +359,12 @@ export default function DiscoverPage() {
         .limit(5);
 
       catalogs?.forEach(cat => {
+        const profile = Array.isArray(cat.profiles) ? cat.profiles[0] : cat.profiles;
         results.push({
           id: cat.id,
           type: 'catalog',
           title: cat.name,
-          subtitle: `by @${cat.profiles.username}`,
+          subtitle: `by @${profile?.username || 'unknown'}`,
           image: cat.image_url,
           metadata: `${cat.catalog_items?.[0]?.count || 0} items`
         });
