@@ -138,8 +138,6 @@ export default function ProfilePage() {
   const [uploadMethod, setUploadMethod] = useState<'url' | 'file'>('file');
   const [saving, setSaving] = useState(false);
   const [imageError, setImageError] = useState('');
-  const [checkingImage, setCheckingImage] = useState(false);
-  const [imageDebounceTimer, setImageDebounceTimer] = useState<NodeJS.Timeout | null>(null);
 
   // Followers/Following Modal
   const [showShareCopied, setShowShareCopied] = useState(false);
@@ -197,61 +195,6 @@ export default function ProfilePage() {
       setFilteredFollowing(following);
     }
   }, [following, followersSearchQuery]);
-
-  // Check image URL when it changes (for URL upload method)
-  useEffect(() => {
-    if (imageDebounceTimer) {
-      clearTimeout(imageDebounceTimer);
-    }
-
-    if (uploadMethod === 'url' && editAvatarUrl && editAvatarUrl.startsWith('http')) {
-      const timer = setTimeout(async () => {
-        console.log('🔍 Checking URL-based image:', editAvatarUrl);
-        setCheckingImage(true);
-        setImageError('');
-
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-          const moderationResponse = await fetch("/api/check-image", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image_url: editAvatarUrl }),
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
-
-          if (moderationResponse.ok) {
-            const moderationData = await moderationResponse.json();
-            console.log('📦 Moderation result:', moderationData);
-
-            if (moderationData.safe === false) {
-              console.log('❌ Image flagged as unsafe');
-              setImageError("Image contains inappropriate content and cannot be used");
-            } else {
-              console.log('✅ Image is safe');
-            }
-          } else {
-            console.error("Moderation check failed");
-          }
-        } catch (error) {
-          console.error("Image moderation error:", error);
-        } finally {
-          setCheckingImage(false);
-        }
-      }, 1000); // 1 second debounce
-
-      setImageDebounceTimer(timer);
-    }
-
-    return () => {
-      if (imageDebounceTimer) {
-        clearTimeout(imageDebounceTimer);
-      }
-    };
-  }, [editAvatarUrl, uploadMethod]);
 
   async function loadCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -789,88 +732,106 @@ export default function ProfilePage() {
     setImageError('');
 
     const reader = new FileReader();
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       setPreviewUrl(e.target?.result as string);
-
-      // Upload and check image immediately
-      if (!currentUserId) return;
-
-      console.log('🔄 Uploading image for moderation check...');
-      const uploadResult = await uploadImageToStorage(file, currentUserId);
-
-      if (!uploadResult.url) {
-        setImageError(uploadResult.error || "Failed to upload image");
-        return;
-      }
-
-      console.log('✅ Image uploaded, checking safety...');
-
-      // Check the image
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-        const moderationResponse = await fetch("/api/check-image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image_url: uploadResult.url }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (moderationResponse.ok) {
-          const moderationData = await moderationResponse.json();
-          console.log('📦 Moderation result:', moderationData);
-
-          if (moderationData.safe === false) {
-            console.log('❌ Image flagged as unsafe');
-            setImageError("Image contains inappropriate content and cannot be used");
-            setSelectedFile(null);
-            setPreviewUrl(null);
-            return;
-          }
-
-          console.log('✅ Image is safe');
-          // Store the validated URL
-          setEditAvatarUrl(uploadResult.url);
-        } else {
-          console.error("Moderation check failed");
-          setImageError("Failed to verify image safety");
-          setSelectedFile(null);
-          setPreviewUrl(null);
-        }
-      } catch (error) {
-        console.error("Image moderation error:", error);
-        setImageError("Failed to verify image safety");
-        setSelectedFile(null);
-        setPreviewUrl(null);
-      }
     };
     reader.readAsDataURL(file);
   }
 
   async function handleUpdateProfile(e: React.FormEvent) {
     e.preventDefault();
-    console.log('🚀 handleUpdateProfile called');
-
     if (!currentUserId) return;
 
-    // Don't allow save if image check is still running
-    if (checkingImage) {
-      setImageError('Please wait for image verification to complete');
-      return;
-    }
-
-    // Don't allow save if there's an image error
-    if (imageError) {
-      return;
-    }
-
     setSaving(true);
+    setImageError('');
 
     try {
       let finalAvatarUrl = editAvatarUrl;
+
+      if (uploadMethod === 'file' && selectedFile) {
+        console.log('🔄 Starting file upload...');
+        // First, upload the image to storage
+        const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
+
+        if (!uploadResult.url) {
+          setImageError(uploadResult.error || "Failed to upload image");
+          setSaving(false);
+          return;
+        }
+
+        finalAvatarUrl = uploadResult.url;
+        console.log('✅ Image uploaded to:', finalAvatarUrl);
+
+        // Then, check the uploaded image with moderation API through Next.js route
+        try {
+          console.log('🔍 Checking image safety...');
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+          const moderationResponse = await fetch("/api/check-image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_url: finalAvatarUrl }),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+          console.log('📡 Moderation response status:', moderationResponse.status);
+
+          if (moderationResponse.ok) {
+            const moderationData = await moderationResponse.json();
+            console.log('📦 Moderation data:', moderationData);
+
+            if (moderationData.safe === false) {
+              console.log('❌ Image flagged as unsafe');
+              setImageError("Image contains inappropriate content and cannot be used");
+              setSaving(false);
+              return;
+            }
+            console.log('✅ Image is safe');
+          } else {
+            console.error("Moderation check failed, proceeding anyway");
+          }
+        } catch (moderationError) {
+          console.error("Image moderation error:", moderationError);
+          // If moderation fails/times out, proceed with upload
+        }
+      } else if (uploadMethod === 'url' && editAvatarUrl) {
+        console.log('🔍 Checking URL-based image:', editAvatarUrl);
+        // Check URL-based image with moderation API through Next.js route
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+          const moderationResponse = await fetch("/api/check-image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_url: editAvatarUrl }),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+          console.log('📡 Moderation response status:', moderationResponse.status);
+
+          if (moderationResponse.ok) {
+            const moderationData = await moderationResponse.json();
+            console.log('📦 Moderation data:', moderationData);
+
+            if (moderationData.safe === false) {
+              console.log('❌ Image flagged as unsafe');
+              setImageError("Image contains inappropriate content and cannot be used");
+              setSaving(false);
+              return;
+            }
+            console.log('✅ Image is safe');
+          } else {
+            console.error("Moderation check failed, proceeding anyway");
+          }
+        } catch (moderationError) {
+          console.error("Image moderation error:", moderationError);
+          // If moderation fails/times out, proceed with upload
+        }
+      }
 
       console.log('💾 Saving profile update...');
       const { error } = await supabase
@@ -1477,17 +1438,8 @@ export default function ProfilePage() {
                               e.currentTarget.style.display = 'none';
                             }}
                           />
-                          <div className="flex-1">
-                            {checkingImage ? (
-                              <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                <p className="text-xs opacity-60">Verifying image...</p>
-                              </div>
-                            ) : imageError ? (
-                              <p className="text-xs text-red-400">❌ {imageError}</p>
-                            ) : (
-                              <p className="text-xs opacity-60">✓ Image verified</p>
-                            )}
+                          <div className="text-xs opacity-60">
+                            Avatar preview
                           </div>
                         </div>
                       </div>
@@ -1512,11 +1464,11 @@ export default function ProfilePage() {
 
                       <button
                         type="submit"
-                        disabled={saving || checkingImage || !!imageError}
+                        disabled={saving}
                         className="flex-1 py-3 md:py-4 bg-white text-black hover:bg-black hover:text-white hover:border-white border-2 border-white transition-all text-xs tracking-[0.4em] font-black disabled:opacity-30 disabled:cursor-not-allowed"
                         style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                       >
-                        {saving ? 'SAVING...' : checkingImage ? 'VERIFYING...' : 'SAVE'}
+                        {saving ? 'SAVING...' : 'SAVE'}
                       </button>
                     </div>
                   </form>

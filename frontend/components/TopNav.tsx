@@ -25,7 +25,7 @@ export default function TopNav({ mobile = false }: TopNavProps) {
     },
     {
       name: "CATALOGS",
-      path: "/catalogs",
+      path: "/discover",
       icon: "▦"
     }
   ];
