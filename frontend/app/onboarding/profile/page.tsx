@@ -84,30 +84,65 @@ export default function OnboardingPage() {
     setCheckingUsername(true);
 
     try {
-      const { data, error } = await Promise.race([
-        supabase
-          .from("profiles")
-          .select("username")
-          .eq("username", username.trim().toLowerCase())
-          .maybeSingle(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), 5000)
-        )
-      ]) as any;
+      // First check database
+      const { data: dbData, error: dbError } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("username", username.trim().toLowerCase())
+        .maybeSingle();
 
-      setCheckingUsername(false);
-
-      if (error) {
-        console.error("Error checking username:", error);
+      if (dbError) {
+        console.error("Error checking username in database:", dbError);
+        setCheckingUsername(false);
         setUsernameAvailable(null);
         return;
       }
 
-      setUsernameAvailable(data === null);
-    } catch (timeoutError) {
-      console.error("Username check timeout");
+      if (dbData) {
+        // Username exists in database
+        setUsernameAvailable(false);
+        setCheckingUsername(false);
+        return;
+      }
+
+      // Then check moderation endpoint
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      const moderationResponse = await fetch("https://sourced-5ovn.onrender.com/check-username", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim().toLowerCase() }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!moderationResponse.ok) {
+        console.error("Moderation check failed");
+        // If moderation fails, still allow if database check passed
+        setUsernameAvailable(true);
+        setCheckingUsername(false);
+        return;
+      }
+
+      const moderationData = await moderationResponse.json();
+
+      // Username passes both database and moderation checks
+      setUsernameAvailable(moderationData.available === true);
       setCheckingUsername(false);
-      setUsernameAvailable(null);
+
+    } catch (error: any) {
+      console.error("Username check error:", error);
+      setCheckingUsername(false);
+
+      // If timeout or network error, be lenient and allow if database check passed
+      if (error.name === 'AbortError') {
+        console.log("Moderation check timed out, proceeding with database check only");
+        setUsernameAvailable(true);
+      } else {
+        setUsernameAvailable(null);
+      }
     }
   }
 
