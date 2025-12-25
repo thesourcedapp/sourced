@@ -44,6 +44,7 @@ export default function OnboardingPage() {
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [usernameValidation, setUsernameValidation] = useState<{ valid: boolean; error?: string }>({ valid: true });
+  const [usernameError, setUsernameError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -82,6 +83,7 @@ export default function OnboardingPage() {
     }
 
     setCheckingUsername(true);
+    setUsernameError(null);
 
     try {
       // First check database
@@ -95,12 +97,14 @@ export default function OnboardingPage() {
         console.error("Error checking username in database:", dbError);
         setCheckingUsername(false);
         setUsernameAvailable(null);
+        setUsernameError(null);
         return;
       }
 
       if (dbData) {
         // Username exists in database
         setUsernameAvailable(false);
+        setUsernameError("Username already taken");
         setCheckingUsername(false);
         return;
       }
@@ -122,6 +126,7 @@ export default function OnboardingPage() {
         console.error("Moderation check failed");
         // If moderation fails, still allow if database check passed
         setUsernameAvailable(true);
+        setUsernameError(null);
         setCheckingUsername(false);
         return;
       }
@@ -129,8 +134,13 @@ export default function OnboardingPage() {
       const moderationData = await moderationResponse.json();
 
       // Check if username is safe (doesn't contain banned words)
-      // safe: true means it's appropriate, safe: false means it contains inappropriate content
-      setUsernameAvailable(moderationData.safe === true);
+      if (moderationData.safe === true) {
+        setUsernameAvailable(true);
+        setUsernameError(null);
+      } else {
+        setUsernameAvailable(false);
+        setUsernameError("Username contains inappropriate content");
+      }
       setCheckingUsername(false);
 
     } catch (error: any) {
@@ -141,8 +151,10 @@ export default function OnboardingPage() {
       if (error.name === 'AbortError') {
         console.log("Moderation check timed out, proceeding with database check only");
         setUsernameAvailable(true);
+        setUsernameError(null);
       } else {
         setUsernameAvailable(null);
+        setUsernameError(null);
       }
     }
   }
@@ -152,12 +164,16 @@ export default function OnboardingPage() {
     if (!username) {
       setUsernameAvailable(null);
       setUsernameValidation({ valid: true });
+      setUsernameError(null);
       return;
     }
 
     // Only do basic validation while typing
     const validation = validateUsername(username);
     setUsernameValidation(validation);
+
+    // Reset error when user types
+    setUsernameError(null);
   }, [username]);
 
   async function handleFinishOnboarding() {
@@ -333,7 +349,7 @@ export default function OnboardingPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-red-400 text-xs">✗</span>
                     <p className="text-red-400 text-xs tracking-wide">
-                      Username already taken
+                      {usernameError || "Username not available"}
                     </p>
                   </div>
                 )}
