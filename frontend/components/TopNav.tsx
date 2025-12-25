@@ -19,6 +19,11 @@ export default function TopNav({ mobile = false }: TopNavProps) {
       icon: "⌂"
     },
     {
+      name: "DISCOVER",
+      path: "/discover",
+      icon: "◉"
+    },
+    {
       name: "IMAGE SEARCH",
       path: "/image_search/search",
       icon: "⊕"
@@ -57,7 +62,7 @@ export default function TopNav({ mobile = false }: TopNavProps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full px-3 py-2 border border-black/30 bg-white text-black placeholder-black/40 focus:outline-none focus:border-black text-sm tracking-wide"
-            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+            style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '16px' }}
           />
         </form>
       </>
@@ -79,7 +84,7 @@ export default function TopNav({ mobile = false }: TopNavProps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full px-3 py-1.5 border-2 border-black bg-white text-black placeholder-black/50 focus:outline-none focus:border-black text-sm tracking-wider"
-            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+            style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '16px' }}
           />
         </form>
 

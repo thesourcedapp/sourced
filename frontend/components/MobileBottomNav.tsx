@@ -37,16 +37,25 @@ export default function MobileBottomNav() {
       name: "Home",
       path: "/",
       icon: (
-        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
         </svg>
       )
     },
     {
-      name: "Image Search",
+      name: "Discover",
+      path: "/discover",
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      )
+    },
+    {
+      name: "Search",
       path: "/image_search/search",
       icon: (
-        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
         </svg>
       )
@@ -55,7 +64,7 @@ export default function MobileBottomNav() {
       name: "Catalogs",
       path: "/catalogs",
       icon: (
-        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         </svg>
       )
@@ -87,14 +96,14 @@ export default function MobileBottomNav() {
               boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06)'
             }}
           >
-            <div className="flex items-center gap-1 p-1.5">
+            <div className="flex items-center gap-0.5 p-1.5">
               {navItems.map((item) => (
                 <button
                   key={item.path}
                   onClick={() => router.push(item.path)}
                   className={`
                     flex flex-col items-center justify-center gap-0.5
-                    px-5 py-1.5 rounded-xl
+                    px-3 py-1.5 rounded-xl
                     transition-all duration-200
                     ${isActive(item.path)
                       ? 'bg-black/5'
@@ -110,7 +119,7 @@ export default function MobileBottomNav() {
                   </div>
                   <span
                     className={`
-                      text-[9px] font-semibold tracking-tight
+                      text-[8px] font-semibold tracking-tight
                       transition-colors duration-200
                       ${isActive(item.path) ? 'text-black' : 'text-black/40'}
                     `}
