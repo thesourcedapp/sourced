@@ -60,11 +60,18 @@ export default function SearchPage() {
     setLoading(true);
     setError(null);
 
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
+
     try {
       const res = await fetch("https://sourced-5ovn.onrender.com/search", {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const errData = await res.json();
@@ -74,8 +81,16 @@ export default function SearchPage() {
       const data: Product[] = await res.json();
       setProducts(data);
     } catch (err: any) {
+      clearTimeout(timeoutId);
       console.error("Error uploading file:", err);
-      setError(err.message || "Something went wrong");
+
+      if (err.name === 'AbortError') {
+        setError("Search timed out. The server may be waking up from sleep. Please try again.");
+      } else if (err.message.includes('Failed to fetch')) {
+        setError("Unable to reach search server. It may be starting up (this can take 30-60s on first use). Please try again in a moment.");
+      } else {
+        setError(err.message || "Something went wrong");
+      }
       setProducts([]);
     } finally {
       setLoading(false);
@@ -219,13 +234,19 @@ export default function SearchPage() {
 
                 {/* Loading State */}
                 {loading && (
-                  <div className="mt-8 text-center border border-black/20 p-6">
-                    <p className="text-xs tracking-[0.4em] mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                      SEARCHING...
-                    </p>
-                    <p className="text-[10px] tracking-wider opacity-50" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                      PLEASE WAIT, CAN TAKE UP TO 30 SECONDS
-                    </p>
+                  <div className="mt-8 text-center border border-black/20 p-8">
+                    <div className="space-y-4">
+                      <div className="w-12 h-12 border-2 border-black border-t-transparent rounded-full animate-spin mx-auto" />
+                      <p className="text-xs tracking-[0.4em] mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        SEARCHING...
+                      </p>
+                      <p className="text-[10px] tracking-wider opacity-50" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        THIS MAY TAKE 30-90 SECONDS
+                      </p>
+                      <p className="text-[9px] tracking-wider opacity-30 mt-2">
+                        First search after inactivity takes longer as server wakes up
+                      </p>
+                    </div>
                   </div>
                 )}
 
