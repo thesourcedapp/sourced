@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import search, yourcatalogs, catalogpage, username, avatar
+from routers import search, yourcatalogs, catalogpage, username, avatar, items
 
 app = FastAPI()
 
@@ -20,6 +20,7 @@ app.add_middleware(
 app.include_router(search.router, tags=["search"])
 app.include_router(username.router, tags=["username"])
 app.include_router(avatar.router, tags=["avatar"])
+app.include_router(items.router, tags=["items"])
 
 @app.get("/")
 def root():
