@@ -416,27 +416,54 @@ export default function ProfilePage() {
         .from('followers')
         .select(`
           follower_id,
-          created_at,
-          profiles!followers_follower_id_fkey(id, username, full_name, avatar_url, followers_count, following_count)
+          created_at
         `)
         .eq('following_id', profileId)
         .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        const transformedFollowers: FollowUser[] = data.map(follow => {
-          const profile = follow.profiles[0];
+      if (error) {
+        console.error('Error loading followers:', error);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        setFollowers([]);
+        return;
+      }
+
+      // Get profile data for all followers
+      const followerIds = data.map(f => f.follower_id);
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, full_name, avatar_url, followers_count, following_count')
+        .in('id', followerIds);
+
+      if (profilesError) {
+        console.error('Error loading follower profiles:', profilesError);
+        return;
+      }
+
+      // Create a map for quick lookup
+      const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
+
+      const transformedFollowers: FollowUser[] = data
+        .map(follow => {
+          const profile = profilesMap.get(follow.follower_id);
+          if (!profile) return null;
+
           return {
             id: profile.id,
             username: profile.username,
             full_name: profile.full_name,
             avatar_url: profile.avatar_url,
-            followers_count: profile.followers_count,
-            following_count: profile.following_count,
+            followers_count: profile.followers_count || 0,
+            following_count: profile.following_count || 0,
             created_at: follow.created_at,
           };
-        });
-        setFollowers(transformedFollowers);
-      }
+        })
+        .filter((f): f is FollowUser => f !== null);
+
+      setFollowers(transformedFollowers);
     } catch (error) {
       console.error('Error loading followers:', error);
     }
@@ -450,27 +477,54 @@ export default function ProfilePage() {
         .from('followers')
         .select(`
           following_id,
-          created_at,
-          profiles!followers_following_id_fkey(id, username, full_name, avatar_url, followers_count, following_count)
+          created_at
         `)
         .eq('follower_id', profileId)
         .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        const transformedFollowing: FollowUser[] = data.map(follow => {
-          const profile = follow.profiles[0];
+      if (error) {
+        console.error('Error loading following:', error);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        setFollowing([]);
+        return;
+      }
+
+      // Get profile data for all following
+      const followingIds = data.map(f => f.following_id);
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, full_name, avatar_url, followers_count, following_count')
+        .in('id', followingIds);
+
+      if (profilesError) {
+        console.error('Error loading following profiles:', profilesError);
+        return;
+      }
+
+      // Create a map for quick lookup
+      const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
+
+      const transformedFollowing: FollowUser[] = data
+        .map(follow => {
+          const profile = profilesMap.get(follow.following_id);
+          if (!profile) return null;
+
           return {
             id: profile.id,
             username: profile.username,
             full_name: profile.full_name,
             avatar_url: profile.avatar_url,
-            followers_count: profile.followers_count,
-            following_count: profile.following_count,
+            followers_count: profile.followers_count || 0,
+            following_count: profile.following_count || 0,
             created_at: follow.created_at,
           };
-        });
-        setFollowing(transformedFollowing);
-      }
+        })
+        .filter((f): f is FollowUser => f !== null);
+
+      setFollowing(transformedFollowing);
     } catch (error) {
       console.error('Error loading following:', error);
     }
@@ -488,31 +542,15 @@ export default function ProfilePage() {
 
     try {
       if (profile.is_following) {
+        // Unfollow
         await supabase
           .from('followers')
           .delete()
           .eq('follower_id', currentUserId)
           .eq('following_id', profileId);
 
-        await supabase
-          .from('profiles')
-          .update({ following_count: Math.max(0, (profile.following_count || 0) - 1) })
-          .eq('id', currentUserId);
-
-        const currentFollowerCount = profile.followers_count || 0;
-        await supabase
-          .from('profiles')
-          .update({ followers_count: Math.max(0, currentFollowerCount - 1) })
-          .eq('id', profileId);
-      } else {
-        await supabase
-          .from('followers')
-          .insert({
-            follower_id: currentUserId,
-            following_id: profileId
-          });
-
-        const { data: currentUserProfile } = await supabase
+        // Decrement current user's following_count
+        const { data: currentUserData } = await supabase
           .from('profiles')
           .select('following_count')
           .eq('id', currentUserId)
@@ -520,13 +558,51 @@ export default function ProfilePage() {
 
         await supabase
           .from('profiles')
-          .update({ following_count: (currentUserProfile?.following_count || 0) + 1 })
+          .update({ following_count: Math.max(0, (currentUserData?.following_count || 0) - 1) })
           .eq('id', currentUserId);
 
-        const currentFollowerCount = profile.followers_count || 0;
+        // Decrement profile's followers_count
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('followers_count')
+          .eq('id', profileId)
+          .single();
+
         await supabase
           .from('profiles')
-          .update({ followers_count: currentFollowerCount + 1 })
+          .update({ followers_count: Math.max(0, (profileData?.followers_count || 0) - 1) })
+          .eq('id', profileId);
+      } else {
+        // Follow
+        await supabase
+          .from('followers')
+          .insert({
+            follower_id: currentUserId,
+            following_id: profileId
+          });
+
+        // Increment current user's following_count
+        const { data: currentUserData } = await supabase
+          .from('profiles')
+          .select('following_count')
+          .eq('id', currentUserId)
+          .single();
+
+        await supabase
+          .from('profiles')
+          .update({ following_count: (currentUserData?.following_count || 0) + 1 })
+          .eq('id', currentUserId);
+
+        // Increment profile's followers_count
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('followers_count')
+          .eq('id', profileId)
+          .single();
+
+        await supabase
+          .from('profiles')
+          .update({ followers_count: (profileData?.followers_count || 0) + 1 })
           .eq('id', profileId);
       }
 
@@ -800,6 +876,11 @@ export default function ProfilePage() {
     <>
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');
+
+        /* Prevent zoom on mobile inputs - CRITICAL for iOS */
+        input, textarea, select {
+          font-size: 16px !important;
+        }
       `}</style>
 
       <div className="min-h-screen bg-white text-black">
@@ -1217,7 +1298,8 @@ export default function ProfilePage() {
                         type="text"
                         value={editFullName}
                         onChange={(e) => setEditFullName(e.target.value)}
-                        className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm md:text-base"
+                        className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40"
+                        style={{ fontSize: '16px' }}
                       />
                     </div>
 
@@ -1231,8 +1313,9 @@ export default function ProfilePage() {
                         onChange={(e) => setEditBio(e.target.value)}
                         rows={4}
                         maxLength={300}
-                        className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40 resize-none text-sm md:text-base"
+                        className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40 resize-none"
                         placeholder="Tell us about yourself..."
+                        style={{ fontSize: '16px' }}
                       />
                       <p className="text-[9px] tracking-wider opacity-40">
                         {editBio.length}/300 characters
@@ -1280,6 +1363,7 @@ export default function ProfilePage() {
                           accept="image/*"
                           onChange={handleFileSelect}
                           className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none text-white file:mr-4 file:py-1 file:px-3 file:border-0 file:bg-white file:text-black file:text-xs file:tracking-wider file:font-black"
+                          style={{ fontSize: '16px' }}
                         />
                         <p className="text-[9px] tracking-wider opacity-40">
                           JPG, PNG, or GIF. Max size 5MB.
@@ -1295,7 +1379,8 @@ export default function ProfilePage() {
                           value={editAvatarUrl}
                           onChange={(e) => setEditAvatarUrl(e.target.value)}
                           placeholder="https://example.com/image.jpg"
-                          className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm md:text-base"
+                          className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40"
+                          style={{ fontSize: '16px' }}
                         />
                         <p className="text-[9px] tracking-wider opacity-40">
                           Paste a link to your avatar image
@@ -1387,8 +1472,8 @@ export default function ProfilePage() {
                     value={followersSearchQuery}
                     onChange={(e) => setFollowersSearchQuery(e.target.value)}
                     placeholder="SEARCH USERNAMES..."
-                    className="w-full px-4 py-3 bg-white text-black placeholder-black/50 focus:outline-none border-2 border-white text-sm tracking-wider"
-                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    className="w-full px-4 py-3 bg-white text-black placeholder-black/50 focus:outline-none border-2 border-white tracking-wider"
+                    style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '16px' }}
                   />
 
                   {/* User List */}
