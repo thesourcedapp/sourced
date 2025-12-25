@@ -60,7 +60,7 @@ export default function CatalogsClient() {
           description,
           image_url,
           bookmark_count,
-          profiles!inner(username, full_name, avatar_url),
+          owner_id,
           catalog_items(count)
         `)
         .eq("visibility", "public")
@@ -69,29 +69,41 @@ export default function CatalogsClient() {
 
       if (error) throw error;
 
+      // Get owner details for all catalogs
+      const ownerIds = [...new Set(data?.map(c => c.owner_id) || [])];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, username, full_name, avatar_url")
+        .in("id", ownerIds);
+
+      const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+
       let bookmarked = new Set<string>();
       if (currentUserId) {
-        const { data } = await supabase
+        const { data: bookmarkData } = await supabase
           .from("bookmarked_catalogs")
           .select("catalog_id")
           .eq("user_id", currentUserId);
 
-        if (data) bookmarked = new Set(data.map(b => b.catalog_id));
+        if (bookmarkData) bookmarked = new Set(bookmarkData.map(b => b.catalog_id));
       }
 
       setSearchResults(
-        (data ?? []).map(catalog => ({
-          id: catalog.id,
-          name: catalog.name,
-          description: catalog.description,
-          image_url: catalog.image_url,
-          username: catalog.profiles?.[0]?.username ?? "",
-          full_name: catalog.profiles?.[0]?.full_name ?? null,
-          avatar_url: catalog.profiles?.[0]?.avatar_url ?? null,
-          item_count: catalog.catalog_items?.[0]?.count ?? 0,
-          bookmark_count: catalog.bookmark_count ?? 0,
-          is_bookmarked: bookmarked.has(catalog.id),
-        }))
+        (data ?? []).map(catalog => {
+          const profile = profileMap.get(catalog.owner_id);
+          return {
+            id: catalog.id,
+            name: catalog.name,
+            description: catalog.description,
+            image_url: catalog.image_url,
+            username: profile?.username ?? "unknown",
+            full_name: profile?.full_name ?? null,
+            avatar_url: profile?.avatar_url ?? null,
+            item_count: catalog.catalog_items?.[0]?.count ?? 0,
+            bookmark_count: catalog.bookmark_count ?? 0,
+            is_bookmarked: bookmarked.has(catalog.id),
+          };
+        })
       );
     } catch (err) {
       console.error(err);
@@ -118,7 +130,7 @@ export default function CatalogsClient() {
           description,
           image_url,
           bookmark_count,
-          profiles!inner(username, full_name, avatar_url),
+          owner_id,
           catalog_items(count)
         `)
         .ilike("name", `%${query}%`)
@@ -126,6 +138,15 @@ export default function CatalogsClient() {
         .limit(20);
 
       if (error) throw error;
+
+      // Get owner details for all catalogs
+      const ownerIds = [...new Set(data?.map(c => c.owner_id) || [])];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, username, full_name, avatar_url")
+        .in("id", ownerIds);
+
+      const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
 
       let bookmarked = new Set<string>();
       if (currentUserId) {
@@ -138,18 +159,21 @@ export default function CatalogsClient() {
       }
 
       setSearchResults(
-        (data ?? []).map(catalog => ({
-          id: catalog.id,
-          name: catalog.name,
-          description: catalog.description,
-          image_url: catalog.image_url,
-          username: catalog.profiles?.[0]?.username ?? "",
-          full_name: catalog.profiles?.[0]?.full_name ?? null,
-          avatar_url: catalog.profiles?.[0]?.avatar_url ?? null,
-          item_count: catalog.catalog_items?.[0]?.count ?? 0,
-          bookmark_count: catalog.bookmark_count ?? 0,
-          is_bookmarked: bookmarked.has(catalog.id),
-        }))
+        (data ?? []).map(catalog => {
+          const profile = profileMap.get(catalog.owner_id);
+          return {
+            id: catalog.id,
+            name: catalog.name,
+            description: catalog.description,
+            image_url: catalog.image_url,
+            username: profile?.username ?? "unknown",
+            full_name: profile?.full_name ?? null,
+            avatar_url: profile?.avatar_url ?? null,
+            item_count: catalog.catalog_items?.[0]?.count ?? 0,
+            bookmark_count: catalog.bookmark_count ?? 0,
+            is_bookmarked: bookmarked.has(catalog.id),
+          };
+        })
       );
     } catch (err) {
       console.error(err);
@@ -244,24 +268,28 @@ export default function CatalogsClient() {
         </div>
 
         {/* Navigation - VERY VISIBLE */}
-        <div className="border-b-4 border-black/20">
+        <div className="border-b-4 border-black/20 bg-white sticky top-0 z-20">
           <div className="max-w-7xl mx-auto px-6 md:px-10">
-            <div className="flex overflow-x-auto gap-2">
+            <div className="grid grid-cols-2 gap-0">
               <button
-                className="py-4 px-8 text-base md:text-lg tracking-wider font-black bg-black text-white whitespace-nowrap"
+                className="py-5 px-4 md:px-10 text-base md:text-xl tracking-[0.2em] md:tracking-[0.3em] font-black bg-black text-white whitespace-nowrap text-center"
                 style={{ fontFamily: 'Bebas Neue, sans-serif' }}
               >
                 EXPLORE
               </button>
-              {currentUserId && (
-                <button
-                  onClick={() => router.push('/catalogs/your_catalogs')}
-                  className="py-4 px-8 text-base md:text-lg tracking-wider font-black border-2 border-black text-black hover:bg-black hover:text-white transition-all whitespace-nowrap"
-                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                >
-                  YOUR CATALOGS →
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  if (!currentUserId) {
+                    alert('Please log in to access your catalogs');
+                    return;
+                  }
+                  router.push('/catalogs/your_catalogs');
+                }}
+                className="py-5 px-4 md:px-10 text-base md:text-xl tracking-[0.2em] md:tracking-[0.3em] font-black border-4 border-black text-black hover:bg-black hover:text-white transition-all whitespace-nowrap text-center"
+                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+              >
+                YOUR CATALOGS
+              </button>
             </div>
           </div>
         </div>
