@@ -6,7 +6,7 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Checking image safety for:', body.image_url);
 
     // Call your FastAPI backend
-    const response = await fetch('http://127.0.0.1:5000/check-image', {
+    const response = await fetch('https://sourced-5ovn.onrender.com/check-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       console.error('❌ Backend error:', response.status);
-      const errorText = await response.text();
+      const errorText  = await response.text();
       console.error('❌ Error details:', errorText);
       throw new Error(`Backend responded with status: ${response.status}`);
     }

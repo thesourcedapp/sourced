@@ -542,20 +542,27 @@ export default function ProfilePage() {
 
     try {
       if (profile.is_following) {
-        // Unfollow - database triggers will handle count updates
+        // Unfollow
         await supabase
           .from('followers')
           .delete()
           .eq('follower_id', currentUserId)
           .eq('following_id', profileId);
+
+        // Wait a moment for trigger to complete
+        await new Promise(resolve => setTimeout(resolve, 200));
+
       } else {
-        // Follow - database triggers will handle count updates
+        // Follow
         await supabase
           .from('followers')
           .insert({
             follower_id: currentUserId,
             following_id: profileId
           });
+
+        // Wait a moment for trigger to complete
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
 
       // Reload profile data to get updated counts from database
@@ -742,6 +749,7 @@ export default function ProfilePage() {
       let finalAvatarUrl = editAvatarUrl;
 
       if (uploadMethod === 'file' && selectedFile) {
+        // First, upload the image to storage
         const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
 
         if (!uploadResult.url) {
@@ -751,6 +759,66 @@ export default function ProfilePage() {
         }
 
         finalAvatarUrl = uploadResult.url;
+
+        // Then, check the uploaded image with moderation API through Next.js route
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+          const moderationResponse = await fetch("/api/check-image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_url: finalAvatarUrl }),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (moderationResponse.ok) {
+            const moderationData = await moderationResponse.json();
+
+            if (moderationData.safe === false) {
+              setImageError("Image contains inappropriate content and cannot be used");
+              setSaving(false);
+              return;
+            }
+          } else {
+            console.error("Moderation check failed, proceeding anyway");
+          }
+        } catch (moderationError) {
+          console.error("Image moderation error:", moderationError);
+          // If moderation fails/times out, proceed with upload
+        }
+      } else if (uploadMethod === 'url' && editAvatarUrl) {
+        // Check URL-based image with moderation API through Next.js route
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+          const moderationResponse = await fetch("/api/check-image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_url: editAvatarUrl }),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (moderationResponse.ok) {
+            const moderationData = await moderationResponse.json();
+
+            if (moderationData.safe === false) {
+              setImageError("Image contains inappropriate content and cannot be used");
+              setSaving(false);
+              return;
+            }
+          } else {
+            console.error("Moderation check failed, proceeding anyway");
+          }
+        } catch (moderationError) {
+          console.error("Image moderation error:", moderationError);
+          // If moderation fails/times out, proceed with upload
+        }
       }
 
       const { error } = await supabase
