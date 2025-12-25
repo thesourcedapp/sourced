@@ -749,6 +749,7 @@ export default function ProfilePage() {
       let finalAvatarUrl = editAvatarUrl;
 
       if (uploadMethod === 'file' && selectedFile) {
+        console.log('🔄 Starting file upload...');
         // First, upload the image to storage
         const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
 
@@ -759,9 +760,11 @@ export default function ProfilePage() {
         }
 
         finalAvatarUrl = uploadResult.url;
+        console.log('✅ Image uploaded to:', finalAvatarUrl);
 
         // Then, check the uploaded image with moderation API through Next.js route
         try {
+          console.log('🔍 Checking image safety...');
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -773,15 +776,19 @@ export default function ProfilePage() {
           });
 
           clearTimeout(timeoutId);
+          console.log('📡 Moderation response status:', moderationResponse.status);
 
           if (moderationResponse.ok) {
             const moderationData = await moderationResponse.json();
+            console.log('📦 Moderation data:', moderationData);
 
             if (moderationData.safe === false) {
+              console.log('❌ Image flagged as unsafe');
               setImageError("Image contains inappropriate content and cannot be used");
               setSaving(false);
               return;
             }
+            console.log('✅ Image is safe');
           } else {
             console.error("Moderation check failed, proceeding anyway");
           }
@@ -790,6 +797,7 @@ export default function ProfilePage() {
           // If moderation fails/times out, proceed with upload
         }
       } else if (uploadMethod === 'url' && editAvatarUrl) {
+        console.log('🔍 Checking URL-based image:', editAvatarUrl);
         // Check URL-based image with moderation API through Next.js route
         try {
           const controller = new AbortController();
@@ -803,15 +811,19 @@ export default function ProfilePage() {
           });
 
           clearTimeout(timeoutId);
+          console.log('📡 Moderation response status:', moderationResponse.status);
 
           if (moderationResponse.ok) {
             const moderationData = await moderationResponse.json();
+            console.log('📦 Moderation data:', moderationData);
 
             if (moderationData.safe === false) {
+              console.log('❌ Image flagged as unsafe');
               setImageError("Image contains inappropriate content and cannot be used");
               setSaving(false);
               return;
             }
+            console.log('✅ Image is safe');
           } else {
             console.error("Moderation check failed, proceeding anyway");
           }
@@ -821,6 +833,7 @@ export default function ProfilePage() {
         }
       }
 
+      console.log('💾 Saving profile update...');
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -832,6 +845,7 @@ export default function ProfilePage() {
 
       if (error) throw error;
 
+      console.log('✅ Profile updated successfully');
       await loadProfile();
       setShowEditModal(false);
     } catch (error) {
