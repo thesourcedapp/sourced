@@ -31,38 +31,6 @@ type CatalogItem = {
   created_at: string;
 };
 
-// Function to check image safety
-async function checkImageSafety(imageUrl: string): Promise<{ safe: boolean; error?: string }> {
-  try {
-    const response = await fetch('/api/check-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_url: imageUrl }),
-    });
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error checking image safety:', error);
-    return { safe: false, error: "Failed to verify image safety" };
-  }
-}
-
-// Function to check text safety
-async function checkTextSafety(text: string): Promise<{ safe: boolean; error?: string }> {
-  try {
-    const response = await fetch('/api/check-username', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: text }),
-    });
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error checking text safety:', error);
-    return { safe: false, error: "Failed to verify text safety" };
-  }
-}
-
 // Function to upload file to Supabase Storage
 async function uploadImageToStorage(file: File, userId: string): Promise<{ url: string | null; error?: string }> {
   try {
@@ -141,11 +109,7 @@ export default function CatalogDetailPage() {
   const [itemSeller, setItemSeller] = useState('');
   const [itemPrice, setItemPrice] = useState('');
   const [creating, setCreating] = useState(false);
-  const [titleError, setTitleError] = useState('');
   const [imageError, setImageError] = useState('');
-  const [sellerError, setSellerError] = useState('');
-  const [checkingImage, setCheckingImage] = useState(false);
-  const [imageValid, setImageValid] = useState<boolean | null>(null);
   const [productUrlError, setProductUrlError] = useState('');
 
   const isOwner = currentUserId === catalog?.owner_id;
@@ -267,28 +231,36 @@ export default function CatalogDetailPage() {
 
     try {
       if (isBookmarked) {
+        // Remove bookmark
         await supabase
           .from('bookmarked_catalogs')
           .delete()
           .eq('user_id', currentUserId)
           .eq('catalog_id', catalogId);
+
+        setIsBookmarked(false);
+        if (catalog) {
+          setCatalog({
+            ...catalog,
+            bookmark_count: Math.max(0, catalog.bookmark_count - 1)
+          });
+        }
       } else {
+        // Add bookmark
         await supabase
           .from('bookmarked_catalogs')
           .insert({
             user_id: currentUserId,
             catalog_id: catalogId
           });
-      }
 
-      setIsBookmarked(!isBookmarked);
-
-      // Update bookmark count
-      if (catalog) {
-        setCatalog({
-          ...catalog,
-          bookmark_count: isBookmarked ? catalog.bookmark_count - 1 : catalog.bookmark_count + 1
-        });
+        setIsBookmarked(true);
+        if (catalog) {
+          setCatalog({
+            ...catalog,
+            bookmark_count: catalog.bookmark_count + 1
+          });
+        }
       }
     } catch (error) {
       console.error('Error toggling bookmark:', error);
@@ -324,7 +296,7 @@ export default function CatalogDetailPage() {
             return {
               ...item,
               is_liked: !currentlyLiked,
-              like_count: currentlyLiked ? item.like_count - 1 : item.like_count + 1
+              like_count: currentlyLiked ? Math.max(0, item.like_count - 1) : item.like_count + 1
             };
           }
           return item;
@@ -390,7 +362,6 @@ export default function CatalogDetailPage() {
 
     setSelectedFile(file);
     setImageError('');
-    setImageValid(null);
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -399,66 +370,31 @@ export default function CatalogDetailPage() {
     reader.readAsDataURL(file);
   }
 
-  async function handleImageUrlChange(url: string) {
-    setItemImageUrl(url);
-    setImageValid(null);
-    setImageError('');
-    setPreviewUrl(null);
-    setSelectedFile(null);
+  function handleProductUrlChange(url: string) {
+    setItemProductUrl(url);
+    setProductUrlError('');
 
-    if (!url.trim()) return;
-
-    try {
-      new URL(url);
-    } catch {
-      setImageValid(false);
-      setImageError("Invalid URL format");
-      return;
-    }
-
-    setCheckingImage(true);
-
-    setTimeout(async () => {
-      const safetyCheck = await checkImageSafety(url);
-      setCheckingImage(false);
-
-      if (!safetyCheck.safe) {
-        setImageValid(false);
-        setImageError(safetyCheck.error || "Image contains inappropriate content");
-      } else {
-        setImageValid(true);
+    // Auto-fill seller from URL
+    if (url.trim()) {
+      const extractedSeller = extractSellerFromUrl(url);
+      if (extractedSeller) {
+        setItemSeller(extractedSeller);
       }
-    }, 500);
-  }
-
-function handleProductUrlChange(url: string) {
-  setItemProductUrl(url);
-  setProductUrlError('');
-
-  // Auto-fill seller from URL
-  if (url.trim()) {
-    const extractedSeller = extractSellerFromUrl(url);
-    if (extractedSeller) {
-      setItemSeller(extractedSeller);
     }
   }
-}
 
   function resetAddItemForm() {
-  setItemTitle('');
-  setItemImageUrl('');
-  setSelectedFile(null);
-  setPreviewUrl(null);
-  setItemProductUrl('');
-  setItemSeller('');
-  setItemPrice('');
-  setTitleError('');
-  setImageError('');
-  setSellerError('');
-  setProductUrlError('');  // ADD THIS LINE
-  setImageValid(null);
-  setUploadMethod('file');
-}
+    setItemTitle('');
+    setItemImageUrl('');
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setItemProductUrl('');
+    setItemSeller('');
+    setItemPrice('');
+    setImageError('');
+    setProductUrlError('');
+    setUploadMethod('file');
+  }
 
   async function handleAddItem(e: React.FormEvent) {
     e.preventDefault();
@@ -466,31 +402,22 @@ function handleProductUrlChange(url: string) {
     if (!currentUserId) return;
 
     setCreating(true);
-    setTitleError('');
     setImageError('');
-    setSellerError('');
+    setProductUrlError('');
 
     try {
-      // Validate title
-      const titleCheck = await checkTextSafety(itemTitle);
-      if (!titleCheck.safe) {
-        setTitleError('Title contains inappropriate content');
-        setCreating(false);
-        return;
-      }
-
-         // Validate product URL is provided
+      // Validate product URL is provided
       if (!itemProductUrl.trim()) {
         setProductUrlError('Product URL is required');
         setCreating(false);
         return;
       }
 
-        // Validate URL format
+      // Validate URL format
       try {
         new URL(itemProductUrl);
-        } catch {
-            setProductUrlError('Please enter a valid URL');
+      } catch {
+        setProductUrlError('Please enter a valid URL');
         setCreating(false);
         return;
       }
@@ -508,22 +435,6 @@ function handleProductUrlChange(url: string) {
         }
 
         finalImageUrl = uploadResult.url;
-
-        // Check uploaded image safety
-        const safetyCheck = await checkImageSafety(finalImageUrl);
-        if (!safetyCheck.safe) {
-          setImageError(safetyCheck.error || "Image contains inappropriate content");
-          setCreating(false);
-          return;
-        }
-      } else if (uploadMethod === 'url' && itemImageUrl.trim()) {
-        // Final safety check for URL method
-        const safetyCheck = await checkImageSafety(itemImageUrl);
-        if (!safetyCheck.safe) {
-          setImageError(safetyCheck.error || "Image contains inappropriate content");
-          setCreating(false);
-          return;
-        }
       }
 
       const { error } = await supabase
@@ -556,7 +467,7 @@ function handleProductUrlChange(url: string) {
   const canSubmit = itemTitle.trim() &&
                  itemProductUrl.trim() &&
                  ((uploadMethod === 'file' && selectedFile) ||
-                 (uploadMethod === 'url' && imageValid === true && !checkingImage));
+                 (uploadMethod === 'url' && itemImageUrl.trim()));
 
   if (loading) {
     return (
@@ -572,8 +483,6 @@ function handleProductUrlChange(url: string) {
       </>
     );
   }
-
-
 
   if (!catalog) {
     return (
@@ -928,7 +837,7 @@ function handleProductUrlChange(url: string) {
           </div>
         )}
 
-        {/* Add Item Modal - Smaller & Less Invasive */}
+        {/* Add Item Modal */}
         {showAddItemModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
             <div className="w-full max-w-md relative">
@@ -965,14 +874,9 @@ function handleProductUrlChange(url: string) {
                         value={itemTitle}
                         onChange={(e) => setItemTitle(e.target.value)}
                         placeholder="Item name"
-                        className={`w-full px-0 py-2 bg-transparent border-b focus:outline-none transition-all text-white placeholder-white/40 text-sm ${
-                          titleError ? 'border-red-400' : 'border-white focus:border-white'
-                        }`}
+                        className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm"
                         required
                       />
-                      {titleError && (
-                        <p className="text-red-400 text-[10px] tracking-wide">{titleError}</p>
-                      )}
                     </div>
 
                     {/* Upload Method Selection */}
@@ -1017,9 +921,7 @@ function handleProductUrlChange(url: string) {
                           onChange={handleFileSelect}
                           className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none text-white text-xs file:mr-4 file:py-1 file:px-2 file:border-0 file:bg-white file:text-black file:text-[10px] file:tracking-wider file:font-black"
                         />
-                        <p className="text-[9px] tracking-wider opacity-40">
-                          Max 5MB
-                        </p>
+                        <p className="text-[9px] tracking-wider opacity-40">Max 5MB</p>
                       </div>
                     )}
 
@@ -1029,34 +931,15 @@ function handleProductUrlChange(url: string) {
                         <input
                           type="url"
                           value={itemImageUrl}
-                          onChange={(e) => handleImageUrlChange(e.target.value)}
+                          onChange={(e) => setItemImageUrl(e.target.value)}
                           placeholder="https://example.com/image.jpg"
-                          className={`w-full px-0 py-2 bg-transparent border-b focus:outline-none transition-all text-white placeholder-white/40 text-sm ${
-                            itemImageUrl && imageValid === false
-                              ? 'border-red-400'
-                              : itemImageUrl && imageValid === true
-                              ? 'border-green-400'
-                              : 'border-white focus:border-white'
-                          }`}
+                          className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm"
                         />
-
-                        {checkingImage && (
-                          <span className="text-[10px] tracking-wider opacity-40">verifying...</span>
-                        )}
-
-                        {itemImageUrl && !checkingImage && imageValid === false && (
-                          <p className="text-red-400 text-[10px] tracking-wide">✗ {imageError}</p>
-                        )}
-
-                        {itemImageUrl && !checkingImage && imageValid === true && (
-                          <p className="text-green-400 text-[10px] tracking-wide">✓ Verified</p>
-                        )}
                       </div>
                     )}
 
                     {/* Preview */}
-                    {((uploadMethod === 'url' && itemImageUrl && imageValid === true) ||
-                      (uploadMethod === 'file' && previewUrl)) && (
+                    {((uploadMethod === 'url' && itemImageUrl) || (uploadMethod === 'file' && previewUrl)) && (
                       <div className="flex items-center gap-3 p-2 border border-white/20">
                         <img
                           src={uploadMethod === 'url' ? itemImageUrl : previewUrl!}
@@ -1068,24 +951,24 @@ function handleProductUrlChange(url: string) {
                     )}
 
                     {/* Product URL */}
-                <div className="space-y-1">
-                  <label className="block text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                    PRODUCT URL *
-                  </label>
-                  <input
-                    type="url"
-                    value={itemProductUrl}
-                    onChange={(e) => handleProductUrlChange(e.target.value)}
-                    placeholder="https://..."
-                    className={`w-full px-0 py-2 bg-transparent border-b focus:outline-none text-white placeholder-white/40 text-sm ${
-                      productUrlError ? 'border-red-400' : 'border-white'
-                    }`}
-                    required
-                  />
-                  {productUrlError && (
-                    <p className="text-red-400 text-[10px] tracking-wide">{productUrlError}</p>
-                  )}
-                </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        PRODUCT URL *
+                      </label>
+                      <input
+                        type="url"
+                        value={itemProductUrl}
+                        onChange={(e) => handleProductUrlChange(e.target.value)}
+                        placeholder="https://..."
+                        className={`w-full px-0 py-2 bg-transparent border-b focus:outline-none text-white placeholder-white/40 text-sm ${
+                          productUrlError ? 'border-red-400' : 'border-white'
+                        }`}
+                        required
+                      />
+                      {productUrlError && (
+                        <p className="text-red-400 text-[10px] tracking-wide">{productUrlError}</p>
+                      )}
+                    </div>
 
                     {/* Seller */}
                     <div className="space-y-1">
@@ -1097,13 +980,8 @@ function handleProductUrlChange(url: string) {
                         value={itemSeller}
                         onChange={(e) => setItemSeller(e.target.value)}
                         placeholder="Store name"
-                        className={`w-full px-0 py-2 bg-transparent border-b focus:outline-none transition-all text-white placeholder-white/40 text-sm ${
-                          sellerError ? 'border-red-400' : 'border-white focus:border-white'
-                        }`}
+                        className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm"
                       />
-                      {sellerError && (
-                        <p className="text-red-400 text-[10px] tracking-wide">{sellerError}</p>
-                      )}
                     </div>
 
                     {/* Price */}
@@ -1149,9 +1027,9 @@ function handleProductUrlChange(url: string) {
           </div>
         )}
 
-        {/* Simple Login Message Popup */}
+        {/* Login Message Popup - Higher z-index for mobile nav */}
         {showLoginMessage && (
-          <div className="fixed top-6 left-1/2 -translate-x-1/2 md:top-auto md:bottom-6 md:right-6 md:left-auto md:translate-x-0 z-50 w-[calc(100%-2rem)] max-w-sm">
+          <div className="fixed top-24 left-1/2 -translate-x-1/2 md:top-auto md:bottom-6 md:right-6 md:left-auto md:translate-x-0 z-[9999] w-[calc(100%-2rem)] max-w-sm">
             <div className="bg-black border-2 border-white p-4 shadow-lg relative">
               <button
                 onClick={() => setShowLoginMessage(false)}
