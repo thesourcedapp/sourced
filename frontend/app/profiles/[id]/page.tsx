@@ -542,70 +542,23 @@ export default function ProfilePage() {
 
     try {
       if (profile.is_following) {
-        // Unfollow
+        // Unfollow - database triggers will handle count updates
         await supabase
           .from('followers')
           .delete()
           .eq('follower_id', currentUserId)
           .eq('following_id', profileId);
-
-        // Decrement current user's following_count
-        const { data: currentUserData } = await supabase
-          .from('profiles')
-          .select('following_count')
-          .eq('id', currentUserId)
-          .single();
-
-        await supabase
-          .from('profiles')
-          .update({ following_count: Math.max(0, (currentUserData?.following_count || 0) - 1) })
-          .eq('id', currentUserId);
-
-        // Decrement profile's followers_count
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('followers_count')
-          .eq('id', profileId)
-          .single();
-
-        await supabase
-          .from('profiles')
-          .update({ followers_count: Math.max(0, (profileData?.followers_count || 0) - 1) })
-          .eq('id', profileId);
       } else {
-        // Follow
+        // Follow - database triggers will handle count updates
         await supabase
           .from('followers')
           .insert({
             follower_id: currentUserId,
             following_id: profileId
           });
-
-        // Increment current user's following_count
-        const { data: currentUserData } = await supabase
-          .from('profiles')
-          .select('following_count')
-          .eq('id', currentUserId)
-          .single();
-
-        await supabase
-          .from('profiles')
-          .update({ following_count: (currentUserData?.following_count || 0) + 1 })
-          .eq('id', currentUserId);
-
-        // Increment profile's followers_count
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('followers_count')
-          .eq('id', profileId)
-          .single();
-
-        await supabase
-          .from('profiles')
-          .update({ followers_count: (profileData?.followers_count || 0) + 1 })
-          .eq('id', profileId);
       }
 
+      // Reload profile data to get updated counts from database
       await loadProfile();
       await loadFollowers();
       await loadFollowing();
