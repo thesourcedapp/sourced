@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 type Product = {
   name: string;
@@ -11,12 +12,46 @@ type Product = {
 };
 
 export default function SearchPage() {
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showAuthPopup, setShowAuthPopup] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    // Check authentication status
+    // Replace this with your actual auth check logic
+    const checkAuth = async () => {
+      try {
+        // Example: Check if user is logged in and onboarded
+        // const response = await fetch('/api/auth/check');
+        // const data = await response.json();
+        // setIsAuthenticated(data.isLoggedIn && data.is_onboarded);
+
+        // For demo purposes, checking localStorage or session
+        const userLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+        const userOnboarded = localStorage.getItem('is_onboarded') === 'true';
+        setIsAuthenticated(userLoggedIn && userOnboarded);
+      } catch (err) {
+        setIsAuthenticated(false);
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isAuthenticated) {
+      setShowAuthPopup(true);
+      e.target.value = ''; // Reset file input
+      return;
+    }
+
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
     setPreview(URL.createObjectURL(file));
@@ -54,6 +89,12 @@ export default function SearchPage() {
     setError(null);
   };
 
+  const handleUploadClick = () => {
+    if (!isAuthenticated) {
+      setShowAuthPopup(true);
+    }
+  };
+
   return (
     <>
       <style jsx global>{`
@@ -61,6 +102,70 @@ export default function SearchPage() {
       `}</style>
 
       <div className="min-h-screen bg-white text-black">
+        {/* Auth Required Popup */}
+        {showAuthPopup && (
+          <div
+            className="fixed inset-0 z-[100] flex items-end md:items-center justify-center"
+            onClick={() => setShowAuthPopup(false)}
+          >
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+            {/* Popup */}
+            <div
+              className="relative w-full md:w-auto md:min-w-[400px] md:max-w-lg mx-4 mb-0 md:mb-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-white border-2 border-black md:border-4">
+                {/* Header */}
+                <div className="border-b-2 border-black p-6 md:p-8 bg-black text-white">
+                  <h2 className="text-3xl md:text-4xl font-black tracking-tight" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                    AUTHENTICATION REQUIRED
+                  </h2>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 md:p-8 space-y-6">
+                  <div className="text-center py-8">
+                    <div className="text-6xl md:text-7xl mb-4">🔒</div>
+                    <p className="text-lg md:text-xl tracking-wide mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                      YOU MUST BE LOGGED IN
+                    </p>
+                    <p className="text-sm opacity-60">
+                      Sign in to use the image search feature
+                    </p>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => router.push('/login')}
+                      className="w-full bg-black text-white py-4 font-black tracking-wider hover:bg-black/90 transition-all border-2 border-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      LOG IN
+                    </button>
+                    <button
+                      onClick={() => router.push('/signup')}
+                      className="w-full bg-white text-black py-4 font-black tracking-wider hover:bg-black/5 transition-all border-2 border-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      CREATE ACCOUNT
+                    </button>
+                    <button
+                      onClick={() => setShowAuthPopup(false)}
+                      className="w-full text-center py-3 text-sm tracking-wider opacity-60 hover:opacity-100 transition-all"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      CANCEL
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="border-b border-black/20 p-6 md:p-10">
           <div className="max-w-7xl mx-auto">
@@ -81,7 +186,7 @@ export default function SearchPage() {
               {/* Upload Section */}
               <div className="max-w-2xl">
                 {!preview ? (
-                  <label className="block cursor-pointer">
+                  <label className="block cursor-pointer" onClick={handleUploadClick}>
                     <div className="border-2 border-dashed border-black/20 hover:border-black transition-all p-16 md:p-20">
                       <div className="text-center space-y-6">
                         <div className="text-8xl opacity-20">⊕</div>
@@ -95,12 +200,14 @@ export default function SearchPage() {
                         </div>
                       </div>
                     </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleFileChange}
-                    />
+                    {isAuthenticated && (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleFileChange}
+                      />
+                    )}
                   </label>
                 ) : (
                   <div className="relative">
