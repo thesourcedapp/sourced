@@ -20,6 +20,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <style>{`
+          /* Prevent zoom on mobile inputs - CRITICAL for iOS */
+          input, textarea, select {
+            font-size: 16px !important;
+          }
+        `}</style>
+      </head>
       <body className="flex flex-col min-h-screen bg-white">
         <header className="bg-white border-b border-black/10">
           {/* Desktop Header */}

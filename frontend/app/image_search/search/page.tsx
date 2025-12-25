@@ -101,44 +101,55 @@ export default function SearchPage() {
       `}</style>
 
       <div className="min-h-screen bg-white text-black">
-        {/* Auth Required Popup */}
+        {/* Auth Required Popup - Minimal Opium Aesthetic */}
         {showAuthPopup && (
           <div
-            className="fixed inset-0 z-[100] flex items-end md:items-center justify-center"
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4"
             onClick={() => setShowAuthPopup(false)}
           >
             {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <div className="absolute inset-0 bg-black/90 backdrop-blur-md" />
 
             {/* Popup */}
             <div
-              className="relative w-full md:w-auto md:min-w-[400px] md:max-w-lg mx-4 mb-0 md:mb-0"
+              className="relative w-full max-w-sm"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-white border-2 border-black md:border-4">
-                {/* Header */}
-                <div className="border-b-2 border-black p-6 md:p-8 bg-black text-white">
-                  <h2 className="text-3xl md:text-4xl font-black tracking-tight" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
-                    AUTHENTICATION REQUIRED
-                  </h2>
-                </div>
+              <button
+                onClick={() => setShowAuthPopup(false)}
+                className="absolute -top-12 right-0 text-white text-xs tracking-[0.4em] hover:opacity-50 transition-opacity"
+                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+              >
+                [ESC]
+              </button>
 
-                {/* Content */}
-                <div className="p-6 md:p-8 space-y-6">
-                  <div className="text-center py-12 md:py-16">
-                    <div className="text-7xl md:text-8xl mb-6">🔒</div>
-                    <p className="text-2xl md:text-3xl tracking-wide mb-3" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                      YOU MUST BE LOGGED IN TO USE THIS FEATURE
-                    </p>
-
-                    <button
-                      onClick={() => setShowAuthPopup(false)}
-                      className="mt-6 bg-black text-white px-12 py-4 font-black tracking-wider hover:bg-black/90 transition-all border-2 border-black"
-                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                    >
-                      GOT IT
-                    </button>
+              <div className="border-2 border-white p-8 md:p-10 bg-black text-white">
+                <div className="text-center space-y-6">
+                  <div className="text-[10px] tracking-[0.5em] opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                    ACCESS DENIED
                   </div>
+
+                  <h2 className="text-3xl md:text-4xl font-black tracking-tighter leading-none" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                    LOGIN
+                    <br />
+                    REQUIRED
+                  </h2>
+
+                  <div className="pt-4 pb-2">
+                    <div className="w-16 h-px bg-white/20 mx-auto" />
+                  </div>
+
+                  <p className="text-xs tracking-wide opacity-60 leading-relaxed">
+                    You must be authenticated to use image search
+                  </p>
+
+                  <button
+                    onClick={() => setShowAuthPopup(false)}
+                    className="w-full py-3 bg-white text-black hover:bg-black hover:text-white hover:border-2 hover:border-white transition-all text-xs tracking-[0.4em] font-black mt-6"
+                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                  >
+                    CLOSE
+                  </button>
                 </div>
               </div>
             </div>
