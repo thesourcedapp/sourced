@@ -334,27 +334,28 @@ export default function CatalogsPage() {
         {/* Sticky Header */}
         <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-black/10">
           <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 md:py-6">
-            <div className="flex items-center justify-between">
+            {/* Desktop Layout */}
+            <div className="hidden md:flex items-center justify-between">
               <div>
-                <h1 className="text-3xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                <h1 className="text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
                   YOUR CATALOGS
                 </h1>
-                <p className="text-xs md:text-sm opacity-40 mt-1">{userCatalogs.length} total</p>
+                <p className="text-sm opacity-40 mt-1">{userCatalogs.length} total</p>
               </div>
 
-              <div className="flex items-center gap-2 md:gap-3">
+              <div className="flex items-center gap-3">
                 {!editMode ? (
                   <>
                     <button
                       onClick={() => setEditMode(true)}
-                      className="px-4 md:px-6 py-2.5 md:py-3 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs md:text-sm tracking-wider font-black"
+                      className="px-8 py-3 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-sm tracking-wider font-black"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       EDIT
                     </button>
                     <button
                       onClick={() => setShowCreateModal(true)}
-                      className="px-4 md:px-6 py-2.5 md:py-3 bg-black text-white hover:bg-black/90 transition-all text-xs md:text-sm tracking-wider font-black"
+                      className="px-8 py-3 bg-black text-white hover:bg-black/90 transition-all text-sm tracking-wider font-black"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       + NEW
@@ -364,7 +365,7 @@ export default function CatalogsPage() {
                   <>
                     <button
                       onClick={selectAll}
-                      className="px-3 md:px-4 py-2 md:py-2.5 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-[10px] md:text-xs tracking-wider font-black"
+                      className="px-6 py-3 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-sm tracking-wider font-black"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       {selectedCatalogs.size === userCatalogs.length ? 'DESELECT ALL' : 'SELECT ALL'}
@@ -372,7 +373,7 @@ export default function CatalogsPage() {
                     {selectedCatalogs.size > 0 && (
                       <button
                         onClick={deleteSelected}
-                        className="px-3 md:px-4 py-2 md:py-2.5 bg-red-500 text-white hover:bg-red-600 transition-all text-[10px] md:text-xs tracking-wider font-black"
+                        className="px-6 py-3 bg-red-500 text-white hover:bg-red-600 transition-all text-sm tracking-wider font-black"
                         style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                       >
                         DELETE ({selectedCatalogs.size})
@@ -383,7 +384,65 @@ export default function CatalogsPage() {
                         setEditMode(false);
                         setSelectedCatalogs(new Set());
                       }}
-                      className="px-3 md:px-4 py-2 md:py-2.5 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-[10px] md:text-xs tracking-wider font-black"
+                      className="px-6 py-3 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-sm tracking-wider font-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      DONE
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Mobile Layout */}
+            <div className="md:hidden">
+              <h1 className="text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                YOUR CATALOGS
+              </h1>
+              <p className="text-xs opacity-40 mt-1 mb-3">{userCatalogs.length} total</p>
+
+              <div className="flex justify-end gap-2">
+                {!editMode ? (
+                  <>
+                    <button
+                      onClick={() => setEditMode(true)}
+                      className="px-6 py-2 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-wider font-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      EDIT
+                    </button>
+                    <button
+                      onClick={() => setShowCreateModal(true)}
+                      className="px-6 py-2 bg-black text-white hover:bg-black/90 transition-all text-xs tracking-wider font-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      + NEW
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={selectAll}
+                      className="px-4 py-2 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-wider font-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      {selectedCatalogs.size === userCatalogs.length ? 'DESELECT' : 'SELECT ALL'}
+                    </button>
+                    {selectedCatalogs.size > 0 && (
+                      <button
+                        onClick={deleteSelected}
+                        className="px-4 py-2 bg-red-500 text-white hover:bg-red-600 transition-all text-xs tracking-wider font-black"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        DELETE ({selectedCatalogs.size})
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setEditMode(false);
+                        setSelectedCatalogs(new Set());
+                      }}
+                      className="px-4 py-2 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-wider font-black"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       DONE
