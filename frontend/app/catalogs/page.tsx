@@ -63,9 +63,16 @@ export default function CatalogsPage() {
   const [catalogDescription, setCatalogDescription] = useState('');
   const [catalogVisibility, setCatalogVisibility] = useState<'public' | 'private'>('public');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [catalogImageUrl, setCatalogImageUrl] = useState('');
+  const [uploadMethod, setUploadMethod] = useState<'file' | 'url'>('file');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [imageError, setImageError] = useState('');
+  const [checkingImage, setCheckingImage] = useState(false);
+
+  // Delete confirmation modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteCount, setDeleteCount] = useState(0);
 
   useEffect(() => {
     loadUser();
@@ -146,9 +153,11 @@ export default function CatalogsPage() {
   async function deleteSelected() {
     if (selectedCatalogs.size === 0) return;
 
-    const count = selectedCatalogs.size;
-    if (!confirm(`Delete ${count} catalog${count > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    setDeleteCount(selectedCatalogs.size);
+    setShowDeleteModal(true);
+  }
 
+  async function confirmDelete() {
     try {
       const { error } = await supabase
         .from('catalogs')
@@ -161,6 +170,7 @@ export default function CatalogsPage() {
       setUserCatalogs(prev => prev.filter(cat => !selectedCatalogs.has(cat.id)));
       setSelectedCatalogs(new Set());
       setEditMode(false);
+      setShowDeleteModal(false);
     } catch (error) {
       console.error('Error deleting catalogs:', error);
       alert('Failed to delete catalogs');
@@ -183,10 +193,40 @@ export default function CatalogsPage() {
 
     setSelectedFile(file);
     setImageError('');
+    setCatalogImageUrl('');
 
     const reader = new FileReader();
     reader.onload = (e) => setPreviewUrl(e.target?.result as string);
     reader.readAsDataURL(file);
+  }
+
+  async function handleImageUrlChange(url: string) {
+    setCatalogImageUrl(url);
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setImageError('');
+
+    if (!url.trim()) return;
+
+    try {
+      new URL(url);
+    } catch {
+      setImageError("Invalid URL format");
+      return;
+    }
+
+    setCheckingImage(true);
+
+    setTimeout(async () => {
+      const safetyCheck = await checkImageSafety(url);
+      setCheckingImage(false);
+
+      if (!safetyCheck.safe) {
+        setImageError(safetyCheck.error || "Image contains inappropriate content");
+      } else {
+        setPreviewUrl(url);
+      }
+    }, 500);
   }
 
   async function handleCreateCatalog(e: React.FormEvent) {
@@ -199,7 +239,7 @@ export default function CatalogsPage() {
     try {
       let finalImageUrl = '';
 
-      if (selectedFile) {
+      if (uploadMethod === 'file' && selectedFile) {
         const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
         if (!uploadResult.url) {
           setImageError(uploadResult.error || "Failed to upload image");
@@ -215,6 +255,14 @@ export default function CatalogsPage() {
           setCreating(false);
           return;
         }
+      } else if (uploadMethod === 'url' && catalogImageUrl.trim()) {
+        const safetyCheck = await checkImageSafety(catalogImageUrl);
+        if (!safetyCheck.safe) {
+          setImageError("Image contains inappropriate content");
+          setCreating(false);
+          return;
+        }
+        finalImageUrl = catalogImageUrl;
       }
 
       const { data, error } = await supabase
@@ -234,8 +282,10 @@ export default function CatalogsPage() {
       setCatalogName('');
       setCatalogDescription('');
       setSelectedFile(null);
+      setCatalogImageUrl('');
       setPreviewUrl(null);
       setCatalogVisibility('public');
+      setUploadMethod('file');
       setShowCreateModal(false);
 
       await loadCatalogs();
@@ -297,14 +347,14 @@ export default function CatalogsPage() {
                   <>
                     <button
                       onClick={() => setEditMode(true)}
-                      className="px-3 md:px-4 py-2 md:py-2.5 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-[10px] md:text-xs tracking-wider font-black"
+                      className="px-4 md:px-6 py-2.5 md:py-3 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs md:text-sm tracking-wider font-black"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       EDIT
                     </button>
                     <button
                       onClick={() => setShowCreateModal(true)}
-                      className="px-3 md:px-4 py-2 md:py-2.5 bg-black text-white hover:bg-black/90 transition-all text-[10px] md:text-xs tracking-wider font-black"
+                      className="px-4 md:px-6 py-2.5 md:py-3 bg-black text-white hover:bg-black/90 transition-all text-xs md:text-sm tracking-wider font-black"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       + NEW
@@ -491,16 +541,76 @@ export default function CatalogsPage() {
 
                   {/* Cover Image */}
                   <div>
-                    <label className="block text-[10px] tracking-wider font-black mb-2 opacity-60" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                    <label className="block text-[10px] tracking-wider font-black mb-3 opacity-60" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                       COVER IMAGE
                     </label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileSelect}
-                      className="w-full text-sm file:mr-3 file:py-2 file:px-4 file:border-0 file:bg-black file:text-white file:text-xs file:tracking-wider file:font-black hover:file:bg-black/90"
-                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                    />
+
+                    {/* Toggle between file and URL */}
+                    <div className="flex gap-2 mb-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUploadMethod('file');
+                          setCatalogImageUrl('');
+                          setPreviewUrl(null);
+                          setImageError('');
+                        }}
+                        className={`flex-1 py-2 text-[10px] tracking-wider font-black transition-all ${
+                          uploadMethod === 'file'
+                            ? 'bg-black text-white'
+                            : 'border border-black/20 hover:bg-black/5'
+                        }`}
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        UPLOAD FILE
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUploadMethod('url');
+                          setSelectedFile(null);
+                          setPreviewUrl(null);
+                          setImageError('');
+                        }}
+                        className={`flex-1 py-2 text-[10px] tracking-wider font-black transition-all ${
+                          uploadMethod === 'url'
+                            ? 'bg-black text-white'
+                            : 'border border-black/20 hover:bg-black/5'
+                        }`}
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        IMAGE URL
+                      </button>
+                    </div>
+
+                    {/* File upload */}
+                    {uploadMethod === 'file' && (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileSelect}
+                        className="w-full text-sm file:mr-3 file:py-2 file:px-4 file:border-0 file:bg-black file:text-white file:text-xs file:tracking-wider file:font-black hover:file:bg-black/90"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      />
+                    )}
+
+                    {/* URL input */}
+                    {uploadMethod === 'url' && (
+                      <div className="space-y-2">
+                        <input
+                          type="url"
+                          value={catalogImageUrl}
+                          onChange={(e) => handleImageUrlChange(e.target.value)}
+                          placeholder="https://example.com/image.jpg"
+                          className="w-full px-0 py-2 border-b-2 border-black/20 focus:border-black focus:outline-none transition-all"
+                          style={{ fontSize: '16px' }}
+                        />
+                        {checkingImage && (
+                          <p className="text-xs opacity-40">Verifying image...</p>
+                        )}
+                      </div>
+                    )}
+
                     {previewUrl && (
                       <div className="mt-3">
                         <img src={previewUrl} alt="Preview" className="w-full h-32 object-cover border border-black/10" />
@@ -553,8 +663,10 @@ export default function CatalogsPage() {
                         setCatalogName('');
                         setCatalogDescription('');
                         setSelectedFile(null);
+                        setCatalogImageUrl('');
                         setPreviewUrl(null);
                         setImageError('');
+                        setUploadMethod('file');
                       }}
                       className="flex-1 py-3 border border-black/20 hover:bg-black/5 transition-all text-xs tracking-wider font-black"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
@@ -563,7 +675,7 @@ export default function CatalogsPage() {
                     </button>
                     <button
                       type="submit"
-                      disabled={creating || !catalogName.trim()}
+                      disabled={creating || !catalogName.trim() || checkingImage}
                       className="flex-1 py-3 bg-black text-white hover:bg-black/90 transition-all text-xs tracking-wider font-black disabled:opacity-30 disabled:cursor-not-allowed"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
@@ -571,6 +683,41 @@ export default function CatalogsPage() {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
+            <div className="w-full max-w-md bg-white border-2 border-black p-6 md:p-8">
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-3xl md:text-4xl font-black tracking-tighter mb-2" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                    DELETE CATALOGS?
+                  </h2>
+                  <p className="text-sm opacity-60">
+                    You're about to delete {deleteCount} catalog{deleteCount > 1 ? 's' : ''}. This action cannot be undone.
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowDeleteModal(false)}
+                    className="flex-1 py-3 border border-black/20 hover:bg-black/5 transition-all text-xs tracking-wider font-black"
+                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    className="flex-1 py-3 bg-red-500 text-white hover:bg-red-600 transition-all text-xs tracking-wider font-black"
+                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                  >
+                    DELETE
+                  </button>
+                </div>
               </div>
             </div>
           </div>
