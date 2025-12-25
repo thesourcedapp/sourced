@@ -238,11 +238,18 @@ export default function CatalogDetailPage() {
           .eq('user_id', currentUserId)
           .eq('catalog_id', catalogId);
 
+        // Decrement bookmark count in database
+        const newCount = Math.max(0, (catalog?.bookmark_count || 0) - 1);
+        await supabase
+          .from('catalogs')
+          .update({ bookmark_count: newCount })
+          .eq('id', catalogId);
+
         setIsBookmarked(false);
         if (catalog) {
           setCatalog({
             ...catalog,
-            bookmark_count: Math.max(0, catalog.bookmark_count - 1)
+            bookmark_count: newCount
           });
         }
       } else {
@@ -254,11 +261,18 @@ export default function CatalogDetailPage() {
             catalog_id: catalogId
           });
 
+        // Increment bookmark count in database
+        const newCount = (catalog?.bookmark_count || 0) + 1;
+        await supabase
+          .from('catalogs')
+          .update({ bookmark_count: newCount })
+          .eq('id', catalogId);
+
         setIsBookmarked(true);
         if (catalog) {
           setCatalog({
             ...catalog,
-            bookmark_count: catalog.bookmark_count + 1
+            bookmark_count: newCount
           });
         }
       }
