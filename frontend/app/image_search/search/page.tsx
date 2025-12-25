@@ -19,6 +19,7 @@ export default function SearchPage() {
   const [showAuthPopup, setShowAuthPopup] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("SEARCHING...");
 
   useEffect(() => {
     loadCurrentUser();
@@ -59,6 +60,21 @@ export default function SearchPage() {
 
     setLoading(true);
     setError(null);
+    setLoadingMessage("SEARCHING...");
+
+    // Cycle through loading messages to show progress
+    const messages = [
+      "SEARCHING...",
+      "ANALYZING IMAGE...",
+      "LOOKING FOR YOUR ITEM...",
+      "FINDING MATCHES...",
+      "ALMOST THERE..."
+    ];
+    let messageIndex = 0;
+    const messageInterval = setInterval(() => {
+      messageIndex = (messageIndex + 1) % messages.length;
+      setLoadingMessage(messages[messageIndex]);
+    }, 3000);
 
     // Create abort controller for timeout
     const controller = new AbortController();
@@ -72,6 +88,7 @@ export default function SearchPage() {
       });
 
       clearTimeout(timeoutId);
+      clearInterval(messageInterval);
 
       if (!res.ok) {
         const errData = await res.json();
@@ -82,6 +99,7 @@ export default function SearchPage() {
       setProducts(data);
     } catch (err: any) {
       clearTimeout(timeoutId);
+      clearInterval(messageInterval);
       console.error("Error uploading file:", err);
 
       if (err.name === 'AbortError') {
@@ -237,14 +255,8 @@ export default function SearchPage() {
                   <div className="mt-8 text-center border border-black/20 p-8">
                     <div className="space-y-4">
                       <div className="w-12 h-12 border-2 border-black border-t-transparent rounded-full animate-spin mx-auto" />
-                      <p className="text-xs tracking-[0.4em] mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                        SEARCHING...
-                      </p>
-                      <p className="text-[10px] tracking-wider opacity-50" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                        THIS MAY TAKE 30-90 SECONDS
-                      </p>
-                      <p className="text-[9px] tracking-wider opacity-30 mt-2">
-                        First search after inactivity takes longer as server wakes up
+                      <p className="text-xs tracking-[0.4em]" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        {loadingMessage}
                       </p>
                     </div>
                   </div>
