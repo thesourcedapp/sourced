@@ -142,9 +142,9 @@ export default function AuthWidget({ showUsername = false }: AuthWidgetProps) {
   }
 
   function handleViewProfile() {
-    if (session?.user?.id) {
+    if (profile?.username) {
       setMenuOpen(false);
-      router.push(`/profiles/${session.user.id}`);
+      router.push(`/${profile.username}`);
     }
   }
 
