@@ -35,6 +35,9 @@ type CatalogItem = {
   style_tags?: string[];
 };
 
+type SortOption = 'recent' | 'oldest' | 'most_liked' | 'title';
+type ViewMode = 'grid' | 'compact';
+
 async function uploadImageToStorage(file: File, userId: string): Promise<{ url: string | null; error?: string }> {
   try {
     const fileExt = file.name.split('.').pop();
@@ -67,11 +70,6 @@ function extractSellerFromUrl(url: string): string {
     let domain = urlObj.hostname.replace(/^www\./i, '');
 
     // Get the main domain part (second-level domain)
-    // Examples:
-    // - "grailed.com" -> "grailed"
-    // - "depop.com" -> "depop"
-    // - "shop.nike.com" -> "nike"
-    // - "ssense.com" -> "ssense"
     const parts = domain.split('.');
     let seller = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
 
@@ -82,8 +80,6 @@ function extractSellerFromUrl(url: string): string {
   }
 }
 
-
-
 export default function CatalogDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -91,6 +87,7 @@ export default function CatalogDetailPage() {
 
   const [catalog, setCatalog] = useState<CatalogData | null>(null);
   const [items, setItems] = useState<CatalogItem[]>([]);
+  const [filteredItems, setFilteredItems] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
@@ -98,6 +95,11 @@ export default function CatalogDetailPage() {
   const [showLoginMessage, setShowLoginMessage] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [expandedItem, setExpandedItem] = useState<CatalogItem | null>(null);
+
+  // Filters and sorting
+  const [sortBy, setSortBy] = useState<SortOption>('recent');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteCount, setDeleteCount] = useState(0);
@@ -128,6 +130,39 @@ export default function CatalogDetailPage() {
       loadItems();
     }
   }, [catalogId, currentUserId]);
+
+  // Filter and sort items
+  useEffect(() => {
+    let filtered = [...items];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(item =>
+        item.title.toLowerCase().includes(query) ||
+        item.seller?.toLowerCase().includes(query) ||
+        item.brand?.toLowerCase().includes(query)
+      );
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'recent':
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'oldest':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'most_liked':
+          return b.like_count - a.like_count;
+        case 'title':
+          return a.title.localeCompare(b.title);
+        default:
+          return 0;
+      }
+    });
+
+    setFilteredItems(filtered);
+  }, [items, searchQuery, sortBy]);
 
   async function loadCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -270,6 +305,14 @@ export default function CatalogDetailPage() {
       }
       return newSet;
     });
+  }
+
+  function selectAll() {
+    if (selectedItems.size === filteredItems.length) {
+      setSelectedItems(new Set());
+    } else {
+      setSelectedItems(new Set(filteredItems.map(item => item.id)));
+    }
   }
 
   function deleteSelectedItems() {
@@ -421,8 +464,6 @@ export default function CatalogDetailPage() {
         user_id: currentUserId
       };
 
-      console.log('Sending request:', requestBody);
-
       const response = await fetch(`https://sourced-5ovn.onrender.com/create-catalog-item`, {
         method: 'POST',
         headers: {
@@ -432,14 +473,10 @@ export default function CatalogDetailPage() {
         body: JSON.stringify(requestBody)
       });
 
-      console.log('Response status:', response.status);
-
       let result;
       try {
         result = await response.json();
-        console.log('Response data:', result);
       } catch (parseError) {
-        console.error('Failed to parse response:', parseError);
         throw new Error('Server returned invalid response');
       }
 
@@ -450,9 +487,6 @@ export default function CatalogDetailPage() {
       if (!result.success) {
         throw new Error(result.message || 'Failed to create item');
       }
-
-      console.log('✅ Item created successfully!');
-      console.log('AI Metadata:', result.metadata);
 
       resetAddItemForm();
       setShowAddItemModal(false);
@@ -480,6 +514,8 @@ export default function CatalogDetailPage() {
                    itemProductUrl.trim() &&
                    ((uploadMethod === 'file' && selectedFile) ||
                     (uploadMethod === 'url' && itemImageUrl.trim()));
+
+  const totalLikes = items.reduce((sum, item) => sum + item.like_count, 0);
 
   if (loading) {
     return (
@@ -514,12 +550,14 @@ export default function CatalogDetailPage() {
       `}</style>
 
       <div className="min-h-screen bg-white text-black pb-24 md:pb-0">
-        <div className="border-b border-black/20 p-6 md:p-10">
+        {/* Header */}
+        <div className="border-b border-black/20 p-4 md:p-10">
           <div className="max-w-7xl mx-auto">
-            <button onClick={() => router.back()} className="mb-6 text-xs tracking-wider opacity-60 hover:opacity-100 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>← BACK</button>
+            <button onClick={() => router.back()} className="mb-4 md:mb-6 text-xs tracking-wider opacity-60 hover:opacity-100 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>← BACK</button>
 
-            <div className="flex flex-col md:flex-row gap-8">
-              <div className="w-full md:w-64 h-64 flex-shrink-0 border-2 border-black overflow-hidden">
+            <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+              {/* Square image on mobile */}
+              <div className="w-full md:w-64 aspect-square md:h-64 flex-shrink-0 border-2 border-black overflow-hidden">
                 {catalog.image_url ? (
                   <img src={catalog.image_url} alt={catalog.name} className="w-full h-full object-cover" />
                 ) : (
@@ -529,11 +567,12 @@ export default function CatalogDetailPage() {
                 )}
               </div>
 
-              <div className="flex-1 space-y-4">
-                <h1 className="text-4xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{catalog.name}</h1>
+              <div className="flex-1 space-y-3 md:space-y-4">
+                <h1 className="text-3xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{catalog.name}</h1>
 
+                {/* Circular profile icon */}
                 <div className="flex items-center gap-3 cursor-pointer hover:opacity-70 transition-opacity w-fit" onClick={() => router.push(`/profiles/${catalog.owner_id}`)}>
-                  <div className="w-10 h-10 border border-black overflow-hidden">
+                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-full border border-black overflow-hidden">
                     {catalog?.owner?.avatar_url ? (
                       <img src={catalog.owner.avatar_url} alt={catalog.owner.username} className="w-full h-full object-cover" />
                     ) : (
@@ -543,29 +582,35 @@ export default function CatalogDetailPage() {
                     )}
                   </div>
                   <div>
-                    <p className="text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>@{catalog?.owner?.username || 'Unknown'}</p>
-                    {catalog?.owner?.full_name && <p className="text-xs opacity-60">{catalog.owner.full_name}</p>}
+                    <p className="text-[10px] md:text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>@{catalog?.owner?.username || 'Unknown'}</p>
+                    {catalog?.owner?.full_name && <p className="text-[10px] md:text-xs opacity-60">{catalog.owner.full_name}</p>}
                   </div>
                 </div>
 
-                {catalog.description && <p className="text-sm leading-relaxed opacity-80 max-w-2xl">{catalog.description}</p>}
+                {catalog.description && <p className="text-xs md:text-sm leading-relaxed opacity-80 max-w-2xl">{catalog.description}</p>}
 
-                <div className="flex items-center gap-6 text-xs tracking-wider opacity-60">
+                <div className="flex items-center gap-4 md:gap-6 text-[10px] md:text-xs tracking-wider opacity-60">
                   <span>{items.length} ITEMS</span>
-                  <span>🔖 {catalog.bookmark_count} BOOKMARKS</span>
+                  <span>♥ {totalLikes}</span>
+                  <span>🔖 {catalog.bookmark_count}</span>
                   <span className={`px-2 py-1 ${catalog.visibility === 'public' ? 'bg-black text-white' : 'bg-black/10 text-black'} text-[8px] tracking-[0.3em]`}>{catalog.visibility.toUpperCase()}</span>
                 </div>
 
-                <div className="flex gap-3 pt-2">
+                <div className="flex gap-2 md:gap-3 pt-2">
                   {isOwner ? (
                     <>
-                      <button onClick={() => setShowAddItemModal(true)} className="px-4 py-2 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>ADD ITEM</button>
+                      <button onClick={() => setShowAddItemModal(true)} className="px-4 md:px-6 py-2 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-[10px] md:text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>ADD ITEM</button>
                       {selectedItems.size > 0 && (
-                        <button onClick={deleteSelectedItems} className="px-4 py-2 bg-red-500 text-white hover:bg-red-600 transition-all text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>DELETE ({selectedItems.size})</button>
+                        <>
+                          <button onClick={selectAll} className="px-4 md:px-6 py-2 border-2 border-black hover:bg-black/5 transition-all text-[10px] md:text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                            {selectedItems.size === filteredItems.length ? 'DESELECT' : 'SELECT ALL'}
+                          </button>
+                          <button onClick={deleteSelectedItems} className="px-4 md:px-6 py-2 bg-red-500 text-white hover:bg-red-600 transition-all text-[10px] md:text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>DELETE ({selectedItems.size})</button>
+                        </>
                       )}
                     </>
                   ) : (
-                    <button onClick={toggleBookmark} className={`px-4 py-2 border-2 transition-all text-xs tracking-[0.4em] font-black ${isBookmarked ? 'bg-black text-white border-black hover:bg-white hover:text-black' : 'border-black text-black hover:bg-black hover:text-white'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{isBookmarked ? '🔖 BOOKMARKED' : 'BOOKMARK'}</button>
+                    <button onClick={toggleBookmark} className={`px-4 md:px-6 py-2 border-2 transition-all text-[10px] md:text-xs tracking-[0.4em] font-black ${isBookmarked ? 'bg-black text-white border-black hover:bg-white hover:text-black' : 'border-black text-black hover:bg-black hover:text-white'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{isBookmarked ? '🔖 BOOKMARKED' : 'BOOKMARK'}</button>
                   )}
                 </div>
               </div>
@@ -573,16 +618,86 @@ export default function CatalogDetailPage() {
           </div>
         </div>
 
-        <div className="p-6 md:p-10">
-          <div className="max-w-7xl mx-auto">
-            {items.length === 0 ? (
-              <div className="text-center py-20">
-                <p className="text-lg tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO ITEMS YET</p>
-                <p className="text-sm tracking-wide opacity-30 mt-2">{isOwner ? "Add your first item to get started" : "This catalog is empty"}</p>
+        {/* Filters Bar */}
+        {items.length > 0 && (
+          <div className="border-b border-black/10 bg-white/95 backdrop-blur-md sticky top-0 z-30">
+            <div className="max-w-7xl mx-auto p-3 md:p-4">
+              <div className="flex flex-col md:flex-row gap-2 md:gap-3">
+                {/* Search */}
+                <div className="flex-1 md:max-w-md">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search items..."
+                    className="w-full px-3 py-2 border border-black/10 focus:border-black/30 focus:outline-none text-sm"
+                  />
+                </div>
+
+                {/* Sort */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortOption)}
+                  className="px-3 py-2 border border-black/10 focus:border-black/30 focus:outline-none text-xs tracking-wider font-black bg-white"
+                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                >
+                  <option value="recent">RECENT</option>
+                  <option value="oldest">OLDEST</option>
+                  <option value="most_liked">MOST LIKED</option>
+                  <option value="title">TITLE</option>
+                </select>
+
+                {/* View Mode - Desktop only */}
+                <div className="hidden md:flex border border-black/10">
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`p-2 ${viewMode === 'grid' ? 'bg-black text-white' : 'hover:bg-black/5'}`}
+                    title="Grid view"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setViewMode('compact')}
+                    className={`p-2 border-l border-black/10 ${viewMode === 'compact' ? 'bg-black text-white' : 'hover:bg-black/5'}`}
+                    title="Compact view"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
-                {items.map((item) => (
+
+              {/* Results count */}
+              {searchQuery && (
+                <p className="text-[10px] opacity-40 mt-2">
+                  {filteredItems.length} of {items.length} items
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Items Grid */}
+        <div className="p-4 md:p-10">
+          <div className="max-w-7xl mx-auto">
+            {filteredItems.length === 0 ? (
+              <div className="text-center py-20">
+                <p className="text-lg tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                  {items.length === 0 ? 'NO ITEMS YET' : 'NO RESULTS'}
+                </p>
+                <p className="text-sm tracking-wide opacity-30 mt-2">
+                  {items.length === 0
+                    ? (isOwner ? "Add your first item to get started" : "This catalog is empty")
+                    : "Try adjusting your search"
+                  }
+                </p>
+              </div>
+            ) : viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+                {filteredItems.map((item) => (
                   <div key={item.id} className="group border border-black/20 hover:border-black transition-all relative">
                     {isOwner && (
                       <div className="absolute top-2 left-2 z-20">
@@ -618,6 +733,56 @@ export default function CatalogDetailPage() {
                           <button onClick={(e) => { e.stopPropagation(); setExpandedItem(item); }} className="px-3 py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs">⊕</button>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* Compact List View */
+              <div className="space-y-2">
+                {filteredItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-3 md:gap-4 p-2 md:p-3 border border-black/10 hover:border-black/30 transition-all"
+                  >
+                    {isOwner && (
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.has(item.id)}
+                        onChange={() => toggleItemSelection(item.id)}
+                        className="w-5 h-5 cursor-pointer flex-shrink-0"
+                      />
+                    )}
+
+                    <div
+                      className="w-12 h-12 md:w-16 md:h-16 bg-black/5 flex-shrink-0 cursor-pointer"
+                      onClick={() => { if (item.product_url) window.open(item.product_url, '_blank'); }}
+                    >
+                      <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-xs md:text-sm font-black tracking-wide uppercase truncate" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
+                      <div className="flex items-center gap-3 text-[10px] opacity-60">
+                        {item.seller && <span>{item.seller}</span>}
+                        {item.price && <span>{item.price}</span>}
+                        <span>♥ {item.like_count}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => toggleLike(item.id, item.is_liked)}
+                        className="px-3 py-1 border border-black/20 hover:border-black text-xs"
+                      >
+                        {item.is_liked ? '♥' : '♡'}
+                      </button>
+                      <button
+                        onClick={() => setExpandedItem(item)}
+                        className="px-3 py-1 border border-black/20 hover:border-black text-xs"
+                      >
+                        ⊕
+                      </button>
                     </div>
                   </div>
                 ))}
