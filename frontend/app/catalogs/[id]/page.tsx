@@ -1,11 +1,3 @@
-// Key changes from original:
-// 1. handleAddItem() now calls backend API instead of direct Supabase insert
-// 2. Backend does: image safety check + AI categorization + database insert
-// 3. Smaller mobile modal for expanded item view
-// 4. Smaller "Add Item" modal
-// 5. Shows "Categorizing..." loading state
-// 6. Can optionally display AI-generated metadata tags
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -37,14 +29,12 @@ type CatalogItem = {
   like_count: number;
   is_liked: boolean;
   created_at: string;
-  // AI metadata (optional display)
   category?: string;
   brand?: string;
   primary_color?: string;
   style_tags?: string[];
 };
 
-// Upload file to Supabase Storage
 async function uploadImageToStorage(file: File, userId: string): Promise<{ url: string | null; error?: string }> {
   try {
     const fileExt = file.name.split('.').pop();
@@ -69,7 +59,6 @@ async function uploadImageToStorage(file: File, userId: string): Promise<{ url: 
   }
 }
 
-// Extract seller from URL
 function extractSellerFromUrl(url: string): string {
   try {
     const urlObj = new URL(url);
@@ -97,6 +86,10 @@ export default function CatalogDetailPage() {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [expandedItem, setExpandedItem] = useState<CatalogItem | null>(null);
 
+  // Delete confirmation modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteCount, setDeleteCount] = useState(0);
+
   // Add Item Modal
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [itemTitle, setItemTitle] = useState('');
@@ -108,14 +101,12 @@ export default function CatalogDetailPage() {
   const [itemSeller, setItemSeller] = useState('');
   const [itemPrice, setItemPrice] = useState('');
   const [creating, setCreating] = useState(false);
-  const [creatingStatus, setCreatingStatus] = useState(''); // Show AI progress
+  const [creatingStatus, setCreatingStatus] = useState('');
   const [imageError, setImageError] = useState('');
   const [productUrlError, setProductUrlError] = useState('');
+  const [checkingImage, setCheckingImage] = useState(false);
 
   const isOwner = currentUserId === catalog?.owner_id;
-
-  // Your backend API URL
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
   useEffect(() => {
     loadCurrentUser();
@@ -232,7 +223,6 @@ export default function CatalogDetailPage() {
           .insert({ user_id: currentUserId, catalog_id: catalogId });
       }
 
-      // Reload to get updated count from trigger
       await loadCatalog();
     } catch (error) {
       console.error('Error toggling bookmark:', error);
@@ -254,7 +244,6 @@ export default function CatalogDetailPage() {
           .insert({ user_id: currentUserId, item_id: itemId });
       }
 
-      // Reload to get updated count from trigger
       await loadItems();
     } catch (error) {
       console.error('Error toggling like:', error);
@@ -273,10 +262,14 @@ export default function CatalogDetailPage() {
     });
   }
 
-  async function deleteSelectedItems() {
+  // FIXED: Custom delete modal instead of browser confirm
+  function deleteSelectedItems() {
     if (selectedItems.size === 0) return;
-    if (!confirm(`Delete ${selectedItems.size} item(s)? This cannot be undone.`)) return;
+    setDeleteCount(selectedItems.size);
+    setShowDeleteModal(true);
+  }
 
+  async function confirmDelete() {
     try {
       const { error } = await supabase
         .from('catalog_items')
@@ -287,9 +280,10 @@ export default function CatalogDetailPage() {
 
       setItems(prevItems => prevItems.filter(item => !selectedItems.has(item.id)));
       setSelectedItems(new Set());
+      setShowDeleteModal(false);
     } catch (error) {
       console.error('Error deleting items:', error);
-      alert('Failed to delete items');
+      setImageError('Failed to delete items');
     }
   }
 
@@ -315,6 +309,35 @@ export default function CatalogDetailPage() {
     reader.readAsDataURL(file);
   }
 
+  // FIXED: Dynamic image URL verification
+  async function handleImageUrlChange(url: string) {
+    setItemImageUrl(url);
+    setImageError('');
+    setCheckingImage(false);
+
+    if (!url.trim()) return;
+
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch {
+      setImageError("Invalid URL format");
+      return;
+    }
+
+    // Check if it's an image URL
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+    const hasImageExtension = imageExtensions.some(ext => url.toLowerCase().includes(ext));
+
+    if (!hasImageExtension) {
+      setImageError("URL must point to an image file");
+      return;
+    }
+
+    // Set preview immediately
+    setPreviewUrl(url);
+  }
+
   function handleProductUrlChange(url: string) {
     setItemProductUrl(url);
     setProductUrlError('');
@@ -337,18 +360,21 @@ export default function CatalogDetailPage() {
     setProductUrlError('');
     setUploadMethod('file');
     setCreatingStatus('');
+    setCheckingImage(false);
   }
 
-  // 🚀 NEW: Call backend API instead of direct Supabase insert
+  // FIXED: Better error handling for mobile
   async function handleAddItem(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!currentUserId) return;
+    if (!currentUserId) {
+      setImageError('You must be logged in');
+      return;
+    }
 
     setCreating(true);
     setImageError('');
     setProductUrlError('');
-    setCreatingStatus('Uploading image...');
 
     try {
       // Validate product URL
@@ -370,6 +396,7 @@ export default function CatalogDetailPage() {
 
       // Upload file to Supabase Storage first (if file upload)
       if (uploadMethod === 'file' && selectedFile) {
+        setCreatingStatus('Uploading image...');
         const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
 
         if (!uploadResult.url) {
@@ -382,30 +409,57 @@ export default function CatalogDetailPage() {
         finalImageUrl = uploadResult.url;
       }
 
-      // Call backend API
-      setCreatingStatus('Checking image safety & categorizing...');
-
-      const response = await fetch(`${API_URL}/create-catalog-item`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          catalog_id: catalogId,
-          title: itemTitle.trim(),
-          image_url: finalImageUrl,
-          product_url: itemProductUrl.trim(),
-          seller: itemSeller.trim() || null,
-          price: itemPrice.trim() || null,
-          user_id: currentUserId
-        })
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.detail || 'Failed to create item');
+      if (!finalImageUrl) {
+        setImageError('Image is required');
+        setCreating(false);
+        return;
       }
 
-      console.log('AI Metadata:', result.metadata); // See what AI generated
+      // Call backend API
+      setCreatingStatus('Checking image & categorizing with AI...');
+
+      const requestBody = {
+        catalog_id: catalogId,
+        title: itemTitle.trim(),
+        image_url: finalImageUrl,
+        product_url: itemProductUrl.trim(),
+        seller: itemSeller.trim() || null,
+        price: itemPrice.trim() || null,
+        user_id: currentUserId
+      };
+
+      console.log('Sending request:', requestBody);
+
+      const response = await fetch(`https://sourced-5ovn.onrender.com/create-catalog-item`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      console.log('Response status:', response.status);
+
+      let result;
+      try {
+        result = await response.json();
+        console.log('Response data:', result);
+      } catch (parseError) {
+        console.error('Failed to parse response:', parseError);
+        throw new Error('Server returned invalid response');
+      }
+
+      if (!response.ok) {
+        throw new Error(result.detail || `Server error: ${response.status}`);
+      }
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to create item');
+      }
+
+      console.log('✅ Item created successfully!');
+      console.log('AI Metadata:', result.metadata);
 
       // Success!
       resetAddItemForm();
@@ -413,8 +467,20 @@ export default function CatalogDetailPage() {
       await loadItems();
 
     } catch (error: any) {
-      console.error('Error adding item:', error);
-      setImageError(error.message || 'Failed to add item');
+      console.error('❌ Error adding item:', error);
+
+      // User-friendly error messages
+      let errorMessage = error.message || 'Failed to add item';
+
+      if (errorMessage.includes('fetch')) {
+        errorMessage = 'Cannot connect to server. Make sure backend is running.';
+      } else if (errorMessage.includes('Network')) {
+        errorMessage = 'Network error. Check your connection.';
+      } else if (errorMessage.includes('inappropriate')) {
+        errorMessage = 'Image contains inappropriate content';
+      }
+
+      setImageError(errorMessage);
     } finally {
       setCreating(false);
       setCreatingStatus('');
@@ -459,7 +525,7 @@ export default function CatalogDetailPage() {
       `}</style>
 
       <div className="min-h-screen bg-white text-black pb-24 md:pb-0">
-        {/* Header - keeping same */}
+        {/* Header */}
         <div className="border-b border-black/20 p-6 md:p-10">
           <div className="max-w-7xl mx-auto">
             <button onClick={() => router.back()} className="mb-6 text-xs tracking-wider opacity-60 hover:opacity-100 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>← BACK</button>
@@ -519,7 +585,7 @@ export default function CatalogDetailPage() {
           </div>
         </div>
 
-        {/* Items Grid - keeping same */}
+        {/* Items Grid */}
         <div className="p-6 md:p-10">
           <div className="max-w-7xl mx-auto">
             {items.length === 0 ? (
@@ -573,7 +639,7 @@ export default function CatalogDetailPage() {
           </div>
         </div>
 
-        {/* UPDATED: Smaller Mobile Expanded Item Modal */}
+        {/* Expanded Item Modal */}
         {expandedItem && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md" onClick={() => setExpandedItem(null)}>
             <div className="relative w-full max-w-sm md:max-w-3xl max-h-[85vh] md:max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
@@ -604,7 +670,7 @@ export default function CatalogDetailPage() {
           </div>
         )}
 
-        {/* UPDATED: Smaller Add Item Modal with Backend Call */}
+        {/* Add Item Modal */}
         {showAddItemModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
             <div className="w-full max-w-sm md:max-w-md relative">
@@ -626,8 +692,8 @@ export default function CatalogDetailPage() {
                     <div className="space-y-2">
                       <label className="block text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>IMAGE *</label>
                       <div className="flex gap-2">
-                        <button type="button" onClick={() => setUploadMethod('file')} className={`px-3 py-1.5 text-[10px] tracking-wider font-black transition-all ${uploadMethod === 'file' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>UPLOAD FILE</button>
-                        <button type="button" onClick={() => setUploadMethod('url')} className={`px-3 py-1.5 text-[10px] tracking-wider font-black transition-all ${uploadMethod === 'url' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>IMAGE URL</button>
+                        <button type="button" onClick={() => { setUploadMethod('file'); setItemImageUrl(''); setPreviewUrl(null); }} className={`px-3 py-1.5 text-[10px] tracking-wider font-black transition-all ${uploadMethod === 'file' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>UPLOAD FILE</button>
+                        <button type="button" onClick={() => { setUploadMethod('url'); setSelectedFile(null); setPreviewUrl(null); }} className={`px-3 py-1.5 text-[10px] tracking-wider font-black transition-all ${uploadMethod === 'url' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>IMAGE URL</button>
                       </div>
                     </div>
 
@@ -640,11 +706,11 @@ export default function CatalogDetailPage() {
 
                     {uploadMethod === 'url' && (
                       <div className="space-y-2">
-                        <input type="url" value={itemImageUrl} onChange={(e) => setItemImageUrl(e.target.value)} placeholder="https://example.com/image.jpg" className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm" style={{ fontSize: '16px' }} />
+                        <input type="url" value={itemImageUrl} onChange={(e) => handleImageUrlChange(e.target.value)} placeholder="https://example.com/image.jpg" className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm" style={{ fontSize: '16px' }} />
                       </div>
                     )}
 
-                    {((uploadMethod === 'url' && itemImageUrl) || (uploadMethod === 'file' && previewUrl)) && (
+                    {((uploadMethod === 'url' && itemImageUrl && !imageError) || (uploadMethod === 'file' && previewUrl)) && (
                       <div className="flex items-center gap-3 p-2 border border-white/20">
                         <img src={uploadMethod === 'url' ? itemImageUrl : previewUrl!} alt="Preview" className="w-12 h-12 border border-white object-cover" />
                         <span className="text-[10px] opacity-60">Preview</span>
@@ -674,10 +740,29 @@ export default function CatalogDetailPage() {
                       <button type="button" onClick={() => { setShowAddItemModal(false); resetAddItemForm(); }} className="flex-1 py-2.5 border border-white text-white hover:bg-white hover:text-black transition-all text-[10px] tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>CANCEL</button>
 
                       <button type="submit" disabled={creating || !canSubmit} className="flex-1 py-2.5 bg-white text-black hover:bg-black hover:text-white hover:border hover:border-white transition-all text-[10px] tracking-[0.4em] font-black disabled:opacity-30 disabled:cursor-not-allowed" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                        {creating ? creatingStatus || 'ADDING...' : 'ADD ITEM'}
+                        {creating ? (creatingStatus || 'ADDING...') : 'ADD ITEM'}
                       </button>
                     </div>
                   </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
+            <div className="w-full max-w-md bg-white border-2 border-black p-6 md:p-8">
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-3xl md:text-4xl font-black tracking-tighter mb-2" style={{ fontFamily: 'Archivo Black, sans-serif' }}>DELETE ITEMS?</h2>
+                  <p className="text-sm opacity-60">You're about to delete {deleteCount} item{deleteCount > 1 ? 's' : ''}. This action cannot be undone.</p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-3 border border-black/20 hover:bg-black/5 transition-all text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>CANCEL</button>
+                  <button onClick={confirmDelete} className="flex-1 py-3 bg-red-500 text-white hover:bg-red-600 transition-all text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>DELETE</button>
                 </div>
               </div>
             </div>
