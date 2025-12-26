@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
+
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
 
 type SearchTab = "items" | "catalogs" | "profiles";
 
@@ -53,7 +56,7 @@ type SearchProfile = {
   is_following: boolean;
 };
 
-export default function DiscoverPage() {
+function DiscoverContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as SearchTab) || "items";
@@ -765,5 +768,17 @@ export default function DiscoverPage() {
         )}
       </div>
     </>
+  );
+}
+
+export default function DiscoverPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <p className="text-xs tracking-[0.4em]" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>LOADING...</p>
+      </div>
+    }>
+      <DiscoverContent />
+    </Suspense>
   );
 }
