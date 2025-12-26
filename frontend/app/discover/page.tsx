@@ -922,13 +922,17 @@ function DiscoverContent() {
                                 <span className="text-xs tracking-wider" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>@{catalog.owner?.username}</span>
                               </div>
 
-                              {/* More visible stats */}
-                              <div className="flex items-center justify-between text-xs tracking-wider mb-3 font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                                <span>{catalog.item_count} ITEMS</span>
-                                <span className="flex items-center gap-1">
+                              {/* More visible stats with full text */}
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-1 text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                                  <span>{catalog.item_count}</span>
+                                  <span className="opacity-60">ITEMS</span>
+                                </div>
+                                <div className="flex items-center gap-1 text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                                   <span className="text-base">🔖</span>
-                                  {catalog.bookmark_count}
-                                </span>
+                                  <span>{catalog.bookmark_count}</span>
+                                  <span className="opacity-60">BOOKMARKS</span>
+                                </div>
                               </div>
 
                               <button
@@ -950,7 +954,7 @@ function DiscoverContent() {
                   </>
                 )}
 
-                {/* Profiles Tab - Pill shaped */}
+                {/* Profiles Tab - Better pills */}
                 {activeTab === "profiles" && (
                   <>
                     {profiles.length === 0 ? (
@@ -958,48 +962,48 @@ function DiscoverContent() {
                         <p className="text-lg tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO PROFILES FOUND</p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {profiles.map((profile) => {
                           const standingBadge = getStandingBadge(profile);
                           return (
                             <div
                               key={profile.id}
-                              className="border-2 border-black/20 hover:border-black transition-all cursor-pointer rounded-full overflow-hidden"
+                              className="border border-black/20 hover:border-black transition-all cursor-pointer"
+                              style={{ borderRadius: '50px' }}
                               onClick={() => router.push(`/profiles/${profile.id}`)}
                             >
-                              <div className="flex items-center gap-4 p-4 md:p-5">
+                              <div className="flex items-center gap-3 p-3">
                                 {/* Circular avatar */}
-                                <div className="w-16 h-16 md:w-20 md:h-20 rounded-full border-2 border-black overflow-hidden flex-shrink-0">
+                                <div className="w-14 h-14 md:w-16 md:h-16 rounded-full border border-black overflow-hidden flex-shrink-0">
                                   {profile.avatar_url ? (
                                     <img src={profile.avatar_url} alt={profile.username} className="w-full h-full object-cover" />
                                   ) : (
                                     <div className="w-full h-full bg-black/5 flex items-center justify-center">
-                                      <span className="text-2xl opacity-20">👤</span>
+                                      <span className="text-xl opacity-20">👤</span>
                                     </div>
                                   )}
                                 </div>
 
                                 <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <h3 className="text-lg md:text-xl font-black tracking-tighter truncate" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                                  <div className="flex items-center gap-1.5 mb-0.5">
+                                    <h3 className="text-base md:text-lg font-black tracking-tighter truncate" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
                                       @{profile.username}
                                     </h3>
                                     {profile.is_verified && (
-                                      <span className="text-blue-500 text-base flex-shrink-0">✓</span>
+                                      <span className="text-blue-500 text-sm flex-shrink-0">✓</span>
                                     )}
                                   </div>
                                   {profile.full_name && (
-                                    <p className="text-xs md:text-sm opacity-60 mb-2 truncate">{profile.full_name}</p>
+                                    <p className="text-xs opacity-60 mb-1 truncate">{profile.full_name}</p>
                                   )}
                                   {profile.bio && (
-                                    <p className="text-xs opacity-50 mb-2 line-clamp-1">{profile.bio}</p>
+                                    <p className="text-xs opacity-50 mb-1.5 line-clamp-1">{profile.bio}</p>
                                   )}
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-[10px] tracking-wider opacity-60 flex-shrink-0">{profile.follower_count} FOLLOWERS</span>
-                                    <div className={`px-2 py-0.5 ${standingBadge.bg} text-[9px] tracking-wider font-black flex-shrink-0`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[9px] tracking-wider opacity-60 flex-shrink-0">{profile.follower_count} FOLLOWERS</span>
+                                    <div className={`px-1.5 py-0.5 ${standingBadge.bg} text-[8px] tracking-wider font-black flex-shrink-0`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                                       {standingBadge.icon} {standingBadge.label}
                                     </div>
-                                    {/* Additional badges - show icons only */}
                                     {(profile.badges && profile.badges.length > 0) && profile.badges.slice(0, 2).map((badge, idx) => {
                                       const badgeDisplay: Record<string, { label: string; bg: string }> = {
                                         'early-adopter': { label: '🌟', bg: 'bg-purple-500 text-white' },
@@ -1011,7 +1015,7 @@ function DiscoverContent() {
                                       };
                                       const badgeInfo = badgeDisplay[badge] || { label: badge[0].toUpperCase(), bg: 'bg-gray-500 text-white' };
                                       return (
-                                        <div key={idx} className={`px-1.5 py-0.5 ${badgeInfo.bg} text-[9px] flex-shrink-0`}>
+                                        <div key={idx} className={`px-1 py-0.5 ${badgeInfo.bg} text-[8px] flex-shrink-0`}>
                                           {badgeInfo.label}
                                         </div>
                                       );
