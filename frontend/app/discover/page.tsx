@@ -994,10 +994,7 @@ function DiscoverContent() {
                                     )}
                                   </div>
                                   {profile.full_name && (
-                                    <p className="text-xs opacity-60 mb-1 truncate">{profile.full_name}</p>
-                                  )}
-                                  {profile.bio && (
-                                    <p className="text-xs opacity-50 mb-1.5 line-clamp-1">{profile.bio}</p>
+                                    <p className="text-xs opacity-60 mb-1.5 truncate">{profile.full_name}</p>
                                   )}
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className="text-[9px] tracking-wider opacity-60 flex-shrink-0">{profile.follower_count} FOLLOWERS</span>
