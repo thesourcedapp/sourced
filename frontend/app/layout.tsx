@@ -46,27 +46,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <AuthWidget showUsername={true} />
           </div>
 
-          {/* Mobile Header - Two rows for better spacing */}
-          <div className="md:hidden">
-            {/* Top row - Logo and Profile */}
-            <div className="flex items-center justify-between px-4 py-3">
-              <div style={{
-                fontFamily: "Arial Black, sans-serif",
-                fontSize: "18px",
-                fontWeight: "900",
-                letterSpacing: "-0.5px",
-                color: "black",
-                flexShrink: 0
-              }}>
-                SOURCED
-              </div>
-              <AuthWidget showUsername={false} />
+          {/* Mobile Header - Compact single row */}
+          <div className="md:hidden flex items-center justify-between px-4 py-2">
+            <div style={{
+              fontFamily: "Arial Black, sans-serif",
+              fontSize: "18px",
+              fontWeight: "900",
+              letterSpacing: "-0.5px",
+              color: "black",
+              flexShrink: 0
+            }}>
+              SOURCED
             </div>
-
-            {/* Bottom row - Search Bar (full width) */}
-            <div className="px-4 pb-3">
-              <TopNav mobile={true} />
-            </div>
+            <TopNav mobile={true} />
+            <AuthWidget showUsername={false} />
           </div>
         </header>
 

@@ -51,35 +51,29 @@ export default function TopNav({ mobile = false }: TopNavProps) {
     );
   }
 
-  // Desktop version - longer buttons with tagline
+  // Desktop version - just buttons
   return (
     <>
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
       `}</style>
 
-      <div className="flex items-center gap-4 flex-1">
-        <div className="flex items-center gap-2">
-          {navItems.map((item) => (
-            <button
-              key={item.path}
-              onClick={() => router.push(item.path)}
-              className={`flex items-center gap-2 px-6 py-2 transition-all text-sm tracking-wider font-black ${
-                isActive(item.path)
-                  ? "bg-black text-white"
-                  : "bg-white text-black hover:bg-black/10 border border-black/20"
-              }`}
-              style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-            >
-              <span className="text-base">{item.icon}</span>
-              <span>{item.name}</span>
-            </button>
-          ))}
-        </div>
-
-        <p className="text-gray-500 text-base tracking-wide ml-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-          Search by image. Create and share catalogs the community loves. Discover fashion inspiration from creators worldwide
-        </p>
+      <div className="flex items-center gap-2 flex-1">
+        {navItems.map((item) => (
+          <button
+            key={item.path}
+            onClick={() => router.push(item.path)}
+            className={`flex items-center gap-2 px-6 py-2 transition-all text-sm tracking-wider font-black ${
+              isActive(item.path)
+                ? "bg-black text-white"
+                : "bg-white text-black hover:bg-black/10 border border-black/20"
+            }`}
+            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+          >
+            <span className="text-base">{item.icon}</span>
+            <span>{item.name}</span>
+          </button>
+        ))}
       </div>
     </>
   );
