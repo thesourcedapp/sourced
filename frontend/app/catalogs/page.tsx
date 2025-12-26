@@ -530,90 +530,105 @@ export default function CatalogsPage() {
                 <span>{totalItems} items</span>
               </div>
 
-              <div className="flex justify-end gap-2 mb-3">
-                {!editMode ? (
-                  <>
-                    <button
-                      onClick={() => setEditMode(true)}
-                      className="px-8 py-2.5 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-wider font-black"
-                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                    >
-                      EDIT
-                    </button>
-                    <button
-                      onClick={() => setShowCreateModal(true)}
-                      className="px-8 py-2.5 bg-black text-white hover:bg-black/90 transition-all text-xs tracking-wider font-black"
-                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                    >
-                      CREATE
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={selectAll}
-                      className="px-6 py-2.5 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-wider font-black"
-                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                    >
-                      {selectedCatalogs.size === filteredCatalogs.length ? 'DESELECT' : 'SELECT ALL'}
-                    </button>
-                    {selectedCatalogs.size > 0 && (
-                      <button
-                        onClick={deleteSelected}
-                        className="px-6 py-2.5 bg-red-500 text-white hover:bg-red-600 transition-all text-xs tracking-wider font-black"
-                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                      >
-                        DELETE ({selectedCatalogs.size})
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        setEditMode(false);
-                        setSelectedCatalogs(new Set());
-                      }}
-                      className="px-6 py-2.5 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-wider font-black"
-                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                    >
-                      DONE
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {/* Mobile Search and Filters */}
-              {userCatalogs.length > 0 && (
-                <div className="space-y-2">
+              {/* Search and Action Buttons Row */}
+              {userCatalogs.length > 0 ? (
+                <div className="flex gap-2 mb-2">
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search..."
-                    className="w-full px-3 py-2 border border-black/10 focus:border-black/30 focus:outline-none text-sm"
+                    className="flex-1 px-3 py-2 border border-black/10 focus:border-black/30 focus:outline-none text-sm"
                   />
-                  <div className="flex gap-2">
-                    <select
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as SortOption)}
-                      className="flex-1 px-3 py-2 border border-black/10 focus:border-black/30 focus:outline-none text-xs tracking-wider font-black bg-white"
+                  {!editMode ? (
+                    <>
+                      <button
+                        onClick={() => setEditMode(true)}
+                        className="px-6 py-2 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-wider font-black flex-shrink-0"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        EDIT
+                      </button>
+                      <button
+                        onClick={() => setShowCreateModal(true)}
+                        className="px-6 py-2 bg-black text-white hover:bg-black/90 transition-all text-xs tracking-wider font-black flex-shrink-0"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        CREATE
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setEditMode(false);
+                        setSelectedCatalogs(new Set());
+                      }}
+                      className="px-6 py-2 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-wider font-black flex-shrink-0"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
-                      <option value="recent">RECENT</option>
-                      <option value="oldest">OLDEST</option>
-                      <option value="name">NAME</option>
-                      <option value="items">ITEMS</option>
-                      <option value="bookmarks">BOOKMARKS</option>
-                    </select>
-                    <select
-                      value={filterVisibility}
-                      onChange={(e) => setFilterVisibility(e.target.value as 'all' | 'public' | 'private')}
-                      className="flex-1 px-3 py-2 border border-black/10 focus:border-black/30 focus:outline-none text-xs tracking-wider font-black bg-white"
+                      DONE
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex justify-end gap-2 mb-2">
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="px-8 py-2.5 bg-black text-white hover:bg-black/90 transition-all text-xs tracking-wider font-black"
+                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                  >
+                    CREATE
+                  </button>
+                </div>
+              )}
+
+              {/* Edit Mode Actions Row */}
+              {editMode && (
+                <div className="flex gap-2 mb-2">
+                  <button
+                    onClick={selectAll}
+                    className="flex-1 py-2 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-wider font-black"
+                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                  >
+                    {selectedCatalogs.size === filteredCatalogs.length ? 'DESELECT' : 'SELECT ALL'}
+                  </button>
+                  {selectedCatalogs.size > 0 && (
+                    <button
+                      onClick={deleteSelected}
+                      className="flex-1 py-2 bg-red-500 text-white hover:bg-red-600 transition-all text-xs tracking-wider font-black"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
-                      <option value="all">ALL</option>
-                      <option value="public">PUBLIC</option>
-                      <option value="private">PRIVATE</option>
-                    </select>
-                  </div>
+                      DELETE ({selectedCatalogs.size})
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Filters Row */}
+              {userCatalogs.length > 0 && (
+                <div className="flex gap-2">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as SortOption)}
+                    className="flex-1 px-3 py-2 border border-black/10 focus:border-black/30 focus:outline-none text-xs tracking-wider font-black bg-white"
+                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                  >
+                    <option value="recent">RECENT</option>
+                    <option value="oldest">OLDEST</option>
+                    <option value="name">NAME</option>
+                    <option value="items">ITEMS</option>
+                    <option value="bookmarks">BOOKMARKS</option>
+                  </select>
+                  <select
+                    value={filterVisibility}
+                    onChange={(e) => setFilterVisibility(e.target.value as 'all' | 'public' | 'private')}
+                    className="flex-1 px-3 py-2 border border-black/10 focus:border-black/30 focus:outline-none text-xs tracking-wider font-black bg-white"
+                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                  >
+                    <option value="all">ALL</option>
+                    <option value="public">PUBLIC</option>
+                    <option value="private">PRIVATE</option>
+                  </select>
                 </div>
               )}
             </div>
