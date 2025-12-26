@@ -992,7 +992,7 @@ export default function ProfilePage() {
                           EDIT PROFILE
                         </button>
                         <button
-                          onClick={() => router.push('/catalogs/your_catalogs')}
+                          onClick={() => router.push('/catalogs')}
                           className="px-4 py-2 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-xs tracking-[0.4em] font-black"
                           style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                         >

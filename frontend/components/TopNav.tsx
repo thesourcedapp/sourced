@@ -23,7 +23,7 @@ export default function TopNav({ mobile = false }: TopNavProps) {
     },
     {
       name: "IMAGE SEARCH",
-      path: "/image_search/search",
+      path: "/image_search",
       icon: "⊕"
     },
     {
