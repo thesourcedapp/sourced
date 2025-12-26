@@ -68,12 +68,80 @@ function DiscoverContent() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
 
+  // Filter states
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedColor, setSelectedColor] = useState<string>("all");
+  const [selectedGender, setSelectedGender] = useState<string>("all");
+  const [selectedSeason, setSelectedSeason] = useState<string>("all");
+  const [priceRange, setPriceRange] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("relevance");
+
   const [items, setItems] = useState<SearchItem[]>([]);
   const [catalogs, setCatalogs] = useState<SearchCatalog[]>([]);
   const [profiles, setProfiles] = useState<SearchProfile[]>([]);
 
   const [expandedItem, setExpandedItem] = useState<SearchItem | null>(null);
   const [showLoginMessage, setShowLoginMessage] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Filter options
+  const categories = [
+    { value: "all", label: "All Items" },
+    { value: "tops", label: "Tops" },
+    { value: "bottoms", label: "Bottoms" },
+    { value: "shoes", label: "Shoes" },
+    { value: "outerwear", label: "Outerwear" },
+    { value: "dresses", label: "Dresses" },
+    { value: "activewear", label: "Activewear" },
+    { value: "accessories", label: "Accessories" },
+    { value: "bags", label: "Bags" },
+    { value: "jewelry", label: "Jewelry" }
+  ];
+
+  const colors = [
+    { value: "all", label: "All Colors" },
+    { value: "black", label: "Black" },
+    { value: "white", label: "White" },
+    { value: "gray", label: "Gray" },
+    { value: "brown", label: "Brown" },
+    { value: "beige", label: "Beige" },
+    { value: "blue", label: "Blue" },
+    { value: "green", label: "Green" },
+    { value: "red", label: "Red" },
+    { value: "pink", label: "Pink" },
+    { value: "purple", label: "Purple" },
+    { value: "yellow", label: "Yellow" },
+    { value: "orange", label: "Orange" }
+  ];
+
+  const genders = [
+    { value: "all", label: "All" },
+    { value: "men", label: "Men" },
+    { value: "women", label: "Women" },
+    { value: "unisex", label: "Unisex" }
+  ];
+
+  const seasons = [
+    { value: "all", label: "All Seasons" },
+    { value: "spring", label: "Spring" },
+    { value: "summer", label: "Summer" },
+    { value: "fall", label: "Fall" },
+    { value: "winter", label: "Winter" },
+    { value: "all-season", label: "Year-Round" }
+  ];
+
+  const priceRanges = [
+    { value: "all", label: "All Prices" },
+    { value: "budget", label: "Budget (<$50)" },
+    { value: "mid-range", label: "Mid-Range ($50-$200)" },
+    { value: "luxury", label: "Luxury ($200+)" }
+  ];
+
+  const sortOptions = [
+    { value: "relevance", label: "Most Relevant" },
+    { value: "popular", label: "Most Popular" },
+    { value: "recent", label: "Most Recent" }
+  ];
 
   useEffect(() => {
     loadCurrentUser();
@@ -85,7 +153,7 @@ function DiscoverContent() {
     } else {
       loadDefaultContent();
     }
-  }, [activeTab, currentUserId]);
+  }, [activeTab, currentUserId, selectedCategory, selectedColor, selectedGender, selectedSeason, priceRange, sortBy]);
 
   async function loadCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -111,8 +179,11 @@ function DiscoverContent() {
       } else if (activeTab === "catalogs") {
         await searchCatalogs("");
       } else if (activeTab === "profiles") {
+        console.log('Loading default profiles...');
         await searchProfiles("");
       }
+    } catch (error) {
+      console.error('Error loading default content:', error);
     } finally {
       setLoading(false);
     }
@@ -161,14 +232,44 @@ function DiscoverContent() {
           season,
           formality,
           gender,
+          price_tier,
+          created_at,
           catalogs!inner(id, name, visibility, profiles!inner(username))
         `)
-        .eq('catalogs.visibility', 'public')
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .eq('catalogs.visibility', 'public');
 
+      // Apply filters
+      if (selectedCategory !== "all") {
+        itemsQuery = itemsQuery.eq('category', selectedCategory);
+      }
+
+      if (selectedColor !== "all") {
+        itemsQuery = itemsQuery.contains('colors', [selectedColor]);
+      }
+
+      if (selectedGender !== "all") {
+        itemsQuery = itemsQuery.eq('gender', selectedGender);
+      }
+
+      if (selectedSeason !== "all") {
+        itemsQuery = itemsQuery.eq('season', selectedSeason);
+      }
+
+      if (priceRange !== "all") {
+        itemsQuery = itemsQuery.eq('price_tier', priceRange);
+      }
+
+      // Apply sorting
+      if (sortBy === "popular") {
+        itemsQuery = itemsQuery.order('like_count', { ascending: false });
+      } else if (sortBy === "recent") {
+        itemsQuery = itemsQuery.order('created_at', { ascending: false });
+      }
+
+      itemsQuery = itemsQuery.limit(100);
+
+      // Apply search query if exists
       if (query.trim()) {
-        // Smart search: search across multiple fields
         const searchTerms = query.toLowerCase().split(' ').filter(t => t.length > 0);
 
         itemsQuery = itemsQuery.or(
@@ -202,7 +303,7 @@ function DiscoverContent() {
         }
       }
 
-      const formattedItems = data.map((item: any) => ({
+      let formattedItems = data.map((item: any) => ({
         ...item,
         is_liked: likedItemIds.has(item.id),
         catalog: {
@@ -213,6 +314,46 @@ function DiscoverContent() {
           }
         }
       }));
+
+      // Smart ranking: if search query exists and sortBy is "relevance"
+      if (query.trim() && sortBy === "relevance") {
+        formattedItems = formattedItems.sort((a, b) => {
+          // Calculate relevance score
+          const getRelevanceScore = (item: any) => {
+            let score = 0;
+            const q = query.toLowerCase();
+
+            // Exact matches get highest score
+            if (item.title?.toLowerCase() === q) score += 100;
+            if (item.brand?.toLowerCase() === q) score += 80;
+            if (item.category?.toLowerCase() === q) score += 60;
+
+            // Partial matches
+            if (item.title?.toLowerCase().includes(q)) score += 50;
+            if (item.brand?.toLowerCase().includes(q)) score += 40;
+            if (item.subcategory?.toLowerCase().includes(q)) score += 30;
+            if (item.seller?.toLowerCase().includes(q)) score += 20;
+
+            // Style tags match
+            if (item.style_tags?.some((tag: string) => tag.toLowerCase().includes(q))) score += 35;
+
+            return score;
+          };
+
+          const scoreA = getRelevanceScore(a);
+          const scoreB = getRelevanceScore(b);
+
+          // If scores are equal (both relevant or both not), prefer items with more likes
+          if (scoreA === scoreB) {
+            return (b.like_count || 0) - (a.like_count || 0);
+          }
+
+          return scoreB - scoreA;
+        });
+      } else if (sortBy === "relevance" && !query.trim()) {
+        // No search query, just sort by likes
+        formattedItems = formattedItems.sort((a, b) => (b.like_count || 0) - (a.like_count || 0));
+      }
 
       setItems(formattedItems);
     } catch (error) {
@@ -286,13 +427,15 @@ function DiscoverContent() {
 
   async function searchProfiles(query: string) {
     try {
+      console.log('Searching profiles with query:', query);
+
+      // Simplified query
       let profilesQuery = supabase
         .from('profiles')
-        .select('id, username, full_name, avatar_url, bio, follower_count')
-        .eq('is_onboarded', true)
-        .order('follower_count', { ascending: false })
+        .select('*')
         .limit(50);
 
+      // Add filters
       if (query.trim()) {
         profilesQuery = profilesQuery.or(
           `username.ilike.%${query}%,` +
@@ -303,7 +446,31 @@ function DiscoverContent() {
 
       const { data, error } = await profilesQuery;
 
-      if (error) throw error;
+      console.log('Profiles data:', data);
+      console.log('Profiles error:', error);
+
+      if (error) {
+        console.error('Profiles query error:', error);
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        console.log('No profiles found in database');
+        setProfiles([]);
+        return;
+      }
+
+      // Filter to only onboarded users with usernames
+      const onboardedProfiles = data.filter((p: any) =>
+        p.is_onboarded === true && p.username != null
+      );
+
+      console.log('Onboarded profiles:', onboardedProfiles.length);
+
+      // Sort by follower count
+      onboardedProfiles.sort((a: any, b: any) =>
+        (b.follower_count || 0) - (a.follower_count || 0)
+      );
 
       let followingIds: Set<string> = new Set();
       if (currentUserId) {
@@ -317,11 +484,17 @@ function DiscoverContent() {
         }
       }
 
-      const profilesWithFollowing = data.map((profile: any) => ({
-        ...profile,
+      const profilesWithFollowing = onboardedProfiles.map((profile: any) => ({
+        id: profile.id,
+        username: profile.username,
+        full_name: profile.full_name,
+        avatar_url: profile.avatar_url,
+        bio: profile.bio,
+        follower_count: profile.follower_count || 0,
         is_following: followingIds.has(profile.id)
       }));
 
+      console.log('Final profiles to display:', profilesWithFollowing.length);
       setProfiles(profilesWithFollowing);
     } catch (error) {
       console.error('Error searching profiles:', error);
@@ -462,7 +635,7 @@ function DiscoverContent() {
             </form>
 
             {/* Tabs */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 mb-4">
               <button
                 onClick={() => changeTab("items")}
                 className={`px-6 py-2 text-xs tracking-wider font-black transition-all ${
@@ -497,6 +670,112 @@ function DiscoverContent() {
                 PROFILES
               </button>
             </div>
+
+            {/* Filters - Only show for Items tab */}
+            {activeTab === "items" && (
+              <div className="border-t border-black/20 pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setShowFilters(!showFilters)}
+                      className="text-xs tracking-wider font-black hover:opacity-70 transition-opacity flex items-center gap-2"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      {showFilters ? '▼' : '▶'} FILTERS
+                    </button>
+                    {(selectedCategory !== "all" || selectedColor !== "all" || selectedGender !== "all" || selectedSeason !== "all" || priceRange !== "all") && (
+                      <button
+                        onClick={() => {
+                          setSelectedCategory("all");
+                          setSelectedColor("all");
+                          setSelectedGender("all");
+                          setSelectedSeason("all");
+                          setPriceRange("all");
+                        }}
+                        className="text-[10px] tracking-wider opacity-60 hover:opacity-100 transition-opacity underline"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        CLEAR FILTERS
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] tracking-wider opacity-60" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                      {items.length} RESULTS
+                    </span>
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="px-3 py-1.5 border border-black/20 bg-white text-xs tracking-wider font-black focus:outline-none focus:border-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '16px' }}
+                    >
+                      {sortOptions.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {showFilters && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 pb-4">
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                      className="px-3 py-2 border border-black/20 bg-white text-xs tracking-wider focus:outline-none focus:border-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '16px' }}
+                    >
+                      {categories.map(cat => (
+                        <option key={cat.value} value={cat.value}>{cat.label}</option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={selectedColor}
+                      onChange={(e) => setSelectedColor(e.target.value)}
+                      className="px-3 py-2 border border-black/20 bg-white text-xs tracking-wider focus:outline-none focus:border-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '16px' }}
+                    >
+                      {colors.map(color => (
+                        <option key={color.value} value={color.value}>{color.label}</option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={selectedGender}
+                      onChange={(e) => setSelectedGender(e.target.value)}
+                      className="px-3 py-2 border border-black/20 bg-white text-xs tracking-wider focus:outline-none focus:border-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '16px' }}
+                    >
+                      {genders.map(gender => (
+                        <option key={gender.value} value={gender.value}>{gender.label}</option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={selectedSeason}
+                      onChange={(e) => setSelectedSeason(e.target.value)}
+                      className="px-3 py-2 border border-black/20 bg-white text-xs tracking-wider focus:outline-none focus:border-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '16px' }}
+                    >
+                      {seasons.map(season => (
+                        <option key={season.value} value={season.value}>{season.label}</option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={priceRange}
+                      onChange={(e) => setPriceRange(e.target.value)}
+                      className="px-3 py-2 border border-black/20 bg-white text-xs tracking-wider focus:outline-none focus:border-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '16px' }}
+                    >
+                      {priceRanges.map(range => (
+                        <option key={range.value} value={range.value}>{range.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -538,18 +817,29 @@ function DiscoverContent() {
                                 </div>
                               )}
 
+                              {/* Like count above buttons */}
+                              <div className="flex items-center gap-1 text-[10px] tracking-wider opacity-60 mb-2">
+                                <span>♥ {item.like_count} {item.like_count === 1 ? 'like' : 'likes'}</span>
+                              </div>
+
                               <div className="flex gap-2">
                                 <button
                                   onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.is_liked); }}
-                                  className="flex-1 py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs flex items-center justify-center gap-1"
+                                  className={`flex-1 py-1 border transition-all text-xs flex items-center justify-center gap-1 font-black ${
+                                    item.is_liked
+                                      ? 'border-black bg-black text-white hover:bg-white hover:text-black'
+                                      : 'border-black/20 hover:border-black hover:bg-black/10'
+                                  }`}
+                                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                                 >
-                                  {item.is_liked ? '♥' : '♡'} {item.like_count}
+                                  {item.is_liked ? '♥ LIKED' : '♡ LIKE'}
                                 </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setExpandedItem(item); }}
-                                  className="px-3 py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs"
+                                  className="px-3 py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs font-black"
+                                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                                 >
-                                  ⊕
+                                  VIEW
                                 </button>
                               </div>
                             </div>
