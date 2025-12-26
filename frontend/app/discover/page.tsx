@@ -25,6 +25,7 @@ type SearchItem = {
   catalog: {
     id: string;
     name: string;
+    slug: string;
     owner: {
       username: string;
     };
@@ -40,6 +41,7 @@ type SearchCatalog = {
   bookmark_count: number;
   is_bookmarked: boolean;
   item_count: number;
+  slug: string;
   owner: {
     username: string;
     avatar_url: string | null;
@@ -237,7 +239,7 @@ function DiscoverContent() {
           gender,
           price_tier,
           created_at,
-          catalogs!inner(id, name, visibility, profiles!inner(username))
+          catalogs!inner(id, name, slug, visibility, profiles!inner(username))
         `)
         .eq('catalogs.visibility', 'public');
 
@@ -312,6 +314,7 @@ function DiscoverContent() {
         catalog: {
           id: item.catalogs.id,
           name: item.catalogs.name,
+          slug: item.catalogs.slug,
           owner: {
             username: item.catalogs.profiles.username
           }
@@ -376,6 +379,7 @@ function DiscoverContent() {
           image_url,
           visibility,
           bookmark_count,
+          slug,
           profiles!catalogs_owner_id_fkey(username, avatar_url)
         `)
         .eq('visibility', 'public')
@@ -892,7 +896,7 @@ function DiscoverContent() {
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {catalogs.map((catalog) => (
-                          <div key={catalog.id} className="border-2 border-black/20 hover:border-black transition-all cursor-pointer" onClick={() => router.push(`/catalogs/${catalog.id}`)}>
+                          <div key={catalog.id} className="border-2 border-black/20 hover:border-black transition-all cursor-pointer" onClick={() => router.push(`/${catalog.owner?.username}/${catalog.slug}`)}>
                             <div className="aspect-square bg-black/5 overflow-hidden">
                               {catalog.image_url ? (
                                 <img src={catalog.image_url} alt={catalog.name} className="w-full h-full object-cover" />
@@ -910,7 +914,13 @@ function DiscoverContent() {
                                 <p className="text-sm opacity-60 mb-3 line-clamp-2">{catalog.description}</p>
                               )}
 
-                              <div className="flex items-center gap-2 mb-3">
+                              <div
+                                className="flex items-center gap-2 mb-3 cursor-pointer hover:opacity-70 transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(`/${catalog.owner?.username}`);
+                                }}
+                              >
                                 {/* Circular avatar */}
                                 <div className="w-6 h-6 rounded-full border border-black overflow-hidden">
                                   {catalog.owner?.avatar_url ? (
@@ -970,7 +980,7 @@ function DiscoverContent() {
                               key={profile.id}
                               className="border border-black/20 hover:border-black transition-all cursor-pointer"
                               style={{ borderRadius: '50px' }}
-                              onClick={() => router.push(`/profiles/${profile.id}`)}
+                              onClick={() => router.push(`/${profile.username}`)}
                             >
                               <div className="flex items-center gap-3 p-3">
                                 {/* Circular avatar */}
@@ -1089,7 +1099,7 @@ function DiscoverContent() {
                       )}
 
                       <button
-                        onClick={() => router.push(`/catalogs/${expandedItem.catalog.id}`)}
+                        onClick={() => router.push(`/${expandedItem.catalog.owner.username}/${expandedItem.catalog.slug}`)}
                         className="w-full py-2 md:py-3 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-[10px] md:text-xs tracking-[0.4em] font-black"
                         style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                       >
