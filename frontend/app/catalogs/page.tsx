@@ -15,6 +15,8 @@ type UserCatalog = {
   updated_at?: string;
   item_count: number;
   bookmark_count: number;
+  slug: string;
+  profiles: { username: string };
 };
 
 type SortOption = 'recent' | 'oldest' | 'name' | 'items' | 'bookmarks';
@@ -145,7 +147,7 @@ export default function CatalogsPage() {
     try {
       const { data, error } = await supabase
         .from('catalogs')
-        .select(`id, name, description, image_url, visibility, created_at, updated_at, bookmark_count, catalog_items(count)`)
+        .select(`id, name, description, image_url, visibility, created_at, updated_at, bookmark_count, slug, profiles!catalogs_owner_id_fkey(username), catalog_items(count)`)
         .eq('owner_id', currentUserId)
         .order('created_at', { ascending: false });
 
@@ -153,7 +155,8 @@ export default function CatalogsPage() {
         setUserCatalogs(data.map(cat => ({
           ...cat,
           item_count: cat.catalog_items?.[0]?.count || 0,
-          bookmark_count: cat.bookmark_count || 0
+          bookmark_count: cat.bookmark_count || 0,
+          profiles: Array.isArray(cat.profiles) ? cat.profiles[0] : cat.profiles
         })));
       }
     } catch (error) {
@@ -281,78 +284,78 @@ export default function CatalogsPage() {
   }
 
   async function handleCreateCatalog(e: React.FormEvent) {
-  e.preventDefault();
-  if (!currentUserId || !catalogName.trim()) return;
+    e.preventDefault();
+    if (!currentUserId || !catalogName.trim()) return;
 
-  setCreating(true);
-  setImageError('');
+    setCreating(true);
+    setImageError('');
 
-  try {
-    let finalImageUrl = '';
+    try {
+      let finalImageUrl = '';
 
-    if (uploadMethod === 'file' && selectedFile) {
-      const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
-      if (!uploadResult.url) {
-        setImageError(uploadResult.error || "Failed to upload image");
-        setCreating(false);
-        return;
+      if (uploadMethod === 'file' && selectedFile) {
+        const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
+        if (!uploadResult.url) {
+          setImageError(uploadResult.error || "Failed to upload image");
+          setCreating(false);
+          return;
+        }
+
+        finalImageUrl = uploadResult.url;
+
+        const safetyCheck = await checkImageSafety(finalImageUrl);
+        if (!safetyCheck.safe) {
+          setImageError("Image contains inappropriate content");
+          setCreating(false);
+          return;
+        }
+      } else if (uploadMethod === 'url' && catalogImageUrl.trim()) {
+        const safetyCheck = await checkImageSafety(catalogImageUrl);
+        if (!safetyCheck.safe) {
+          setImageError("Image contains inappropriate content");
+          setCreating(false);
+          return;
+        }
+        finalImageUrl = catalogImageUrl;
       }
 
-      finalImageUrl = uploadResult.url;
+      const slug = generateSlug(catalogName);
 
-      const safetyCheck = await checkImageSafety(finalImageUrl);
-      if (!safetyCheck.safe) {
-        setImageError("Image contains inappropriate content");
-        setCreating(false);
-        return;
-      }
-    } else if (uploadMethod === 'url' && catalogImageUrl.trim()) {
-      const safetyCheck = await checkImageSafety(catalogImageUrl);
-      if (!safetyCheck.safe) {
-        setImageError("Image contains inappropriate content");
-        setCreating(false);
-        return;
-      }
-      finalImageUrl = catalogImageUrl;
+      const { data, error } = await supabase
+        .from('catalogs')
+        .insert({
+          name: catalogName.trim(),
+          slug: slug,
+          description: catalogDescription.trim() || null,
+          image_url: finalImageUrl || null,
+          visibility: catalogVisibility,
+          owner_id: currentUserId
+        })
+        .select('*, profiles!catalogs_owner_id_fkey(username)')
+        .single();
+
+      if (error) throw error;
+
+      setCatalogName('');
+      setCatalogDescription('');
+      setSelectedFile(null);
+      setCatalogImageUrl('');
+      setPreviewUrl(null);
+      setCatalogVisibility('public');
+      setUploadMethod('file');
+      setShowCreateModal(false);
+
+      await loadCatalogs();
+
+      const owner = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
+      router.push(`/@${owner.username}/${slug}`);
+    } catch (error) {
+      console.error('Error creating catalog:', error);
+      alert('Failed to create catalog');
+    } finally {
+      setCreating(false);
     }
-
-    const slug = generateSlug(catalogName);
-
-    const { data, error } = await supabase
-      .from('catalogs')
-      .insert({
-        name: catalogName.trim(),
-        slug: slug,
-        description: catalogDescription.trim() || null,
-        image_url: finalImageUrl || null,
-        visibility: catalogVisibility,
-        owner_id: currentUserId
-      })
-      .select('*, profiles!catalogs_owner_id_fkey(username)')
-      .single();
-
-    if (error) throw error;
-
-    setCatalogName('');
-    setCatalogDescription('');
-    setSelectedFile(null);
-    setCatalogImageUrl('');
-    setPreviewUrl(null);
-    setCatalogVisibility('public');
-    setUploadMethod('file');
-    setShowCreateModal(false);
-
-    await loadCatalogs();
-
-    const owner = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
-    router.push(`/@${owner.username}/${slug}`);
-  } catch (error) {
-    console.error('Error creating catalog:', error);
-    alert('Failed to create catalog');
-  } finally {
-    setCreating(false);
   }
-}
 
   const totalItems = userCatalogs.reduce((sum, cat) => sum + cat.item_count, 0);
   const publicCount = userCatalogs.filter(cat => cat.visibility === 'public').length;
@@ -700,7 +703,7 @@ export default function CatalogsPage() {
                   {/* Catalog Card */}
                   <div
                     className={`${!editMode ? 'cursor-pointer' : ''}`}
-                    onClick={() => !editMode && router.push(`/catalogs/${catalog.id}`)}
+                    onClick={() => !editMode && router.push(`/@${catalog.profiles.username}/${catalog.slug}`)}
                   >
                     {/* Image */}
                     <div className="aspect-square bg-black/5 overflow-hidden">
@@ -758,7 +761,7 @@ export default function CatalogsPage() {
                       ? 'border-black bg-black/5'
                       : 'border-black/10 hover:border-black/30'
                   } ${!editMode ? 'cursor-pointer' : ''}`}
-                  onClick={() => !editMode && router.push(`/catalogs/${catalog.id}`)}
+                  onClick={() => !editMode && router.push(`/@${catalog.profiles.username}/${catalog.slug}`)}
                 >
                   {/* Selection Checkbox */}
                   {editMode && (
