@@ -199,7 +199,7 @@ export default function DiscoverPage() {
         }
       }
 
-      const formattedItems = data.map(item => ({
+      const formattedItems = data.map((item: any) => ({
         ...item,
         is_liked: likedItemIds.has(item.id),
         catalog: {
@@ -259,7 +259,7 @@ export default function DiscoverPage() {
       }
 
       const catalogsWithCounts = await Promise.all(
-        data.map(async (catalog) => {
+        data.map(async (catalog: any) => {
           const { count } = await supabase
             .from('catalog_items')
             .select('*', { count: 'exact', head: true })
@@ -314,7 +314,7 @@ export default function DiscoverPage() {
         }
       }
 
-      const profilesWithFollowing = data.map(profile => ({
+      const profilesWithFollowing = data.map((profile: any) => ({
         ...profile,
         is_following: followingIds.has(profile.id)
       }));
