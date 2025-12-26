@@ -45,13 +45,26 @@ export default function TopNav({ mobile = false }: TopNavProps) {
           @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
         `}</style>
 
-        {/* Mobile - Just nav items */}
-        <div className="flex items-center gap-1 flex-1">
+        {/* Mobile - Nothing (just SOURCED logo and profile handled by parent) */}
+        <div className="flex-1"></div>
+      </>
+    );
+  }
+
+  // Desktop version - longer buttons with tagline
+  return (
+    <>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+      `}</style>
+
+      <div className="flex items-center gap-4 flex-1">
+        <div className="flex items-center gap-2">
           {navItems.map((item) => (
             <button
               key={item.path}
               onClick={() => router.push(item.path)}
-              className={`flex items-center gap-2 px-3 py-1.5 transition-all text-sm tracking-wide font-black ${
+              className={`flex items-center gap-2 px-6 py-2 transition-all text-sm tracking-wider font-black ${
                 isActive(item.path)
                   ? "bg-black text-white"
                   : "bg-white text-black hover:bg-black/10 border border-black/20"
@@ -63,33 +76,10 @@ export default function TopNav({ mobile = false }: TopNavProps) {
             </button>
           ))}
         </div>
-      </>
-    );
-  }
 
-  // Desktop version - longer buttons, aligned left
-  return (
-    <>
-      <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
-      `}</style>
-
-      <div className="flex items-center gap-2 flex-1">
-        {navItems.map((item) => (
-          <button
-            key={item.path}
-            onClick={() => router.push(item.path)}
-            className={`flex items-center gap-2 px-6 py-2 transition-all text-sm tracking-wider font-black ${
-              isActive(item.path)
-                ? "bg-black text-white"
-                : "bg-white text-black hover:bg-black/10 border border-black/20"
-            }`}
-            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-          >
-            <span className="text-base">{item.icon}</span>
-            <span>{item.name}</span>
-          </button>
-        ))}
+        <p className="text-gray-500 text-base tracking-wide ml-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+          Search by image. Create and share catalogs the community loves. Discover fashion inspiration from creators worldwide
+        </p>
       </div>
     </>
   );
