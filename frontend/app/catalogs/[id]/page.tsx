@@ -62,14 +62,27 @@ async function uploadImageToStorage(file: File, userId: string): Promise<{ url: 
 function extractSellerFromUrl(url: string): string {
   try {
     const urlObj = new URL(url);
-    let seller = urlObj.hostname.replace(/^www\./i, '');
-    const parts = seller.split('.');
-    if (parts.length >= 2) seller = parts[0];
+
+    // Get domain without www
+    let domain = urlObj.hostname.replace(/^www\./i, '');
+
+    // Get the main domain part (second-level domain)
+    // Examples:
+    // - "grailed.com" -> "grailed"
+    // - "depop.com" -> "depop"
+    // - "shop.nike.com" -> "nike"
+    // - "ssense.com" -> "ssense"
+    const parts = domain.split('.');
+    let seller = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+
+    // Capitalize first letter
     return seller.charAt(0).toUpperCase() + seller.slice(1);
   } catch {
     return '';
   }
 }
+
+
 
 export default function CatalogDetailPage() {
   const router = useRouter();
