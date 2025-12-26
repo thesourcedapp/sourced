@@ -155,25 +155,30 @@ export default function ProfilePage() {
   const isOwner = currentUserId === profileId;
 
   useEffect(() => {
-  async function initProfile() {
-    await loadCurrentUser();
-    if (username) {
+    async function initProfile() {
+      await loadCurrentUser();
+      if (username) {
         await loadProfile();
-        await loadUserCatalogs();
-        await loadBookmarkedCatalogs();
-        await loadLikedItems();
-        await loadFollowers();
-        await loadFollowing();
       }
     }
     initProfile();
   }, [username]);
 
-      useEffect(() => {
-      if (currentUserId && profileId) {
-        loadProfile();
-      }
-    }, [currentUserId]);
+  useEffect(() => {
+    if (profileId) {
+      loadUserCatalogs();
+      loadBookmarkedCatalogs();
+      loadLikedItems();
+      loadFollowers();
+      loadFollowing();
+    }
+  }, [profileId]);
+
+  useEffect(() => {
+    if (currentUserId && username) {
+      loadProfile();
+    }
+  }, [currentUserId, username]);
 
   useEffect(() => {
     if (followersSearchQuery.trim()) {
