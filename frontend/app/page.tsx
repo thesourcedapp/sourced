@@ -13,6 +13,8 @@ type FeaturedCatalog = {
   owner_id: string;
   username: string;
   full_name: string;
+  avatar_url: string | null;
+  slug: string;
   created_at: string;
 };
 
@@ -146,16 +148,33 @@ export default function FeaturedCatalogsPage() {
                   <div key={catalog.id} className="space-y-4">
                     <div
                       className="group w-full hover:bg-black/5 p-6 transition-all duration-300 border border-black/20 hover:border-black/50 cursor-pointer"
-                      onClick={() => router.push(`/catalogs/${catalog.id}`)}
+                      onClick={() => router.push(`/${catalog.username}/${catalog.slug}`)}
                     >
                       {/* Mobile layout - stacked */}
                       <div className="flex md:hidden flex-col gap-6">
                         <div className="flex flex-col gap-4 items-start">
                           <div className="flex-1 space-y-4 w-full">
-                            {/* Username */}
-                            <p className="text-xs tracking-[0.3em] opacity-60 group-hover:opacity-100 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                              @{catalog.username}
-                            </p>
+                            {/* Profile icon + Username */}
+                            <div
+                              className="flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity w-fit"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/${catalog.username}`);
+                              }}
+                            >
+                              <div className="w-6 h-6 rounded-full border border-black overflow-hidden flex-shrink-0">
+                                {catalog.avatar_url ? (
+                                  <img src={catalog.avatar_url} alt={catalog.username} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full bg-black/5 flex items-center justify-center">
+                                    <span className="text-[8px] opacity-20">👤</span>
+                                  </div>
+                                )}
+                              </div>
+                              <p className="text-xs tracking-[0.3em] opacity-60 group-hover:opacity-100 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                                @{catalog.username}
+                              </p>
+                            </div>
 
                             {/* Catalog name */}
                             <h3 className="text-3xl font-black tracking-wide uppercase leading-tight" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
@@ -202,10 +221,27 @@ export default function FeaturedCatalogsPage() {
                       <div className="hidden md:flex flex-row gap-6 items-start">
                         {/* Left side - Text info */}
                         <div className="flex-1 space-y-4">
-                          {/* Username */}
-                          <p className="text-xs tracking-[0.3em] opacity-60 group-hover:opacity-100 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                            @{catalog.username}
-                          </p>
+                          {/* Profile icon + Username */}
+                          <div
+                            className="flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity w-fit"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/${catalog.username}`);
+                            }}
+                          >
+                            <div className="w-8 h-8 rounded-full border border-black overflow-hidden flex-shrink-0">
+                              {catalog.avatar_url ? (
+                                <img src={catalog.avatar_url} alt={catalog.username} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full bg-black/5 flex items-center justify-center">
+                                  <span className="text-xs opacity-20">👤</span>
+                                </div>
+                              )}
+                            </div>
+                            <p className="text-xs tracking-[0.3em] opacity-60 group-hover:opacity-100 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                              @{catalog.username}
+                            </p>
+                          </div>
 
                           {/* Catalog name */}
                           <h3 className="text-3xl md:text-4xl font-black tracking-wide uppercase leading-tight" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
@@ -257,7 +293,10 @@ export default function FeaturedCatalogsPage() {
                             <div
                               key={`${item.id}-${idx}`}
                               className="flex-shrink-0 w-40 mx-4 group cursor-pointer"
-                              onClick={() => item.product_url && window.open(item.product_url, '_blank')}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (item.product_url) window.open(item.product_url, '_blank');
+                              }}
                             >
                               {/* Item image */}
                               <div className="w-40 h-40 border border-black/30 bg-white overflow-hidden group-hover:border-black transition-all mb-2">
