@@ -593,7 +593,7 @@ export default function CatalogDetailPage() {
                 <h1 className="text-3xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{catalog.name}</h1>
 
                 {/* Circular profile icon */}
-                <div className="flex items-center gap-3 cursor-pointer hover:opacity-70 transition-opacity w-fit" onClick={() => router.push(`/profiles/${catalog.owner_id}`)}>
+                <div className="flex items-center gap-3 cursor-pointer hover:opacity-70 transition-opacity w-fit" onClick={() => router.push(`/${catalog.owner.username}`)}>
                   <div className="w-8 h-8 md:w-10 md:h-10 rounded-full border border-black overflow-hidden">
                     {catalog?.owner?.avatar_url ? (
                       <img src={catalog.owner.avatar_url} alt={catalog.owner.username} className="w-full h-full object-cover" />
