@@ -348,7 +348,7 @@ export default function CatalogsPage() {
       await loadCatalogs();
 
       const owner = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
-      router.push(`/@${owner.username}/${slug}`);
+      router.push(`/${owner.username}/${slug}`);
     } catch (error) {
       console.error('Error creating catalog:', error);
       alert('Failed to create catalog');
@@ -703,7 +703,7 @@ export default function CatalogsPage() {
                   {/* Catalog Card */}
                   <div
                     className={`${!editMode ? 'cursor-pointer' : ''}`}
-                    onClick={() => !editMode && router.push(`/@${catalog.profiles.username}/${catalog.slug}`)}
+                    onClick={() => !editMode && router.push(`/${catalog.profiles.username}/${catalog.slug}`)}
                   >
                     {/* Image */}
                     <div className="aspect-square bg-black/5 overflow-hidden">
@@ -761,7 +761,7 @@ export default function CatalogsPage() {
                       ? 'border-black bg-black/5'
                       : 'border-black/10 hover:border-black/30'
                   } ${!editMode ? 'cursor-pointer' : ''}`}
-                  onClick={() => !editMode && router.push(`/@${catalog.profiles.username}/${catalog.slug}`)}
+                  onClick={() => !editMode && router.push(`/${catalog.profiles.username}/${catalog.slug}`)}
                 >
                   {/* Selection Checkbox */}
                   {editMode && (
