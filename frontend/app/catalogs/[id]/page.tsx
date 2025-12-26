@@ -3,12 +3,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter, useParams } from "next/navigation";
-import OpenAI from "openai";
-
-const openai = new OpenAI({
-  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true
-});
 
 type CatalogData = {
   id: string;
@@ -74,125 +68,6 @@ function extractSellerFromUrl(url: string): string {
     return seller.charAt(0).toUpperCase() + seller.slice(1);
   } catch {
     return '';
-  }
-}
-
-// Quick image safety check (runs first - fast)
-async function quickSafetyCheck(imageUrl: string): Promise<boolean> {
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Is this image safe and appropriate? Answer only YES or NO." },
-            { type: "image_url", image_url: { url: imageUrl } }
-          ]
-        }
-      ],
-      max_tokens: 10
-    });
-
-    const answer = response.choices[0].message.content?.trim().toUpperCase() || "";
-    return answer.includes("YES");
-  } catch (error) {
-    console.error('Safety check error:', error);
-    return true; // Fail open
-  }
-}
-
-// AI categorization (runs in background after item is shown)
-async function categorizeItemInBackground(itemId: string, title: string, imageUrl: string, productUrl: string | null, price: string | null) {
-  try {
-    console.log(`🔄 Background categorization started for item ${itemId}`);
-
-    const systemPrompt = `You are a fashion expert AI. Return ONLY valid JSON, no markdown.`;
-
-    const userPrompt = `Analyze this fashion item:
-
-TITLE: ${title}
-PRICE: ${price || 'Unknown'}
-URL: ${productUrl || 'Not provided'}
-
-Return JSON:
-{
-  "category": "tops/bottoms/outerwear/shoes/accessories/dresses/activewear/bags/jewelry/other",
-  "subcategory": "specific type",
-  "brand": "brand or null",
-  "product_type": "casual/formal/athletic/streetwear",
-  "colors": ["array"],
-  "primary_color": "main color",
-  "material": "material or null",
-  "pattern": "pattern or null",
-  "style_tags": ["tag1", "tag2"],
-  "season": "spring/summer/fall/winter/all-season",
-  "formality": "casual/business-casual/formal/athletic",
-  "gender": "men/women/unisex",
-  "fit_type": "slim/regular/oversized or null",
-  "occasion_tags": ["everyday", "work"],
-  "price_tier": "budget/mid-range/luxury or null",
-  "confidence": 0.95
-}`;
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: userPrompt },
-            { type: "image_url", image_url: { url: imageUrl } }
-          ]
-        }
-      ],
-      max_tokens: 500,
-      temperature: 0.3,
-      response_format: { type: "json_object" }
-    });
-
-    let result = response.choices[0].message.content?.trim() || "{}";
-
-    if (result.startsWith("```json")) {
-      result = result.replace("```json", "").replace("```", "").trim();
-    }
-
-    const metadata = JSON.parse(result);
-
-    console.log(`✅ AI categorization complete for item ${itemId}:`, metadata);
-
-    // Update item with metadata
-    const { error } = await supabase
-      .from('catalog_items')
-      .update({
-        category: metadata.category,
-        subcategory: metadata.subcategory,
-        brand: metadata.brand,
-        product_type: metadata.product_type,
-        colors: metadata.colors,
-        primary_color: metadata.primary_color,
-        material: metadata.material,
-        pattern: metadata.pattern,
-        style_tags: metadata.style_tags,
-        season: metadata.season,
-        formality: metadata.formality,
-        gender: metadata.gender,
-        fit_type: metadata.fit_type,
-        occasion_tags: metadata.occasion_tags,
-        price_tier: metadata.price_tier,
-        categorization_confidence: metadata.confidence
-      })
-      .eq('id', itemId);
-
-    if (error) {
-      console.error(`❌ Failed to update metadata for item ${itemId}:`, error);
-    } else {
-      console.log(`✅ Metadata saved to database for item ${itemId}`);
-    }
-
-  } catch (error) {
-    console.error(`❌ Background categorization failed for item ${itemId}:`, error);
   }
 }
 
@@ -430,7 +305,7 @@ export default function CatalogDetailPage() {
     reader.readAsDataURL(file);
   }
 
-  async function handleImageUrlChange(url: string) {
+  function handleImageUrlChange(url: string) {
     setItemImageUrl(url);
     setImageError('');
 
@@ -441,20 +316,11 @@ export default function CatalogDetailPage() {
 
     try {
       new URL(url);
+      setPreviewUrl(url);
     } catch {
       setImageError("Invalid URL format");
-      return;
+      setPreviewUrl(null);
     }
-
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
-    const hasImageExtension = imageExtensions.some(ext => url.toLowerCase().includes(ext));
-
-    if (!hasImageExtension) {
-      setImageError("URL must point to an image file");
-      return;
-    }
-
-    setPreviewUrl(url);
   }
 
   function handleProductUrlChange(url: string) {
@@ -481,7 +347,6 @@ export default function CatalogDetailPage() {
     setCreatingStatus('');
   }
 
-  // 🚀 ASYNC APPROACH - Show item immediately, categorize in background
   async function handleAddItem(e: React.FormEvent) {
     e.preventDefault();
 
@@ -495,7 +360,6 @@ export default function CatalogDetailPage() {
     setProductUrlError('');
 
     try {
-      // Validate
       if (!itemProductUrl.trim()) {
         setProductUrlError('Product URL is required');
         setCreating(false);
@@ -512,7 +376,6 @@ export default function CatalogDetailPage() {
 
       let finalImageUrl = itemImageUrl;
 
-      // Upload image
       if (uploadMethod === 'file' && selectedFile) {
         setCreatingStatus('Uploading image...');
         const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
@@ -533,59 +396,67 @@ export default function CatalogDetailPage() {
         return;
       }
 
-      // Quick safety check (fast - ~1 second)
-      setCreatingStatus('Checking image...');
-      const isSafe = await quickSafetyCheck(finalImageUrl);
+      setCreatingStatus('Categorizing with AI...');
 
-      if (!isSafe) {
-        setImageError('Image contains inappropriate content');
-        setCreating(false);
-        setCreatingStatus('');
-        return;
+      const requestBody = {
+        catalog_id: catalogId,
+        title: itemTitle.trim(),
+        image_url: finalImageUrl,
+        product_url: itemProductUrl.trim(),
+        seller: itemSeller.trim() || null,
+        price: itemPrice.trim() || null,
+        user_id: currentUserId
+      };
+
+      console.log('Sending request:', requestBody);
+
+      const response = await fetch(`https://sourced-5ovn.onrender.com/create-catalog-item`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      console.log('Response status:', response.status);
+
+      let result;
+      try {
+        result = await response.json();
+        console.log('Response data:', result);
+      } catch (parseError) {
+        console.error('Failed to parse response:', parseError);
+        throw new Error('Server returned invalid response');
       }
 
-      // Insert item WITHOUT metadata (instant!)
-      setCreatingStatus('Saving...');
-      const { data, error } = await supabase
-        .from('catalog_items')
-        .insert({
-          catalog_id: catalogId,
-          title: itemTitle.trim(),
-          image_url: finalImageUrl,
-          product_url: itemProductUrl.trim() || null,
-          seller: itemSeller.trim() || null,
-          price: itemPrice.trim() || null
-          // No metadata yet - will be added in background!
-        })
-        .select()
-        .single();
+      if (!response.ok) {
+        throw new Error(result.detail || `Server error: ${response.status}`);
+      }
 
-      if (error) throw error;
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to create item');
+      }
 
-      console.log('✅ Item created immediately:', data.id);
+      console.log('✅ Item created successfully!');
+      console.log('AI Metadata:', result.metadata);
 
-      // Close modal and show item RIGHT AWAY
       resetAddItemForm();
       setShowAddItemModal(false);
       await loadItems();
 
-      // 🎯 Trigger background categorization (don't await!)
-      categorizeItemInBackground(
-        data.id,
-        itemTitle.trim(),
-        finalImageUrl,
-        itemProductUrl.trim(),
-        itemPrice.trim()
-      ).catch(err => {
-        console.error('Background categorization error:', err);
-        // User doesn't see this error - it's silent
-      });
-
-      console.log('🔄 AI categorization running in background...');
-
     } catch (error: any) {
       console.error('❌ Error adding item:', error);
-      setImageError(error.message || 'Failed to add item');
+
+      let errorMessage = error.message || 'Failed to add item';
+
+      if (errorMessage.includes('fetch')) {
+        errorMessage = 'Cannot connect to server. Make sure backend is running.';
+      } else if (errorMessage.includes('Network')) {
+        errorMessage = 'Network error. Check your connection.';
+      }
+
+      setImageError(errorMessage);
     } finally {
       setCreating(false);
       setCreatingStatus('');
@@ -630,9 +501,253 @@ export default function CatalogDetailPage() {
       `}</style>
 
       <div className="min-h-screen bg-white text-black pb-24 md:pb-0">
-        {/* Use the EXACT same UI from catalog-page-final.tsx */}
-        {/* Just copy/paste the entire JSX from that file here */}
-        {/* The only change is in handleAddItem() above */}
+        <div className="border-b border-black/20 p-6 md:p-10">
+          <div className="max-w-7xl mx-auto">
+            <button onClick={() => router.back()} className="mb-6 text-xs tracking-wider opacity-60 hover:opacity-100 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>← BACK</button>
+
+            <div className="flex flex-col md:flex-row gap-8">
+              <div className="w-full md:w-64 h-64 flex-shrink-0 border-2 border-black overflow-hidden">
+                {catalog.image_url ? (
+                  <img src={catalog.image_url} alt={catalog.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-black/5 flex items-center justify-center">
+                    <span className="text-6xl opacity-20">✦</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 space-y-4">
+                <h1 className="text-4xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{catalog.name}</h1>
+
+                <div className="flex items-center gap-3 cursor-pointer hover:opacity-70 transition-opacity w-fit" onClick={() => router.push(`/profiles/${catalog.owner_id}`)}>
+                  <div className="w-10 h-10 border border-black overflow-hidden">
+                    {catalog?.owner?.avatar_url ? (
+                      <img src={catalog.owner.avatar_url} alt={catalog.owner.username} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-black/5 flex items-center justify-center">
+                        <span className="text-xs opacity-20">👤</span>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>@{catalog?.owner?.username || 'Unknown'}</p>
+                    {catalog?.owner?.full_name && <p className="text-xs opacity-60">{catalog.owner.full_name}</p>}
+                  </div>
+                </div>
+
+                {catalog.description && <p className="text-sm leading-relaxed opacity-80 max-w-2xl">{catalog.description}</p>}
+
+                <div className="flex items-center gap-6 text-xs tracking-wider opacity-60">
+                  <span>{items.length} ITEMS</span>
+                  <span>🔖 {catalog.bookmark_count} BOOKMARKS</span>
+                  <span className={`px-2 py-1 ${catalog.visibility === 'public' ? 'bg-black text-white' : 'bg-black/10 text-black'} text-[8px] tracking-[0.3em]`}>{catalog.visibility.toUpperCase()}</span>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  {isOwner ? (
+                    <>
+                      <button onClick={() => setShowAddItemModal(true)} className="px-4 py-2 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>ADD ITEM</button>
+                      {selectedItems.size > 0 && (
+                        <button onClick={deleteSelectedItems} className="px-4 py-2 bg-red-500 text-white hover:bg-red-600 transition-all text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>DELETE ({selectedItems.size})</button>
+                      )}
+                    </>
+                  ) : (
+                    <button onClick={toggleBookmark} className={`px-4 py-2 border-2 transition-all text-xs tracking-[0.4em] font-black ${isBookmarked ? 'bg-black text-white border-black hover:bg-white hover:text-black' : 'border-black text-black hover:bg-black hover:text-white'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{isBookmarked ? '🔖 BOOKMARKED' : 'BOOKMARK'}</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 md:p-10">
+          <div className="max-w-7xl mx-auto">
+            {items.length === 0 ? (
+              <div className="text-center py-20">
+                <p className="text-lg tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO ITEMS YET</p>
+                <p className="text-sm tracking-wide opacity-30 mt-2">{isOwner ? "Add your first item to get started" : "This catalog is empty"}</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+                {items.map((item) => (
+                  <div key={item.id} className="group border border-black/20 hover:border-black transition-all relative">
+                    {isOwner && (
+                      <div className="absolute top-2 left-2 z-20">
+                        <input type="checkbox" checked={selectedItems.has(item.id)} onChange={() => toggleItemSelection(item.id)} className="w-5 h-5 cursor-pointer" onClick={(e) => e.stopPropagation()} />
+                      </div>
+                    )}
+
+                    <div className="aspect-square bg-white overflow-hidden cursor-pointer relative" onClick={() => { if (item.product_url) window.open(item.product_url, '_blank'); }}>
+                      <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                      {item.like_count > 0 && (
+                        <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/80 text-white text-[8px] tracking-wider font-black">♥ {item.like_count}</div>
+                      )}
+                    </div>
+
+                    <div className="p-3 bg-white border-t border-black/20 cursor-pointer hover:bg-black/5 transition-all hidden md:block" onClick={() => setExpandedItem(item)}>
+                      <h3 className="text-xs font-black tracking-wide uppercase leading-tight truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
+                      <div className="flex items-center justify-between text-[10px] tracking-wider opacity-60 mb-2">
+                        {item.seller && <span className="truncate">{item.seller}</span>}
+                        {item.price && <span className="ml-auto">{item.price}</span>}
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.is_liked); }} className="w-full py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs">{item.is_liked ? '♥' : '♡'} LIKE</button>
+                    </div>
+
+                    <div className="md:hidden bg-white border-t border-black/20">
+                      <div className="p-3">
+                        <h3 className="text-xs font-black tracking-wide uppercase leading-tight truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
+                        <div className="flex items-center justify-between text-[10px] tracking-wider opacity-60 mb-2">
+                          {item.seller && <span className="truncate">{item.seller}</span>}
+                          {item.price && <span className="ml-auto">{item.price}</span>}
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.is_liked); }} className="flex-1 py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs">{item.is_liked ? '♥' : '♡'}</button>
+                          <button onClick={(e) => { e.stopPropagation(); setExpandedItem(item); }} className="px-3 py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs">⊕</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {expandedItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md" onClick={() => setExpandedItem(null)}>
+            <div className="relative w-full max-w-sm md:max-w-3xl max-h-[85vh] md:max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => setExpandedItem(null)} className="absolute -top-8 md:-top-12 right-0 text-white text-xs tracking-[0.4em] hover:opacity-50" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>[ESC]</button>
+
+              <div className="bg-white border-2 border-white overflow-hidden">
+                <div className="grid md:grid-cols-2 gap-0">
+                  <div className="aspect-square bg-black/5 overflow-hidden cursor-pointer" onClick={() => { if (expandedItem.product_url) window.open(expandedItem.product_url, '_blank'); }}>
+                    <img src={expandedItem.image_url} alt={expandedItem.title} className="w-full h-full object-contain" />
+                  </div>
+
+                  <div className="p-4 md:p-8 space-y-3 md:space-y-6">
+                    <h2 className="text-xl md:text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{expandedItem.title}</h2>
+                    {expandedItem.seller && <p className="text-xs md:text-sm tracking-wider opacity-60">SELLER: {expandedItem.seller}</p>}
+                    {expandedItem.price && <p className="text-lg md:text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{expandedItem.price}</p>}
+
+                    <div className="space-y-2 md:space-y-3">
+                      <button onClick={() => toggleLike(expandedItem.id, expandedItem.is_liked)} className="w-full py-2 md:py-3 border-2 border-black hover:bg-black hover:text-white transition-all text-[10px] md:text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{expandedItem.is_liked ? '♥ LIKED' : '♡ LIKE'} ({expandedItem.like_count})</button>
+
+                      {expandedItem.product_url && (
+                        <button onClick={() => window.open(expandedItem.product_url!, '_blank')} className="w-full py-2 md:py-3 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-[10px] md:text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>VIEW PRODUCT ↗</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showAddItemModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <div className="w-full max-w-sm md:max-w-md relative">
+              <button onClick={() => { setShowAddItemModal(false); resetAddItemForm(); }} className="absolute -top-8 md:-top-10 right-0 text-[10px] tracking-[0.4em] text-white hover:opacity-50 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>[ESC]</button>
+
+              <div className="border border-white p-4 md:p-6 bg-black relative text-white max-h-[80vh] overflow-y-auto">
+                <div className="space-y-4 md:space-y-6">
+                  <div className="space-y-1">
+                    <div className="text-[9px] tracking-[0.5em] opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>ADD ITEM</div>
+                    <h2 className="text-xl md:text-2xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>NEW ITEM</h2>
+                  </div>
+
+                  <form onSubmit={handleAddItem} className="space-y-3 md:space-y-4">
+                    <div className="space-y-1">
+                      <label className="block text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>TITLE *</label>
+                      <input type="text" value={itemTitle} onChange={(e) => setItemTitle(e.target.value)} placeholder="Item name" className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm" style={{ fontSize: '16px' }} required />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>IMAGE *</label>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => { setUploadMethod('file'); setItemImageUrl(''); setPreviewUrl(null); }} className={`px-3 py-1.5 text-[10px] tracking-wider font-black transition-all ${uploadMethod === 'file' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>UPLOAD FILE</button>
+                        <button type="button" onClick={() => { setUploadMethod('url'); setSelectedFile(null); setPreviewUrl(null); }} className={`px-3 py-1.5 text-[10px] tracking-wider font-black transition-all ${uploadMethod === 'url' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>IMAGE URL</button>
+                      </div>
+                    </div>
+
+                    {uploadMethod === 'file' && (
+                      <div className="space-y-2">
+                        <input type="file" accept="image/*" onChange={handleFileSelect} className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none text-white text-xs file:mr-4 file:py-1 file:px-2 file:border-0 file:bg-white file:text-black file:text-[10px] file:tracking-wider file:font-black" />
+                        <p className="text-[9px] tracking-wider opacity-40">Max 5MB</p>
+                      </div>
+                    )}
+
+                    {uploadMethod === 'url' && (
+                      <div className="space-y-2">
+                        <input type="url" value={itemImageUrl} onChange={(e) => handleImageUrlChange(e.target.value)} placeholder="https://example.com/image.jpg" className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm" style={{ fontSize: '16px' }} />
+                      </div>
+                    )}
+
+                    {((uploadMethod === 'url' && itemImageUrl && !imageError) || (uploadMethod === 'file' && previewUrl)) && (
+                      <div className="flex items-center gap-3 p-2 border border-white/20">
+                        <img src={uploadMethod === 'url' ? itemImageUrl : previewUrl!} alt="Preview" className="w-12 h-12 border border-white object-cover" />
+                        <span className="text-[10px] opacity-60">Preview</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <label className="block text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>PRODUCT URL *</label>
+                      <input type="url" value={itemProductUrl} onChange={(e) => handleProductUrlChange(e.target.value)} placeholder="https://..." className={`w-full px-0 py-2 bg-transparent border-b focus:outline-none text-white placeholder-white/40 text-sm ${productUrlError ? 'border-red-400' : 'border-white'}`} style={{ fontSize: '16px' }} required />
+                      {productUrlError && <p className="text-red-400 text-[10px] tracking-wide">{productUrlError}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>SELLER (AUTO-FILLED)</label>
+                      <input type="text" value={itemSeller} onChange={(e) => setItemSeller(e.target.value)} placeholder="Store name" className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm" style={{ fontSize: '16px' }} />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>PRICE (OPTIONAL)</label>
+                      <input type="text" value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} placeholder="$99" className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none text-white placeholder-white/40 text-sm" style={{ fontSize: '16px' }} />
+                    </div>
+
+                    {imageError && <p className="text-red-400 text-xs tracking-wide">{imageError}</p>}
+                    {creatingStatus && <p className="text-white/60 text-xs tracking-wide">{creatingStatus}</p>}
+
+                    <div className="flex gap-3 pt-4">
+                      <button type="button" onClick={() => { setShowAddItemModal(false); resetAddItemForm(); }} className="flex-1 py-2.5 border border-white text-white hover:bg-white hover:text-black transition-all text-[10px] tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>CANCEL</button>
+
+                      <button type="submit" disabled={creating || !canSubmit} className="flex-1 py-2.5 bg-white text-black hover:bg-black hover:text-white hover:border hover:border-white transition-all text-[10px] tracking-[0.4em] font-black disabled:opacity-30 disabled:cursor-not-allowed" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        {creating ? (creatingStatus || 'ADDING...') : 'ADD ITEM'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
+            <div className="w-full max-w-md bg-white border-2 border-black p-6 md:p-8">
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-3xl md:text-4xl font-black tracking-tighter mb-2" style={{ fontFamily: 'Archivo Black, sans-serif' }}>DELETE ITEMS?</h2>
+                  <p className="text-sm opacity-60">You're about to delete {deleteCount} item{deleteCount > 1 ? 's' : ''}. This action cannot be undone.</p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-3 border border-black/20 hover:bg-black/5 transition-all text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>CANCEL</button>
+                  <button onClick={confirmDelete} className="flex-1 py-3 bg-red-500 text-white hover:bg-red-600 transition-all text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>DELETE</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showLoginMessage && (
+          <div className="fixed top-24 left-1/2 -translate-x-1/2 md:top-auto md:bottom-6 md:right-6 md:left-auto md:translate-x-0 z-[9999] w-[calc(100%-2rem)] max-w-sm">
+            <div className="bg-black border-2 border-white p-4 shadow-lg relative">
+              <button onClick={() => setShowLoginMessage(false)} className="absolute top-2 right-2 text-white hover:opacity-50 transition-opacity text-lg leading-none">✕</button>
+              <p className="text-white text-sm tracking-wide pr-6" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>YOU MUST BE LOGGED IN TO ACCESS LIKES AND BOOKMARKS</p>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
