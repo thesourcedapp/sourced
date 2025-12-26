@@ -54,6 +54,9 @@ type SearchProfile = {
   bio: string | null;
   follower_count: number;
   is_following: boolean;
+  standing?: string;
+  badges?: string[];
+  is_verified?: boolean;
 };
 
 function DiscoverContent() {
@@ -491,7 +494,10 @@ function DiscoverContent() {
         avatar_url: profile.avatar_url,
         bio: profile.bio,
         follower_count: profile.follower_count || 0,
-        is_following: followingIds.has(profile.id)
+        is_following: followingIds.has(profile.id),
+        standing: profile.standing || null,
+        badges: profile.badges || [],
+        is_verified: profile.is_verified || false
       }));
 
       console.log('Final profiles to display:', profilesWithFollowing.length);
@@ -605,6 +611,32 @@ function DiscoverContent() {
   function changeTab(tab: SearchTab) {
     setActiveTab(tab);
     router.push(`/discover?tab=${tab}${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ''}`);
+  }
+
+  // Helper function to get standing badge based on profile
+  function getStandingBadge(profile: SearchProfile) {
+    // If user has manually assigned standing, use that
+    if (profile.standing) {
+      const standingConfig: Record<string, { label: string; icon: string; bg: string }> = {
+        'legendary': { label: 'LEGENDARY', icon: '👑', bg: 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white' },
+        'elite': { label: 'ELITE', icon: '⭐', bg: 'bg-black text-white' },
+        'creator': { label: 'CREATOR', icon: '✦', bg: 'bg-black/80 text-white' },
+        'rising': { label: 'RISING', icon: '◆', bg: 'bg-black/60 text-white' },
+        'member': { label: 'MEMBER', icon: '○', bg: 'bg-black/20 text-black' }
+      };
+      return standingConfig[profile.standing] || standingConfig['member'];
+    }
+
+    // Otherwise calculate based on follower count
+    if (profile.follower_count >= 1000) {
+      return { label: 'ELITE', icon: '⭐', bg: 'bg-black text-white' };
+    } else if (profile.follower_count >= 100) {
+      return { label: 'CREATOR', icon: '✦', bg: 'bg-black/80 text-white' };
+    } else if (profile.follower_count >= 10) {
+      return { label: 'RISING', icon: '◆', bg: 'bg-black/60 text-white' };
+    } else {
+      return { label: 'MEMBER', icon: '○', bg: 'bg-black/20 text-black' };
+    }
   }
 
   return (
@@ -861,7 +893,7 @@ function DiscoverContent() {
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {catalogs.map((catalog) => (
                           <div key={catalog.id} className="border-2 border-black/20 hover:border-black transition-all cursor-pointer" onClick={() => router.push(`/catalogs/${catalog.id}`)}>
-                            <div className="aspect-video bg-black/5 overflow-hidden">
+                            <div className="aspect-square bg-black/5 overflow-hidden">
                               {catalog.image_url ? (
                                 <img src={catalog.image_url} alt={catalog.name} className="w-full h-full object-cover" />
                               ) : (
@@ -922,51 +954,73 @@ function DiscoverContent() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {profiles.map((profile) => (
-                          <div key={profile.id} className="border-2 border-black/20 hover:border-black transition-all p-6">
-                            <div className="flex items-start gap-4 mb-4">
-                              <div className="w-16 h-16 md:w-20 md:h-20 border-2 border-black overflow-hidden flex-shrink-0 cursor-pointer" onClick={() => router.push(`/profiles/${profile.id}`)}>
-                                {profile.avatar_url ? (
-                                  <img src={profile.avatar_url} alt={profile.username} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full bg-black/5 flex items-center justify-center">
-                                    <span className="text-2xl opacity-20">👤</span>
+                        {profiles.map((profile) => {
+                          const standingBadge = getStandingBadge(profile);
+                          return (
+                            <div key={profile.id} className="border-2 border-black/20 hover:border-black transition-all cursor-pointer" onClick={() => router.push(`/profiles/${profile.id}`)}>
+                              <div className="p-6">
+                                <div className="flex items-start gap-4 mb-4">
+                                  <div className="w-16 h-16 md:w-20 md:h-20 border-2 border-black overflow-hidden flex-shrink-0">
+                                    {profile.avatar_url ? (
+                                      <img src={profile.avatar_url} alt={profile.username} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <div className="w-full h-full bg-black/5 flex items-center justify-center">
+                                        <span className="text-2xl opacity-20">👤</span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <h3 className="text-xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                                        @{profile.username}
+                                      </h3>
+                                      {profile.is_verified && (
+                                        <span className="text-blue-500 text-base">✓</span>
+                                      )}
+                                    </div>
+                                    {profile.full_name && (
+                                      <p className="text-sm opacity-60 mb-2">{profile.full_name}</p>
+                                    )}
+                                    <div className="flex items-center gap-3 mb-2">
+                                      <span className="text-[10px] tracking-wider opacity-60">{profile.follower_count} FOLLOWERS</span>
+                                      {/* Compact standing badge */}
+                                      <div className={`px-2 py-0.5 ${standingBadge.bg} text-[9px] tracking-wider font-black`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                                        {standingBadge.icon} {standingBadge.label}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {profile.bio && (
+                                  <p className="text-sm opacity-60 mb-3 line-clamp-2">{profile.bio}</p>
+                                )}
+
+                                {/* Additional badges - only show if they exist */}
+                                {(profile.badges && profile.badges.length > 0) && (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {profile.badges.map((badge, idx) => {
+                                      const badgeDisplay: Record<string, { label: string; bg: string }> = {
+                                        'early-adopter': { label: '🌟 EARLY', bg: 'bg-purple-500 text-white' },
+                                        'top-contributor': { label: '🏆 TOP', bg: 'bg-yellow-600 text-white' },
+                                        'influencer': { label: '📢 INFLUENCER', bg: 'bg-pink-500 text-white' },
+                                        'curator': { label: '🎨 CURATOR', bg: 'bg-indigo-500 text-white' },
+                                        'trendsetter': { label: '⚡ TREND', bg: 'bg-orange-500 text-white' },
+                                        'collector': { label: '💎 COLLECTOR', bg: 'bg-cyan-500 text-white' }
+                                      };
+                                      const badgeInfo = badgeDisplay[badge] || { label: badge.toUpperCase(), bg: 'bg-gray-500 text-white' };
+                                      return (
+                                        <div key={idx} className={`px-2 py-0.5 ${badgeInfo.bg} text-[9px] tracking-wider font-black`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                                          {badgeInfo.label}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>
-
-                              <div className="flex-1 min-w-0">
-                                <h3 className="text-xl font-black tracking-tighter mb-1 cursor-pointer hover:opacity-70" style={{ fontFamily: 'Archivo Black, sans-serif' }} onClick={() => router.push(`/profiles/${profile.id}`)}>
-                                  @{profile.username}
-                                </h3>
-                                {profile.full_name && (
-                                  <p className="text-sm opacity-60 mb-2">{profile.full_name}</p>
-                                )}
-                                <div className="flex items-center gap-4 text-[10px] tracking-wider opacity-60 mb-3">
-                                  <span>{profile.follower_count} FOLLOWERS</span>
-                                </div>
-                              </div>
                             </div>
-
-                            {profile.bio && (
-                              <p className="text-sm opacity-60 mb-4 line-clamp-2">{profile.bio}</p>
-                            )}
-
-                            {profile.id !== currentUserId && (
-                              <button
-                                onClick={() => toggleFollow(profile.id, profile.is_following)}
-                                className={`w-full py-2 border-2 transition-all text-xs tracking-wider font-black ${
-                                  profile.is_following
-                                    ? 'bg-black text-white border-black hover:bg-white hover:text-black'
-                                    : 'border-black text-black hover:bg-black hover:text-white'
-                                }`}
-                                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                              >
-                                {profile.is_following ? 'FOLLOWING' : 'FOLLOW'}
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </>
