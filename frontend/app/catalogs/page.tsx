@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { generateSlug } from '@/lib/utils/slug';
 
 type UserCatalog = {
   id: string;
@@ -280,73 +281,78 @@ export default function CatalogsPage() {
   }
 
   async function handleCreateCatalog(e: React.FormEvent) {
-    e.preventDefault();
-    if (!currentUserId || !catalogName.trim()) return;
+  e.preventDefault();
+  if (!currentUserId || !catalogName.trim()) return;
 
-    setCreating(true);
-    setImageError('');
+  setCreating(true);
+  setImageError('');
 
-    try {
-      let finalImageUrl = '';
+  try {
+    let finalImageUrl = '';
 
-      if (uploadMethod === 'file' && selectedFile) {
-        const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
-        if (!uploadResult.url) {
-          setImageError(uploadResult.error || "Failed to upload image");
-          setCreating(false);
-          return;
-        }
-
-        finalImageUrl = uploadResult.url;
-
-        const safetyCheck = await checkImageSafety(finalImageUrl);
-        if (!safetyCheck.safe) {
-          setImageError("Image contains inappropriate content");
-          setCreating(false);
-          return;
-        }
-      } else if (uploadMethod === 'url' && catalogImageUrl.trim()) {
-        const safetyCheck = await checkImageSafety(catalogImageUrl);
-        if (!safetyCheck.safe) {
-          setImageError("Image contains inappropriate content");
-          setCreating(false);
-          return;
-        }
-        finalImageUrl = catalogImageUrl;
+    if (uploadMethod === 'file' && selectedFile) {
+      const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
+      if (!uploadResult.url) {
+        setImageError(uploadResult.error || "Failed to upload image");
+        setCreating(false);
+        return;
       }
 
-      const { data, error } = await supabase
-        .from('catalogs')
-        .insert({
-          name: catalogName.trim(),
-          description: catalogDescription.trim() || null,
-          image_url: finalImageUrl || null,
-          visibility: catalogVisibility,
-          owner_id: currentUserId
-        })
-        .select()
-        .single();
+      finalImageUrl = uploadResult.url;
 
-      if (error) throw error;
-
-      setCatalogName('');
-      setCatalogDescription('');
-      setSelectedFile(null);
-      setCatalogImageUrl('');
-      setPreviewUrl(null);
-      setCatalogVisibility('public');
-      setUploadMethod('file');
-      setShowCreateModal(false);
-
-      await loadCatalogs();
-      router.push(`/catalogs/${data.id}`);
-    } catch (error) {
-      console.error('Error creating catalog:', error);
-      alert('Failed to create catalog');
-    } finally {
-      setCreating(false);
+      const safetyCheck = await checkImageSafety(finalImageUrl);
+      if (!safetyCheck.safe) {
+        setImageError("Image contains inappropriate content");
+        setCreating(false);
+        return;
+      }
+    } else if (uploadMethod === 'url' && catalogImageUrl.trim()) {
+      const safetyCheck = await checkImageSafety(catalogImageUrl);
+      if (!safetyCheck.safe) {
+        setImageError("Image contains inappropriate content");
+        setCreating(false);
+        return;
+      }
+      finalImageUrl = catalogImageUrl;
     }
+
+    const slug = generateSlug(catalogName);
+
+    const { data, error } = await supabase
+      .from('catalogs')
+      .insert({
+        name: catalogName.trim(),
+        slug: slug,
+        description: catalogDescription.trim() || null,
+        image_url: finalImageUrl || null,
+        visibility: catalogVisibility,
+        owner_id: currentUserId
+      })
+      .select('*, profiles!catalogs_owner_id_fkey(username)')
+      .single();
+
+    if (error) throw error;
+
+    setCatalogName('');
+    setCatalogDescription('');
+    setSelectedFile(null);
+    setCatalogImageUrl('');
+    setPreviewUrl(null);
+    setCatalogVisibility('public');
+    setUploadMethod('file');
+    setShowCreateModal(false);
+
+    await loadCatalogs();
+
+    const owner = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
+    router.push(`/@${owner.username}/${slug}`);
+  } catch (error) {
+    console.error('Error creating catalog:', error);
+    alert('Failed to create catalog');
+  } finally {
+    setCreating(false);
   }
+}
 
   const totalItems = userCatalogs.reduce((sum, cat) => sum + cat.item_count, 0);
   const publicCount = userCatalogs.filter(cat => cat.visibility === 'public').length;
