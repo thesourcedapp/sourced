@@ -552,11 +552,31 @@ export default function ProfilePage() {
     }
   }
 
-  function handleShareProfile() {
+  async function handleShareProfile() {
     const profileUrl = `${window.location.origin}/${username}`;
-    navigator.clipboard.writeText(profileUrl);
-    setShowShareCopied(true);
-    setTimeout(() => setShowShareCopied(false), 2000);
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareDescription,
+          url: profileUrl,
+        });
+      } catch (err) {
+        // User cancelled or share failed
+        if (err instanceof Error && err.name !== 'AbortError') {
+          // Fallback to clipboard
+          navigator.clipboard.writeText(profileUrl);
+          setShowShareCopied(true);
+          setTimeout(() => setShowShareCopied(false), 2000);
+        }
+      }
+    } else {
+      // Fallback for browsers without Web Share API
+      navigator.clipboard.writeText(profileUrl);
+      setShowShareCopied(true);
+      setTimeout(() => setShowShareCopied(false), 2000);
+    }
   }
 
   async function toggleFollow() {
