@@ -691,7 +691,7 @@ export default function CatalogDetailPage() {
   // Generate share metadata
   const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
   const shareTitle = catalog ? `Sourced - ${catalog.name}` : 'Sourced';
-  const shareDescription = catalog?.description || `Check out this catalog with ${items.length} items on Sourced`;
+  const shareDescription = `${catalog?.name || 'Catalog'} on Sourced`;
   const shareImage = catalog?.image_url || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='; // Black 1x1 pixel
 
   if (loading) {
@@ -841,25 +841,29 @@ export default function CatalogDetailPage() {
                   )}
                   <button
                     onClick={async () => {
-                      if (navigator.share) {
-                        try {
+                      try {
+                        if (navigator.share) {
                           await navigator.share({
                             title: shareTitle,
                             text: shareDescription,
                             url: window.location.href,
                           });
-                        } catch (err) {
-                          // User cancelled or share failed
-                          if (err instanceof Error && err.name !== 'AbortError') {
-                            // Fallback to clipboard
-                            navigator.clipboard.writeText(window.location.href);
+                        } else {
+                          // Desktop fallback - copy to clipboard
+                          await navigator.clipboard.writeText(window.location.href);
+                          alert('Link copied to clipboard!');
+                        }
+                      } catch (err) {
+                        // User cancelled or error occurred
+                        if (err instanceof Error && err.name !== 'AbortError') {
+                          // Fallback to clipboard if share fails
+                          try {
+                            await navigator.clipboard.writeText(window.location.href);
                             alert('Link copied to clipboard!');
+                          } catch {
+                            console.error('Failed to copy link');
                           }
                         }
-                      } else {
-                        // Fallback for browsers without Web Share API
-                        navigator.clipboard.writeText(window.location.href);
-                        alert('Link copied to clipboard!');
                       }
                     }}
                     className="px-4 md:px-6 py-2 border-2 border-black hover:bg-black hover:text-white transition-all text-[10px] md:text-xs tracking-[0.4em] font-black"

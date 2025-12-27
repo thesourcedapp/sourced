@@ -158,7 +158,7 @@ export default function ProfilePage() {
   // Generate share metadata
   const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
   const shareTitle = profile ? `Sourced - ${profile.username}` : 'Sourced';
-  const shareDescription = profile?.bio || `Check out @${username}'s profile on Sourced`;
+  const shareDescription = `@${username} on Sourced`;
   const shareImage = profile?.avatar_url || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='; // Black 1x1 pixel
 
   useEffect(() => {
@@ -553,29 +553,31 @@ export default function ProfilePage() {
   }
 
   async function handleShareProfile() {
-    const profileUrl = `${window.location.origin}/${username}`;
-
-    if (navigator.share) {
-      try {
+    try {
+      if (navigator.share) {
         await navigator.share({
           title: shareTitle,
           text: shareDescription,
-          url: profileUrl,
+          url: window.location.href,
         });
-      } catch (err) {
-        // User cancelled or share failed
-        if (err instanceof Error && err.name !== 'AbortError') {
-          // Fallback to clipboard
-          navigator.clipboard.writeText(profileUrl);
+      } else {
+        // Desktop fallback - copy to clipboard
+        await navigator.clipboard.writeText(window.location.href);
+        setShowShareCopied(true);
+        setTimeout(() => setShowShareCopied(false), 2000);
+      }
+    } catch (err) {
+      // User cancelled or error occurred
+      if (err instanceof Error && err.name !== 'AbortError') {
+        // Fallback to clipboard if share fails
+        try {
+          await navigator.clipboard.writeText(window.location.href);
           setShowShareCopied(true);
           setTimeout(() => setShowShareCopied(false), 2000);
+        } catch {
+          console.error('Failed to copy link');
         }
       }
-    } else {
-      // Fallback for browsers without Web Share API
-      navigator.clipboard.writeText(profileUrl);
-      setShowShareCopied(true);
-      setTimeout(() => setShowShareCopied(false), 2000);
     }
   }
 
