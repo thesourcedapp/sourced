@@ -293,9 +293,9 @@ function DiscoverContent() {
     for (const [aesthetic, config] of Object.entries(SEARCH_KNOWLEDGE.aesthetics)) {
       if (lowerQuery.includes(aesthetic)) {
         detectedFilters.aesthetic = aesthetic;
-        if (config.brands) detectedFilters.brands.push(...config.brands);
-        if (config.categories) detectedFilters.categories.push(...config.categories);
-        if (config.colors) detectedFilters.colors.push(...config.colors);
+        if ('brands' in config && config.brands) detectedFilters.brands.push(...config.brands);
+        if ('categories' in config && config.categories) detectedFilters.categories.push(...config.categories);
+        if ('colors' in config && config.colors) detectedFilters.colors.push(...config.colors);
       }
     }
 
@@ -532,8 +532,8 @@ function DiscoverContent() {
             // Aesthetic match bonus
             if (smartFilters.aesthetic) {
               const aestheticConfig = SEARCH_KNOWLEDGE.aesthetics[smartFilters.aesthetic];
-              if (aestheticConfig.brands?.some(b => item.brand?.toLowerCase().includes(b))) score += 300;
-              if (aestheticConfig.colors?.some(c => item.primary_color?.toLowerCase() === c)) score += 200;
+              if ('brands' in aestheticConfig && aestheticConfig.brands?.some(b => item.brand?.toLowerCase().includes(b))) score += 300;
+              if ('colors' in aestheticConfig && aestheticConfig.colors?.some(c => item.primary_color?.toLowerCase() === c)) score += 200;
             }
 
             // === POPULARITY & RECENCY BOOST (Secondary) ===
