@@ -531,7 +531,7 @@ function DiscoverContent() {
 
             // Aesthetic match bonus
             if (smartFilters.aesthetic) {
-              const aestheticConfig = SEARCH_KNOWLEDGE.aesthetics[smartFilters.aesthetic];
+              const aestheticConfig = SEARCH_KNOWLEDGE.aesthetics[smartFilters.aesthetic as keyof typeof SEARCH_KNOWLEDGE.aesthetics];
               if ('brands' in aestheticConfig && aestheticConfig.brands?.some(b => item.brand?.toLowerCase().includes(b))) score += 300;
               if ('colors' in aestheticConfig && aestheticConfig.colors?.some(c => item.primary_color?.toLowerCase() === c)) score += 200;
             }
