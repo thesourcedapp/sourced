@@ -14,12 +14,12 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Sourced - Visual Fashion Discovery",
-  description: "Create catalogs of clothing you love. Organize your style. Share your aesthetic.",
+  description: "Create and organize fashion catalogs of clothing you love. Upload images to find similar pieces, build curated collections, and share your style with others. Discover new fashion through visual search and community catalogs.",
 
   // Open Graph (Facebook, iMessage, LinkedIn, WhatsApp, etc.)
   openGraph: {
     title: "Sourced - Visual Fashion Discovery",
-    description: "Create catalogs of clothing you love. Organize your style. Share your aesthetic.",
+    description: "Create and organize fashion catalogs of clothing you love. Upload images to find similar pieces, build curated collections, and share your style with others.",
     images: [
       {
         url: "/og-image.png",
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Sourced - Visual Fashion Discovery",
-    description: "Create catalogs of clothing you love. Organize your style. Share your aesthetic.",
+    description: "Create and organize fashion catalogs of clothing you love. Upload images to find similar pieces, build curated collections, and share your style.",
     images: ["/og-image.png"],
   },
 };
@@ -47,6 +47,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         {/* Favicon - browser tab icon */}
         <link rel="icon" href="/logo-s.svg" type="image/svg+xml" />
+
+        {/* Apple Touch Icon - for iOS sharing/home screen */}
+        <link rel="apple-touch-icon" href="/logo-s2.png" />
 
         <style>{`
           /* Prevent zoom on mobile inputs - CRITICAL for iOS */
