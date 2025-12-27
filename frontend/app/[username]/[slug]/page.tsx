@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter, useParams } from "next/navigation";
+import Head from "next/head";
 
 type CatalogData = {
   id: string;
@@ -65,15 +66,9 @@ async function uploadImageToStorage(file: File, userId: string): Promise<{ url: 
 function extractSellerFromUrl(url: string): string {
   try {
     const urlObj = new URL(url);
-
-    // Get domain without www
     let domain = urlObj.hostname.replace(/^www\./i, '');
-
-    // Get the main domain part (second-level domain)
     const parts = domain.split('.');
     let seller = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
-
-    // Capitalize first letter
     return seller.charAt(0).toUpperCase() + seller.slice(1);
   } catch {
     return '';
@@ -119,6 +114,17 @@ export default function CatalogDetailPage() {
   const [imageError, setImageError] = useState('');
   const [productUrlError, setProductUrlError] = useState('');
 
+  // Edit catalog state
+  const [showEditCatalogModal, setShowEditCatalogModal] = useState(false);
+  const [editCatalogName, setEditCatalogName] = useState('');
+  const [editCatalogDescription, setEditCatalogDescription] = useState('');
+  const [editCatalogImageUrl, setEditCatalogImageUrl] = useState('');
+  const [editCatalogFile, setEditCatalogFile] = useState<File | null>(null);
+  const [editCatalogPreview, setEditCatalogPreview] = useState<string | null>(null);
+  const [editCatalogMethod, setEditCatalogMethod] = useState<'url' | 'file' | 'keep'>('keep');
+  const [editingCatalog, setEditingCatalog] = useState(false);
+  const [editCatalogError, setEditCatalogError] = useState('');
+
   const isOwner = currentUserId === catalog?.owner_id;
 
   useEffect(() => {
@@ -137,11 +143,9 @@ export default function CatalogDetailPage() {
     }
   }, [catalog?.id, currentUserId]);
 
-  // Filter and sort items
   useEffect(() => {
     let filtered = [...items];
 
-    // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(item =>
@@ -151,7 +155,6 @@ export default function CatalogDetailPage() {
       );
     }
 
-    // Sort
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'recent':
@@ -202,7 +205,6 @@ export default function CatalogDetailPage() {
 
       if (error) throw error;
 
-      // Verify username matches
       const owner = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
       if (owner.username !== username) {
         throw new Error('Username mismatch');
@@ -486,6 +488,7 @@ export default function CatalogDetailPage() {
         user_id: currentUserId
       };
 
+      // Call backend API with AI categorization
       const response = await fetch(`https://sourced-5ovn.onrender.com/create-catalog-item`, {
         method: 'POST',
         headers: {
@@ -503,6 +506,14 @@ export default function CatalogDetailPage() {
       }
 
       if (!response.ok) {
+        // If it's a duplicate error (item already exists), consider it success
+        if (result.detail && result.detail.includes('duplicate') || result.detail.includes('already exists')) {
+          console.log('Item already exists, treating as success');
+          resetAddItemForm();
+          setShowAddItemModal(false);
+          await loadItems();
+          return;
+        }
         throw new Error(result.detail || `Server error: ${response.status}`);
       }
 
@@ -519,16 +530,154 @@ export default function CatalogDetailPage() {
 
       let errorMessage = error.message || 'Failed to add item';
 
+      // Better error handling for common issues
       if (errorMessage.includes('fetch')) {
         errorMessage = 'Cannot connect to server. Make sure backend is running.';
       } else if (errorMessage.includes('Network')) {
         errorMessage = 'Network error. Check your connection.';
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+        errorMessage = 'Request timed out. The item may have been added - please check before retrying.';
       }
 
       setImageError(errorMessage);
     } finally {
       setCreating(false);
       setCreatingStatus('');
+    }
+  }
+
+  // Edit Catalog Functions
+  function openEditCatalogModal() {
+    if (!catalog) return;
+    setEditCatalogName(catalog.name);
+    setEditCatalogDescription(catalog.description || '');
+    setEditCatalogImageUrl(catalog.image_url || '');
+    setEditCatalogPreview(catalog.image_url);
+    setEditCatalogMethod('keep');
+    setEditCatalogFile(null);
+    setEditCatalogError('');
+    setShowEditCatalogModal(true);
+  }
+
+  async function handleEditCatalogFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setEditCatalogError('Please select an image file');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setEditCatalogError('Image must be smaller than 5MB');
+      return;
+    }
+
+    setEditCatalogFile(file);
+    setEditCatalogError('');
+
+    const reader = new FileReader();
+    reader.onload = (e) => setEditCatalogPreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  function handleEditCatalogImageUrlChange(url: string) {
+    setEditCatalogImageUrl(url);
+    setEditCatalogError('');
+
+    if (!url.trim()) {
+      setEditCatalogPreview(catalog?.image_url || null);
+      return;
+    }
+
+    try {
+      new URL(url);
+      setEditCatalogPreview(url);
+    } catch {
+      setEditCatalogError("Invalid URL format");
+      setEditCatalogPreview(catalog?.image_url || null);
+    }
+  }
+
+  async function handleEditCatalog(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!currentUserId || !catalog) return;
+
+    setEditingCatalog(true);
+    setEditCatalogError('');
+
+    try {
+      let finalImageUrl = catalog.image_url;
+
+      // Handle image update
+      if (editCatalogMethod === 'file' && editCatalogFile) {
+        // Upload new image
+        const uploadResult = await uploadImageToStorage(editCatalogFile, currentUserId);
+
+        if (!uploadResult.url) {
+          setEditCatalogError(uploadResult.error || "Failed to upload image");
+          setEditingCatalog(false);
+          return;
+        }
+
+        // Check image with moderation API
+        const moderationResponse = await fetch('https://sourced-5ovn.onrender.com/check-catalog-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_url: uploadResult.url })
+        });
+
+        const moderationResult = await moderationResponse.json();
+
+        if (!moderationResponse.ok || !moderationResult.safe) {
+          setEditCatalogError(moderationResult.message || 'Image rejected by content moderation');
+          setEditingCatalog(false);
+          return;
+        }
+
+        finalImageUrl = uploadResult.url;
+
+      } else if (editCatalogMethod === 'url' && editCatalogImageUrl.trim()) {
+        // Check URL image with moderation API
+        const moderationResponse = await fetch('https://sourced-5ovn.onrender.com/check-catalog-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_url: editCatalogImageUrl })
+        });
+
+        const moderationResult = await moderationResponse.json();
+
+        if (!moderationResponse.ok || !moderationResult.safe) {
+          setEditCatalogError(moderationResult.message || 'Image rejected by content moderation');
+          setEditingCatalog(false);
+          return;
+        }
+
+        finalImageUrl = editCatalogImageUrl;
+      }
+
+      // Update catalog in database
+      const { error } = await supabase
+        .from('catalogs')
+        .update({
+          name: editCatalogName.trim(),
+          description: editCatalogDescription.trim() || null,
+          image_url: finalImageUrl
+        })
+        .eq('id', catalog.id);
+
+      if (error) throw error;
+
+      // Reload catalog
+      await loadCatalog();
+      setShowEditCatalogModal(false);
+
+    } catch (error: any) {
+      console.error('Error updating catalog:', error);
+      setEditCatalogError(error.message || 'Failed to update catalog');
+    } finally {
+      setEditingCatalog(false);
     }
   }
 
@@ -539,9 +688,18 @@ export default function CatalogDetailPage() {
 
   const totalLikes = items.reduce((sum, item) => sum + item.like_count, 0);
 
+  // Generate share metadata
+  const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const shareTitle = catalog ? `${catalog.name} by @${catalog.owner.username} | Sourced` : 'Sourced';
+  const shareDescription = catalog?.description || `Check out this catalog with ${items.length} items on Sourced`;
+  const shareImage = catalog?.image_url || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='; // Black 1x1 pixel
+
   if (loading) {
     return (
       <>
+        <Head>
+          <title>Loading... | Sourced</title>
+        </Head>
         <style jsx global>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');`}</style>
         <div className="min-h-screen bg-white text-black flex items-center justify-center">
           <p className="text-xs tracking-[0.4em]" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>LOADING...</p>
@@ -553,6 +711,9 @@ export default function CatalogDetailPage() {
   if (!catalog) {
     return (
       <>
+        <Head>
+          <title>Catalog Not Found | Sourced</title>
+        </Head>
         <style jsx global>{`@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');`}</style>
         <div className="min-h-screen bg-white text-black flex items-center justify-center">
           <div className="text-center">
@@ -566,6 +727,31 @@ export default function CatalogDetailPage() {
 
   return (
     <>
+      <Head>
+        <title>{shareTitle}</title>
+        <meta name="description" content={shareDescription} />
+
+        {/* Open Graph / Facebook */}
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content={pageUrl} />
+        <meta property="og:title" content={shareTitle} />
+        <meta property="og:description" content={shareDescription} />
+        <meta property="og:image" content={shareImage} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+
+        {/* Twitter */}
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:url" content={pageUrl} />
+        <meta property="twitter:title" content={shareTitle} />
+        <meta property="twitter:description" content={shareDescription} />
+        <meta property="twitter:image" content={shareImage} />
+
+        {/* Additional meta tags */}
+        <meta property="og:site_name" content="Sourced" />
+        <meta name="twitter:site" content="@sourced" />
+      </Head>
+
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');
         input, textarea, select { font-size: 16px !important; }
@@ -578,8 +764,7 @@ export default function CatalogDetailPage() {
             <button onClick={() => router.back()} className="mb-4 md:mb-6 text-xs tracking-wider opacity-60 hover:opacity-100 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>← BACK</button>
 
             <div className="flex flex-col md:flex-row gap-6 md:gap-8">
-              {/* Square image on mobile */}
-              <div className="w-full md:w-64 aspect-square md:h-64 flex-shrink-0 border-2 border-black overflow-hidden">
+              <div className="w-full md:w-64 aspect-square md:h-64 flex-shrink-0 border-2 border-black overflow-hidden relative group">
                 {catalog.image_url ? (
                   <img src={catalog.image_url} alt={catalog.name} className="w-full h-full object-cover" />
                 ) : (
@@ -587,12 +772,30 @@ export default function CatalogDetailPage() {
                     <span className="text-6xl opacity-20">✦</span>
                   </div>
                 )}
+                {isOwner && (
+                  <button
+                    onClick={openEditCatalogModal}
+                    className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                  >
+                    <span className="text-white text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>EDIT</span>
+                  </button>
+                )}
               </div>
 
               <div className="flex-1 space-y-3 md:space-y-4">
-                <h1 className="text-3xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{catalog.name}</h1>
+                <div className="flex items-start justify-between gap-4">
+                  <h1 className="text-3xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{catalog.name}</h1>
+                  {isOwner && (
+                    <button
+                      onClick={openEditCatalogModal}
+                      className="px-3 py-1 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-[10px] tracking-wider"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      EDIT
+                    </button>
+                  )}
+                </div>
 
-                {/* Circular profile icon */}
                 <div className="flex items-center gap-3 cursor-pointer hover:opacity-70 transition-opacity w-fit" onClick={() => router.push(`/${catalog.owner.username}`)}>
                   <div className="w-8 h-8 md:w-10 md:h-10 rounded-full border border-black overflow-hidden">
                     {catalog?.owner?.avatar_url ? (
@@ -645,7 +848,6 @@ export default function CatalogDetailPage() {
           <div className="border-b border-black/10 bg-white/95 backdrop-blur-md sticky top-0 z-30">
             <div className="max-w-7xl mx-auto p-3 md:p-4">
               <div className="flex flex-col md:flex-row gap-2 md:gap-3">
-                {/* Search */}
                 <div className="flex-1 md:max-w-md">
                   <input
                     type="text"
@@ -656,7 +858,6 @@ export default function CatalogDetailPage() {
                   />
                 </div>
 
-                {/* Sort */}
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as SortOption)}
@@ -669,7 +870,6 @@ export default function CatalogDetailPage() {
                   <option value="title">TITLE</option>
                 </select>
 
-                {/* View Mode - Desktop only */}
                 <div className="hidden md:flex border border-black/10">
                   <button
                     onClick={() => setViewMode('grid')}
@@ -692,7 +892,6 @@ export default function CatalogDetailPage() {
                 </div>
               </div>
 
-              {/* Results count */}
               {searchQuery && (
                 <p className="text-[10px] opacity-40 mt-2">
                   {filteredItems.length} of {items.length} items
@@ -738,7 +937,7 @@ export default function CatalogDetailPage() {
                       <h3 className="text-xs font-black tracking-wide uppercase leading-tight truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
                       <div className="flex items-center justify-between text-[10px] tracking-wider opacity-60 mb-2">
                         {item.seller && <span className="truncate">{item.seller}</span>}
-                        {item.price && <span className="ml-auto">{item.price}</span>}
+                        {item.price && <span className="ml-auto">${item.price}</span>}
                       </div>
                       <button onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.is_liked); }} className="w-full py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs">{item.is_liked ? '♥' : '♡'} LIKE</button>
                     </div>
@@ -748,7 +947,7 @@ export default function CatalogDetailPage() {
                         <h3 className="text-xs font-black tracking-wide uppercase leading-tight truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
                         <div className="flex items-center justify-between text-[10px] tracking-wider opacity-60 mb-2">
                           {item.seller && <span className="truncate">{item.seller}</span>}
-                          {item.price && <span className="ml-auto">{item.price}</span>}
+                          {item.price && <span className="ml-auto">${item.price}</span>}
                         </div>
                         <div className="flex gap-2">
                           <button onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.is_liked); }} className="flex-1 py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs">{item.is_liked ? '♥' : '♡'}</button>
@@ -760,7 +959,6 @@ export default function CatalogDetailPage() {
                 ))}
               </div>
             ) : (
-              /* Compact List View */
               <div className="space-y-2">
                 {filteredItems.map((item) => (
                   <div
@@ -787,7 +985,7 @@ export default function CatalogDetailPage() {
                       <h3 className="text-xs md:text-sm font-black tracking-wide uppercase truncate" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
                       <div className="flex items-center gap-3 text-[10px] opacity-60">
                         {item.seller && <span>{item.seller}</span>}
-                        {item.price && <span>{item.price}</span>}
+                        {item.price && <span>${item.price}</span>}
                         <span>♥ {item.like_count}</span>
                       </div>
                     </div>
@@ -813,6 +1011,167 @@ export default function CatalogDetailPage() {
           </div>
         </div>
 
+        {/* Edit Catalog Modal */}
+        {showEditCatalogModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <div className="w-full max-w-sm md:max-w-md relative">
+              <button
+                onClick={() => setShowEditCatalogModal(false)}
+                className="absolute -top-8 md:-top-10 right-0 text-[10px] tracking-[0.4em] text-white hover:opacity-50 transition-opacity"
+                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+              >
+                [ESC]
+              </button>
+
+              <div className="border border-white p-4 md:p-6 bg-black relative text-white max-h-[80vh] overflow-y-auto">
+                <div className="space-y-4 md:space-y-6">
+                  <div className="space-y-1">
+                    <div className="text-[9px] tracking-[0.5em] opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>EDIT CATALOG</div>
+                    <h2 className="text-xl md:text-2xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>UPDATE DETAILS</h2>
+                  </div>
+
+                  <form onSubmit={handleEditCatalog} className="space-y-3 md:space-y-4">
+                    <div className="space-y-1">
+                      <label className="block text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NAME *</label>
+                      <input
+                        type="text"
+                        value={editCatalogName}
+                        onChange={(e) => setEditCatalogName(e.target.value)}
+                        placeholder="Catalog name"
+                        className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm"
+                        style={{ fontSize: '16px' }}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>DESCRIPTION</label>
+                      <textarea
+                        value={editCatalogDescription}
+                        onChange={(e) => setEditCatalogDescription(e.target.value)}
+                        placeholder="Catalog description..."
+                        rows={3}
+                        className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm resize-none"
+                        style={{ fontSize: '16px' }}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>COVER IMAGE</label>
+                      <div className="flex gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditCatalogMethod('keep');
+                            setEditCatalogImageUrl('');
+                            setEditCatalogFile(null);
+                            setEditCatalogPreview(catalog.image_url);
+                          }}
+                          className={`px-3 py-1.5 text-[10px] tracking-wider font-black transition-all ${
+                            editCatalogMethod === 'keep' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'
+                          }`}
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                        >
+                          KEEP CURRENT
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditCatalogMethod('file');
+                            setEditCatalogImageUrl('');
+                            setEditCatalogPreview(null);
+                          }}
+                          className={`px-3 py-1.5 text-[10px] tracking-wider font-black transition-all ${
+                            editCatalogMethod === 'file' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'
+                          }`}
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                        >
+                          UPLOAD NEW
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditCatalogMethod('url');
+                            setEditCatalogFile(null);
+                            setEditCatalogPreview(null);
+                          }}
+                          className={`px-3 py-1.5 text-[10px] tracking-wider font-black transition-all ${
+                            editCatalogMethod === 'url' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'
+                          }`}
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                        >
+                          IMAGE URL
+                        </button>
+                      </div>
+                    </div>
+
+                    {editCatalogMethod === 'file' && (
+                      <div className="space-y-2">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleEditCatalogFileSelect}
+                          className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none text-white text-xs file:mr-4 file:py-1 file:px-2 file:border-0 file:bg-white file:text-black file:text-[10px] file:tracking-wider file:font-black"
+                        />
+                        <p className="text-[9px] tracking-wider opacity-40">Max 5MB</p>
+                      </div>
+                    )}
+
+                    {editCatalogMethod === 'url' && (
+                      <div className="space-y-2">
+                        <input
+                          type="url"
+                          value={editCatalogImageUrl}
+                          onChange={(e) => handleEditCatalogImageUrlChange(e.target.value)}
+                          placeholder="https://example.com/image.jpg"
+                          className="w-full px-0 py-2 bg-transparent border-b border-white focus:outline-none transition-all text-white placeholder-white/40 text-sm"
+                          style={{ fontSize: '16px' }}
+                        />
+                      </div>
+                    )}
+
+                    {editCatalogPreview && (
+                      <div className="flex items-center gap-3 p-2 border border-white/20">
+                        <img
+                          src={editCatalogPreview}
+                          alt="Preview"
+                          className="w-16 h-16 border border-white object-cover"
+                        />
+                        <span className="text-[10px] opacity-60">Preview</span>
+                      </div>
+                    )}
+
+                    {editCatalogError && (
+                      <p className="text-red-400 text-xs tracking-wide">{editCatalogError}</p>
+                    )}
+
+                    <div className="flex gap-3 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowEditCatalogModal(false)}
+                        className="flex-1 py-2.5 border border-white text-white hover:bg-white hover:text-black transition-all text-[10px] tracking-[0.4em] font-black"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        CANCEL
+                      </button>
+
+                      <button
+                        type="submit"
+                        disabled={editingCatalog || !editCatalogName.trim()}
+                        className="flex-1 py-2.5 bg-white text-black hover:bg-black hover:text-white hover:border hover:border-white transition-all text-[10px] tracking-[0.4em] font-black disabled:opacity-30 disabled:cursor-not-allowed"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        {editingCatalog ? 'UPDATING...' : 'UPDATE'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Expanded Item Modal */}
         {expandedItem && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md" onClick={() => setExpandedItem(null)}>
             <div className="relative w-full max-w-sm md:max-w-3xl max-h-[85vh] md:max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
@@ -827,7 +1186,7 @@ export default function CatalogDetailPage() {
                   <div className="p-4 md:p-8 space-y-3 md:space-y-6">
                     <h2 className="text-xl md:text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{expandedItem.title}</h2>
                     {expandedItem.seller && <p className="text-xs md:text-sm tracking-wider opacity-60">SELLER: {expandedItem.seller}</p>}
-                    {expandedItem.price && <p className="text-lg md:text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{expandedItem.price}</p>}
+                    {expandedItem.price && <p className="text-lg md:text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>${expandedItem.price}</p>}
 
                     <div className="space-y-2 md:space-y-3">
                       <button onClick={() => toggleLike(expandedItem.id, expandedItem.is_liked)} className="w-full py-2 md:py-3 border-2 border-black hover:bg-black hover:text-white transition-all text-[10px] md:text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{expandedItem.is_liked ? '♥ LIKED' : '♡ LIKE'} ({expandedItem.like_count})</button>
@@ -843,6 +1202,7 @@ export default function CatalogDetailPage() {
           </div>
         )}
 
+        {/* Add Item Modal */}
         {showAddItemModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
             <div className="w-full max-w-sm md:max-w-md relative">
@@ -922,6 +1282,7 @@ export default function CatalogDetailPage() {
           </div>
         )}
 
+        {/* Delete Modal */}
         {showDeleteModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
             <div className="w-full max-w-md bg-white border-2 border-black p-6 md:p-8">
@@ -940,6 +1301,7 @@ export default function CatalogDetailPage() {
           </div>
         )}
 
+        {/* Login Message */}
         {showLoginMessage && (
           <div className="fixed top-24 left-1/2 -translate-x-1/2 md:top-auto md:bottom-6 md:right-6 md:left-auto md:translate-x-0 z-[9999] w-[calc(100%-2rem)] max-w-sm">
             <div className="bg-black border-2 border-white p-4 shadow-lg relative">

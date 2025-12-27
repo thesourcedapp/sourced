@@ -20,9 +20,11 @@ export default function SearchPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("SEARCHING...");
+  const [totalSearches, setTotalSearches] = useState<number | null>(null);
 
   useEffect(() => {
     loadCurrentUser();
+    loadSearchCount();
   }, []);
 
   async function loadCurrentUser() {
@@ -31,7 +33,6 @@ export default function SearchPage() {
     if (user) {
       setCurrentUserId(user.id);
 
-      // Check if user is onboarded
       const { data: profile } = await supabase
         .from('profiles')
         .select('is_onboarded')
@@ -42,6 +43,27 @@ export default function SearchPage() {
     } else {
       setCurrentUserId(null);
       setIsOnboarded(false);
+    }
+  }
+
+  async function loadSearchCount() {
+    const { count } = await supabase
+      .from('searches')
+      .select('*', { count: 'exact', head: true });
+
+    setTotalSearches(count || 0);
+  }
+
+  async function recordSearch() {
+    if (!currentUserId) return;
+
+    const { error } = await supabase
+      .from('searches')
+      .insert({ user_id: currentUserId });
+
+    if (!error) {
+      // Increment local count immediately for responsive UI
+      setTotalSearches(prev => (prev !== null ? prev + 1 : 1));
     }
   }
 
@@ -62,7 +84,9 @@ export default function SearchPage() {
     setError(null);
     setLoadingMessage("SEARCHING...");
 
-    // Cycle through loading messages to show progress
+    // Record the search
+    await recordSearch();
+
     const messages = [
       "SEARCHING...",
       "ANALYZING IMAGE...",
@@ -76,9 +100,8 @@ export default function SearchPage() {
       setLoadingMessage(messages[messageIndex]);
     }, 3000);
 
-    // Create abort controller for timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
 
     try {
       const res = await fetch("https://sourced-5ovn.onrender.com/search", {
@@ -134,16 +157,13 @@ export default function SearchPage() {
       `}</style>
 
       <div className="min-h-screen bg-white text-black">
-        {/* Auth Required Popup - Minimal Opium Aesthetic */}
+        {/* Auth Required Popup */}
         {showAuthPopup && (
           <div
             className="fixed inset-0 z-[100] flex items-center justify-center p-4"
             onClick={() => setShowAuthPopup(false)}
           >
-            {/* Backdrop */}
             <div className="absolute inset-0 bg-black/90 backdrop-blur-md" />
-
-            {/* Popup */}
             <div
               className="relative w-full max-w-sm"
               onClick={(e) => e.stopPropagation()}
@@ -192,9 +212,21 @@ export default function SearchPage() {
         {/* Header */}
         <div className="border-b border-black/20 p-6 md:p-10">
           <div className="max-w-7xl mx-auto">
-            <h1 className="text-6xl md:text-7xl lg:text-8xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
-              IMAGE SEARCH
-            </h1>
+            <div className="flex items-end justify-between">
+              <h1 className="text-6xl md:text-7xl lg:text-8xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                IMAGE SEARCH
+              </h1>
+              {totalSearches !== null && (
+                <div className="text-right">
+                  <div className="text-[10px] tracking-[0.5em] opacity-40 mb-1" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                    TOTAL SEARCHES
+                  </div>
+                  <div className="text-2xl md:text-3xl font-black tracking-wider" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                    {totalSearches.toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -283,14 +315,13 @@ export default function SearchPage() {
 
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
                     {products.map((product, idx) => (
-                      <a
+
                         key={idx}
                         href={product.item_url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="group border border-black/20 hover:border-black hover:scale-105 transform transition-all duration-200"
                       >
-                        {/* Product Image */}
                         <div className="relative aspect-square bg-white overflow-hidden">
                           <img
                             src={product.image_url}
@@ -299,7 +330,6 @@ export default function SearchPage() {
                           />
                         </div>
 
-                        {/* Product Info */}
                         <div className="p-3 bg-white border-t border-black/20">
                           <h4 className="text-xs font-black tracking-wide uppercase leading-tight truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                             {product.name}
