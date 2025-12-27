@@ -13,14 +13,41 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Sourced",
-  description: "Discover and organize fashion catalogs",
+  title: "Sourced - Visual Fashion Discovery",
+  description: "Create catalogs of clothing you love. Organize your style. Share your aesthetic.",
+
+  // Open Graph (Facebook, iMessage, LinkedIn, WhatsApp, etc.)
+  openGraph: {
+    title: "Sourced - Visual Fashion Discovery",
+    description: "Create catalogs of clothing you love. Organize your style. Share your aesthetic.",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Sourced - Fashion Discovery Platform",
+      }
+    ],
+    type: "website",
+    siteName: "Sourced",
+  },
+
+  // Twitter/X
+  twitter: {
+    card: "summary_large_image",
+    title: "Sourced - Visual Fashion Discovery",
+    description: "Create catalogs of clothing you love. Organize your style. Share your aesthetic.",
+    images: ["/og-image.png"],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
+        {/* Favicon - browser tab icon */}
+        <link rel="icon" href="/logo-s.svg" type="image/svg+xml" />
+
         <style>{`
           /* Prevent zoom on mobile inputs - CRITICAL for iOS */
           input, textarea, select {
@@ -32,32 +59,34 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="bg-white border-b border-black/10">
           {/* Desktop Header */}
           <div className="hidden md:flex justify-between items-center px-5 py-3 gap-5">
-            <div style={{
+            <Link href="/" style={{
               fontFamily: "Arial Black, sans-serif",
               fontSize: "22px",
               fontWeight: "900",
               letterSpacing: "-0.5px",
               color: "black",
-              flexShrink: 0
+              flexShrink: 0,
+              textDecoration: "none"
             }}>
               SOURCED
-            </div>
+            </Link>
             <TopNav />
             <AuthWidget showUsername={true} />
           </div>
 
           {/* Mobile Header - Compact single row */}
           <div className="md:hidden flex items-center justify-between px-4 py-2">
-            <div style={{
+            <Link href="/" style={{
               fontFamily: "Arial Black, sans-serif",
               fontSize: "18px",
               fontWeight: "900",
               letterSpacing: "-0.5px",
               color: "black",
-              flexShrink: 0
+              flexShrink: 0,
+              textDecoration: "none"
             }}>
               SOURCED
-            </div>
+            </Link>
             <TopNav mobile={true} />
             <AuthWidget showUsername={false} />
           </div>
