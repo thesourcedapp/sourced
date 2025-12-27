@@ -61,6 +61,67 @@ type SearchProfile = {
   is_verified?: boolean;
 };
 
+// Smart search knowledge base
+const SEARCH_KNOWLEDGE = {
+  // Synonym mappings
+  synonyms: {
+    'shirt': ['top', 'tee', 'blouse', 'button-up', 'oxford'],
+    'pants': ['trousers', 'bottoms', 'jeans', 'slacks'],
+    'shoes': ['sneakers', 'boots', 'loafers', 'heels', 'sandals'],
+    'jacket': ['coat', 'outerwear', 'blazer', 'parka'],
+    'bag': ['purse', 'tote', 'backpack', 'satchel', 'clutch'],
+    'dress': ['gown', 'frock', 'sundress'],
+    'sweater': ['pullover', 'cardigan', 'knit', 'jumper'],
+  },
+
+  // Brand nicknames and expansions
+  brandMappings: {
+    'rick': 'rick owens',
+    'raf': 'raf simons',
+    'cav empt': 'cav empt',
+    'yeezy': 'yeezy',
+    'chrome': 'chrome hearts',
+    'undercover': 'undercover',
+    'cdg': 'comme des garcons',
+    'supreme': 'supreme',
+    'bape': 'a bathing ape',
+    'visvim': 'visvim',
+    'kapital': 'kapital',
+    'junya': 'junya watanabe',
+  },
+
+  // Style/aesthetic to category/brand mappings
+  aesthetics: {
+    'streetwear': { brands: ['supreme', 'stussy', 'bape', 'palace'], categories: ['hoodies', 'tees', 'sneakers'] },
+    'techwear': { brands: ['acronym', 'stone island', 'arc\'teryx'], categories: ['outerwear', 'bags', 'accessories'] },
+    'minimalist': { brands: ['acne studios', 'apc', 'lemaire'], colors: ['black', 'white', 'gray', 'beige'] },
+    'avant-garde': { brands: ['rick owens', 'julius', 'yohji yamamoto'], colors: ['black'] },
+    'vintage': { categories: ['denim', 'outerwear'], keywords: ['vintage', 'retro', 'classic'] },
+    'gorpcore': { brands: ['patagonia', 'north face', 'arc\'teryx'], categories: ['outerwear', 'fleece'] },
+    'preppy': { brands: ['ralph lauren', 'brooks brothers', 'j.crew'], categories: ['blazers', 'loafers'] },
+  },
+
+  // Price tier keywords
+  priceTiers: {
+    'cheap': 'budget',
+    'budget': 'budget',
+    'affordable': 'budget',
+    'expensive': 'luxury',
+    'luxury': 'luxury',
+    'designer': 'luxury',
+    'high-end': 'luxury',
+  },
+
+  // Color variations
+  colorVariations: {
+    'black': ['onyx', 'midnight', 'noir', 'ebony'],
+    'white': ['cream', 'ivory', 'off-white', 'bone'],
+    'blue': ['navy', 'indigo', 'azure', 'cobalt'],
+    'gray': ['grey', 'charcoal', 'slate'],
+    'brown': ['tan', 'camel', 'chocolate', 'khaki', 'beige'],
+  },
+};
+
 function DiscoverContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -214,8 +275,73 @@ function DiscoverContent() {
     }
   }
 
+  // Enhanced search intelligence
+  function parseSmartQuery(query: string) {
+    const lowerQuery = query.toLowerCase();
+    const words = lowerQuery.split(' ').filter(w => w.length > 0);
+
+    let detectedFilters = {
+      colors: [] as string[],
+      brands: [] as string[],
+      categories: [] as string[],
+      priceTier: null as string | null,
+      aesthetic: null as string | null,
+      expandedTerms: [] as string[],
+    };
+
+    // Detect aesthetic
+    for (const [aesthetic, config] of Object.entries(SEARCH_KNOWLEDGE.aesthetics)) {
+      if (lowerQuery.includes(aesthetic)) {
+        detectedFilters.aesthetic = aesthetic;
+        if (config.brands) detectedFilters.brands.push(...config.brands);
+        if (config.categories) detectedFilters.categories.push(...config.categories);
+        if (config.colors) detectedFilters.colors.push(...config.colors);
+      }
+    }
+
+    // Detect colors (including variations)
+    for (const [mainColor, variations] of Object.entries(SEARCH_KNOWLEDGE.colorVariations)) {
+      if (lowerQuery.includes(mainColor) || variations.some(v => lowerQuery.includes(v))) {
+        if (!detectedFilters.colors.includes(mainColor)) {
+          detectedFilters.colors.push(mainColor);
+        }
+      }
+    }
+
+    // Detect price tier keywords
+    for (const [keyword, tier] of Object.entries(SEARCH_KNOWLEDGE.priceTiers)) {
+      if (lowerQuery.includes(keyword)) {
+        detectedFilters.priceTier = tier;
+      }
+    }
+
+    // Expand brand nicknames
+    for (const [nickname, fullName] of Object.entries(SEARCH_KNOWLEDGE.brandMappings)) {
+      if (lowerQuery.includes(nickname)) {
+        detectedFilters.brands.push(fullName);
+        detectedFilters.expandedTerms.push(fullName);
+      }
+    }
+
+    // Expand synonyms
+    words.forEach(word => {
+      for (const [mainTerm, synonyms] of Object.entries(SEARCH_KNOWLEDGE.synonyms)) {
+        if (word === mainTerm || synonyms.includes(word)) {
+          detectedFilters.expandedTerms.push(mainTerm, ...synonyms);
+          if (categories.find(c => c.value === mainTerm || synonyms.includes(c.value))) {
+            detectedFilters.categories.push(mainTerm);
+          }
+        }
+      }
+    });
+
+    return detectedFilters;
+  }
+
   async function searchItems(query: string) {
     try {
+      const smartFilters = parseSmartQuery(query);
+
       let itemsQuery = supabase
         .from('catalog_items')
         .select(`
@@ -243,7 +369,7 @@ function DiscoverContent() {
         `)
         .eq('catalogs.visibility', 'public');
 
-      // Apply filters
+      // Apply manual filters
       if (selectedCategory !== "all") {
         itemsQuery = itemsQuery.eq('category', selectedCategory);
       }
@@ -262,6 +388,9 @@ function DiscoverContent() {
 
       if (priceRange !== "all") {
         itemsQuery = itemsQuery.eq('price_tier', priceRange);
+      } else if (smartFilters.priceTier) {
+        // Auto-apply detected price tier
+        itemsQuery = itemsQuery.eq('price_tier', smartFilters.priceTier);
       }
 
       // Apply sorting
@@ -273,9 +402,9 @@ function DiscoverContent() {
 
       itemsQuery = itemsQuery.limit(100);
 
-      // Apply search query if exists
+      // Apply search query with expanded terms
       if (query.trim()) {
-        const searchTerms = query.toLowerCase().split(' ').filter(t => t.length > 0);
+        const searchTerms = [query, ...smartFilters.expandedTerms].join('|');
 
         itemsQuery = itemsQuery.or(
           `title.ilike.%${query}%,` +
@@ -321,36 +450,112 @@ function DiscoverContent() {
         }
       }));
 
-      // Smart ranking: if search query exists and sortBy is "relevance"
+      // GENIUS RANKING ALGORITHM
       if (query.trim() && sortBy === "relevance") {
+        const lowerQuery = query.toLowerCase();
+        const queryWords = lowerQuery.split(' ').filter(w => w.length > 0);
+
         formattedItems = formattedItems.sort((a, b) => {
-          // Calculate relevance score
-          const getRelevanceScore = (item: any) => {
+          const getGeniusScore = (item: any) => {
             let score = 0;
-            const q = query.toLowerCase();
 
-            // Exact matches get highest score
-            if (item.title?.toLowerCase() === q) score += 100;
-            if (item.brand?.toLowerCase() === q) score += 80;
-            if (item.category?.toLowerCase() === q) score += 60;
+            // === EXACT MATCHES (Highest Priority) ===
+            if (item.title?.toLowerCase() === lowerQuery) score += 1000;
+            if (item.brand?.toLowerCase() === lowerQuery) score += 800;
+            if (item.category?.toLowerCase() === lowerQuery) score += 600;
 
-            // Partial matches
-            if (item.title?.toLowerCase().includes(q)) score += 50;
-            if (item.brand?.toLowerCase().includes(q)) score += 40;
-            if (item.subcategory?.toLowerCase().includes(q)) score += 30;
-            if (item.seller?.toLowerCase().includes(q)) score += 20;
+            // === EXPANDED TERM MATCHES ===
+            smartFilters.expandedTerms.forEach(term => {
+              if (item.title?.toLowerCase().includes(term)) score += 400;
+              if (item.brand?.toLowerCase().includes(term)) score += 350;
+              if (item.category?.toLowerCase().includes(term)) score += 300;
+            });
 
-            // Style tags match
-            if (item.style_tags?.some((tag: string) => tag.toLowerCase().includes(q))) score += 35;
+            // === PARTIAL MATCHES ===
+            if (item.title?.toLowerCase().includes(lowerQuery)) score += 500;
+            if (item.brand?.toLowerCase().includes(lowerQuery)) score += 400;
+            if (item.subcategory?.toLowerCase().includes(lowerQuery)) score += 300;
+            if (item.seller?.toLowerCase().includes(lowerQuery)) score += 200;
+
+            // === MULTI-WORD QUERY BONUSES ===
+            queryWords.forEach(word => {
+              if (item.title?.toLowerCase().includes(word)) score += 100;
+              if (item.brand?.toLowerCase().includes(word)) score += 80;
+              if (item.category?.toLowerCase().includes(word)) score += 60;
+              if (item.subcategory?.toLowerCase().includes(word)) score += 40;
+            });
+
+            // === STYLE TAGS MATCH ===
+            if (item.style_tags?.some((tag: string) => tag.toLowerCase().includes(lowerQuery))) score += 350;
+            queryWords.forEach(word => {
+              if (item.style_tags?.some((tag: string) => tag.toLowerCase().includes(word))) score += 80;
+            });
+
+            // === COLOR INTELLIGENCE ===
+            smartFilters.colors.forEach(color => {
+              if (item.primary_color?.toLowerCase() === color) score += 250;
+              if (item.colors?.includes(color)) score += 200;
+            });
+
+            // === BRAND INTELLIGENCE ===
+            smartFilters.brands.forEach(brand => {
+              if (item.brand?.toLowerCase().includes(brand)) score += 400;
+            });
+
+            // === CATEGORY INTELLIGENCE ===
+            smartFilters.categories.forEach(category => {
+              if (item.category?.toLowerCase() === category) score += 300;
+              if (item.subcategory?.toLowerCase() === category) score += 200;
+            });
+
+            // === MATERIAL & PATTERN MATCHING ===
+            if (item.material?.toLowerCase().includes(lowerQuery)) score += 150;
+            if (item.pattern?.toLowerCase().includes(lowerQuery)) score += 150;
+
+            queryWords.forEach(word => {
+              if (item.material?.toLowerCase().includes(word)) score += 50;
+              if (item.pattern?.toLowerCase().includes(word)) score += 50;
+            });
+
+            // === CONTEXTUAL BONUSES ===
+            // Color + category combination (e.g., "black jeans")
+            if (smartFilters.colors.length > 0 && smartFilters.categories.length > 0) {
+              const hasColor = smartFilters.colors.some(c =>
+                item.primary_color?.toLowerCase() === c || item.colors?.includes(c)
+              );
+              const hasCategory = smartFilters.categories.some(cat =>
+                item.category?.toLowerCase() === cat
+              );
+              if (hasColor && hasCategory) score += 400; // Big bonus for multi-attribute match
+            }
+
+            // Aesthetic match bonus
+            if (smartFilters.aesthetic) {
+              const aestheticConfig = SEARCH_KNOWLEDGE.aesthetics[smartFilters.aesthetic];
+              if (aestheticConfig.brands?.some(b => item.brand?.toLowerCase().includes(b))) score += 300;
+              if (aestheticConfig.colors?.some(c => item.primary_color?.toLowerCase() === c)) score += 200;
+            }
+
+            // === POPULARITY & RECENCY BOOST (Secondary) ===
+            // Only matters when relevance scores are close
+            const likesBonus = Math.min((item.like_count || 0) * 2, 100); // Cap at 100
+            const recencyBonus = (() => {
+              const daysSince = (Date.now() - new Date(item.created_at).getTime()) / (1000 * 60 * 60 * 24);
+              if (daysSince < 7) return 50;
+              if (daysSince < 30) return 25;
+              return 0;
+            })();
+
+            score += likesBonus + recencyBonus;
 
             return score;
           };
 
-          const scoreA = getRelevanceScore(a);
-          const scoreB = getRelevanceScore(b);
+          const scoreA = getGeniusScore(a);
+          const scoreB = getGeniusScore(b);
 
-          // If scores are equal (both relevant or both not), prefer items with more likes
-          if (scoreA === scoreB) {
+          // If scores are very close (within 50 points), use likes as tiebreaker
+          if (Math.abs(scoreA - scoreB) < 50) {
             return (b.like_count || 0) - (a.like_count || 0);
           }
 
@@ -436,13 +641,11 @@ function DiscoverContent() {
     try {
       console.log('Searching profiles with query:', query);
 
-      // Simplified query
       let profilesQuery = supabase
         .from('profiles')
         .select('*')
         .limit(50);
 
-      // Add filters
       if (query.trim()) {
         profilesQuery = profilesQuery.or(
           `username.ilike.%${query}%,` +
@@ -467,14 +670,12 @@ function DiscoverContent() {
         return;
       }
 
-      // Filter to only onboarded users with usernames
       const onboardedProfiles = data.filter((p: any) =>
         p.is_onboarded === true && p.username != null
       );
 
       console.log('Onboarded profiles:', onboardedProfiles.length);
 
-      // Sort by follower count
       onboardedProfiles.sort((a: any, b: any) =>
         (b.follower_count || 0) - (a.follower_count || 0)
       );
@@ -528,7 +729,6 @@ function DiscoverContent() {
           .insert({ user_id: currentUserId, item_id: itemId });
       }
 
-      // Update local state
       setItems(prevItems =>
         prevItems.map(item =>
           item.id === itemId
@@ -617,9 +817,7 @@ function DiscoverContent() {
     router.push(`/discover?tab=${tab}${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ''}`);
   }
 
-  // Helper function to get standing badge based on profile
   function getStandingBadge(profile: SearchProfile) {
-    // If user has manually assigned standing, use that
     if (profile.standing) {
       const standingConfig: Record<string, { label: string; icon: string; bg: string }> = {
         'legendary': { label: 'LEGENDARY', icon: '👑', bg: 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white' },
@@ -631,7 +829,6 @@ function DiscoverContent() {
       return standingConfig[profile.standing] || standingConfig['member'];
     }
 
-    // Otherwise calculate based on follower count
     if (profile.follower_count >= 1000) {
       return { label: 'ELITE', icon: '⭐', bg: 'bg-black text-white' };
     } else if (profile.follower_count >= 100) {
@@ -844,7 +1041,7 @@ function DiscoverContent() {
 
                               <div className="flex items-center justify-between text-[10px] tracking-wider opacity-60 mb-2">
                                 {item.seller && <span className="truncate">{item.seller}</span>}
-                                {item.price && <span className="ml-auto">{item.price}</span>}
+                                {item.price && <span className="ml-auto">${item.price}</span>}
                               </div>
 
                               {item.brand && (
@@ -853,7 +1050,6 @@ function DiscoverContent() {
                                 </div>
                               )}
 
-                              {/* Like count above buttons */}
                               <div className="flex items-center gap-1 text-[10px] tracking-wider opacity-60 mb-2">
                                 <span>♥ {item.like_count} {item.like_count === 1 ? 'like' : 'likes'}</span>
                               </div>
@@ -921,7 +1117,6 @@ function DiscoverContent() {
                                   router.push(`/${catalog.owner?.username}`);
                                 }}
                               >
-                                {/* Circular avatar */}
                                 <div className="w-6 h-6 rounded-full border border-black overflow-hidden">
                                   {catalog.owner?.avatar_url ? (
                                     <img src={catalog.owner.avatar_url} alt={catalog.owner.username} className="w-full h-full object-cover" />
@@ -932,7 +1127,6 @@ function DiscoverContent() {
                                 <span className="text-xs tracking-wider" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>@{catalog.owner?.username}</span>
                               </div>
 
-                              {/* More visible stats with full text */}
                               <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-1 text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                                   <span>{catalog.item_count}</span>
@@ -964,7 +1158,7 @@ function DiscoverContent() {
                   </>
                 )}
 
-                {/* Profiles Tab - Better pills */}
+                {/* Profiles Tab */}
                 {activeTab === "profiles" && (
                   <>
                     {profiles.length === 0 ? (
@@ -983,7 +1177,6 @@ function DiscoverContent() {
                               onClick={() => router.push(`/${profile.username}`)}
                             >
                               <div className="flex items-center gap-3 p-3">
-                                {/* Circular avatar */}
                                 <div className="w-14 h-14 md:w-16 md:h-16 rounded-full border border-black overflow-hidden flex-shrink-0">
                                   {profile.avatar_url ? (
                                     <img src={profile.avatar_url} alt={profile.username} className="w-full h-full object-cover" />
@@ -1066,7 +1259,7 @@ function DiscoverContent() {
                     )}
 
                     {expandedItem.price && (
-                      <p className="text-lg md:text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{expandedItem.price}</p>
+                      <p className="text-lg md:text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>${expandedItem.price}</p>
                     )}
 
                     {expandedItem.style_tags && expandedItem.style_tags.length > 0 && (

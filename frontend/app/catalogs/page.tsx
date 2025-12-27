@@ -950,7 +950,7 @@ export default function CatalogsPage() {
 
                     {previewUrl && (
                       <div className="mt-3">
-                        <img src={previewUrl} alt="Preview" className="w-full h-32 object-cover border border-black/10" />
+                        <img src={previewUrl} alt="Preview" className="w-full aspect-square object-cover border border-black/10" />
                       </div>
                     )}
                     {imageError && (

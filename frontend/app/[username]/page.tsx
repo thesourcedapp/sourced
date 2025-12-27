@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter, useParams } from "next/navigation";
+import Head from "next/head";
 
 type ProfileData = {
   id: string;
@@ -153,6 +154,12 @@ export default function ProfilePage() {
   const [filteredFollowing, setFilteredFollowing] = useState<FollowUser[]>([]);
 
   const isOwner = currentUserId === profileId;
+
+  // Generate share metadata
+  const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const shareTitle = profile ? `Sourced - ${profile.username}` : 'Sourced';
+  const shareDescription = profile?.bio || `Check out @${username}'s profile on Sourced`;
+  const shareImage = profile?.avatar_url || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='; // Black 1x1 pixel
 
   useEffect(() => {
     async function initProfile() {
@@ -450,7 +457,6 @@ export default function ProfilePage() {
         return;
       }
 
-      // Get profile data for all followers
       const followerIds = data.map(f => f.follower_id);
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
@@ -462,7 +468,6 @@ export default function ProfilePage() {
         return;
       }
 
-      // Create a map for quick lookup
       const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
 
       const transformedFollowers: FollowUser[] = data
@@ -511,7 +516,6 @@ export default function ProfilePage() {
         return;
       }
 
-      // Get profile data for all following
       const followingIds = data.map(f => f.following_id);
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
@@ -523,7 +527,6 @@ export default function ProfilePage() {
         return;
       }
 
-      // Create a map for quick lookup
       const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
 
       const transformedFollowing: FollowUser[] = data
@@ -561,18 +564,15 @@ export default function ProfilePage() {
 
     try {
       if (profile.is_following) {
-        // Unfollow
         await supabase
           .from('followers')
           .delete()
           .eq('follower_id', currentUserId)
           .eq('following_id', profileId);
 
-        // Wait a moment for trigger to complete
         await new Promise(resolve => setTimeout(resolve, 200));
 
       } else {
-        // Follow
         await supabase
           .from('followers')
           .insert({
@@ -580,11 +580,9 @@ export default function ProfilePage() {
             following_id: profileId
           });
 
-        // Wait a moment for trigger to complete
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      // Reload profile data to get updated counts from database
       await loadProfile();
       await loadFollowers();
       await loadFollowing();
@@ -661,7 +659,6 @@ export default function ProfilePage() {
     if (!currentUserId) return;
 
     try {
-      // Check if already bookmarked
       const { data: existingBookmark } = await supabase
         .from('bookmarked_catalogs')
         .select('id')
@@ -670,7 +667,6 @@ export default function ProfilePage() {
         .single();
 
       if (existingBookmark) {
-        // Remove bookmark
         await supabase
           .from('bookmarked_catalogs')
           .delete()
@@ -679,7 +675,6 @@ export default function ProfilePage() {
 
         setBookmarkedCatalogs(prev => prev.filter(c => c.id !== catalogId));
       } else {
-        // Add bookmark
         await supabase
           .from('bookmarked_catalogs')
           .insert({
@@ -687,7 +682,6 @@ export default function ProfilePage() {
             catalog_id: catalogId
           });
 
-        // Reload bookmarks to get updated list
         await loadBookmarkedCatalogs();
       }
     } catch (error) {
@@ -699,7 +693,6 @@ export default function ProfilePage() {
     if (!currentUserId) return;
 
     try {
-      // Check if already liked
       const { data: existingLike } = await supabase
         .from('liked_items')
         .select('id')
@@ -708,7 +701,6 @@ export default function ProfilePage() {
         .single();
 
       if (existingLike) {
-        // Remove like
         await supabase
           .from('liked_items')
           .delete()
@@ -717,7 +709,6 @@ export default function ProfilePage() {
 
         setLikedItems(prev => prev.filter(i => i.id !== itemId));
       } else {
-        // Add like
         await supabase
           .from('liked_items')
           .insert({
@@ -725,7 +716,6 @@ export default function ProfilePage() {
             item_id: itemId
           });
 
-        // Reload likes to get updated list
         await loadLikedItems();
       }
     } catch (error) {
@@ -769,7 +759,6 @@ export default function ProfilePage() {
 
       if (uploadMethod === 'file' && selectedFile) {
         console.log('🔄 Starting file upload...');
-        // First, upload the image to storage
         const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
 
         if (!uploadResult.url) {
@@ -781,7 +770,6 @@ export default function ProfilePage() {
         finalAvatarUrl = uploadResult.url;
         console.log('✅ Image uploaded to:', finalAvatarUrl);
 
-        // Then, check the uploaded image with moderation API through Next.js route
         try {
           console.log('🔍 Checking image safety...');
           const controller = new AbortController();
@@ -813,11 +801,9 @@ export default function ProfilePage() {
           }
         } catch (moderationError) {
           console.error("Image moderation error:", moderationError);
-          // If moderation fails/times out, proceed with upload
         }
       } else if (uploadMethod === 'url' && editAvatarUrl) {
         console.log('🔍 Checking URL-based image:', editAvatarUrl);
-        // Check URL-based image with moderation API through Next.js route
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -848,7 +834,6 @@ export default function ProfilePage() {
           }
         } catch (moderationError) {
           console.error("Image moderation error:", moderationError);
-          // If moderation fails/times out, proceed with upload
         }
       }
 
@@ -890,6 +875,9 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <>
+        <Head>
+          <title>Loading... | Sourced</title>
+        </Head>
         <style jsx global>{`
           @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
         `}</style>
@@ -905,6 +893,9 @@ export default function ProfilePage() {
   if (!profile) {
     return (
       <>
+        <Head>
+          <title>Profile Not Found | Sourced</title>
+        </Head>
         <style jsx global>{`
           @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');
         `}</style>
@@ -928,6 +919,31 @@ export default function ProfilePage() {
 
   return (
     <>
+      <Head>
+        <title>{shareTitle}</title>
+        <meta name="description" content={shareDescription} />
+
+        {/* Open Graph / Facebook */}
+        <meta property="og:type" content="profile" />
+        <meta property="og:url" content={pageUrl} />
+        <meta property="og:title" content={shareTitle} />
+        <meta property="og:description" content={shareDescription} />
+        <meta property="og:image" content={shareImage} />
+        <meta property="og:image:width" content="400" />
+        <meta property="og:image:height" content="400" />
+
+        {/* Twitter */}
+        <meta property="twitter:card" content="summary" />
+        <meta property="twitter:url" content={pageUrl} />
+        <meta property="twitter:title" content={shareTitle} />
+        <meta property="twitter:description" content={shareDescription} />
+        <meta property="twitter:image" content={shareImage} />
+
+        {/* Additional meta tags */}
+        <meta property="og:site_name" content="Sourced" />
+        <meta property="profile:username" content={profile.username} />
+      </Head>
+
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');
 
@@ -1029,27 +1045,28 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-6 text-sm tracking-wider opacity-60">
-                  <span style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                    {catalogs.length} PUBLIC CATALOGS
-                  </span>
-                  <span style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                    {catalogs.reduce((total, catalog) => total + catalog.item_count, 0)} TOTAL ITEMS
-                  </span>
+                {/* Stats - Reordered to prioritize followers/following */}
+                <div className="flex items-center gap-6 text-sm">
                   <button
                     onClick={() => openFollowersModal('followers')}
-                    className="hover:opacity-100 transition-opacity"
+                    className="hover:opacity-70 transition-opacity font-black tracking-wider"
                     style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                   >
                     {profile.followers_count} FOLLOWERS
                   </button>
                   <button
                     onClick={() => openFollowersModal('following')}
-                    className="hover:opacity-100 transition-opacity"
+                    className="hover:opacity-70 transition-opacity font-black tracking-wider"
                     style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                   >
                     {profile.following_count} FOLLOWING
                   </button>
+                  <span className="opacity-60 tracking-wider" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                    {catalogs.length} PUBLIC CATALOGS
+                  </span>
+                  <span className="opacity-60 tracking-wider" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                    {catalogs.reduce((total, catalog) => total + catalog.item_count, 0)} TOTAL ITEMS
+                  </span>
                 </div>
               </div>
             </div>
@@ -1193,7 +1210,6 @@ export default function ProfilePage() {
                           </div>
                         </div>
 
-                        {/* Bookmark button BELOW image on solid background */}
                         {currentUserId && (
                           <div className="p-3 border-t border-black/10">
                             <button
@@ -1234,7 +1250,6 @@ export default function ProfilePage() {
                         key={item.id}
                         className="group border border-black/20 hover:border-black transition-all"
                       >
-                        {/* Desktop - clickable for expand */}
                         <div
                           className="relative aspect-square bg-white overflow-hidden cursor-pointer hidden md:block"
                           onClick={() => setExpandedItem(item)}
@@ -1255,7 +1270,6 @@ export default function ProfilePage() {
                           )}
                         </div>
 
-                        {/* Mobile - not clickable, has button instead */}
                         <div className="relative aspect-square bg-white overflow-hidden md:hidden">
                           <img
                             src={item.image_url}
@@ -1284,10 +1298,9 @@ export default function ProfilePage() {
 
                           <div className="flex items-center justify-between text-[10px] tracking-wider opacity-60 mb-2">
                             {item.seller && <span className="truncate">{item.seller}</span>}
-                            {item.price && <span className="ml-auto">{item.price}</span>}
+                            {item.price && <span className="ml-auto">${item.price}</span>}
                           </div>
 
-                          {/* View and Unlike buttons */}
                           <div className="flex gap-2">
                             <button
                               onClick={() => setExpandedItem(item)}
@@ -1343,7 +1356,6 @@ export default function ProfilePage() {
                   </div>
 
                   <form onSubmit={handleUpdateProfile} className="space-y-4 md:space-y-6">
-                    {/* Full Name */}
                     <div className="space-y-2">
                       <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                         FULL NAME (OPTIONAL)
@@ -1357,7 +1369,6 @@ export default function ProfilePage() {
                       />
                     </div>
 
-                    {/* Bio */}
                     <div className="space-y-2">
                       <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                         BIO (OPTIONAL)
@@ -1376,7 +1387,6 @@ export default function ProfilePage() {
                       </p>
                     </div>
 
-                    {/* Upload Method Selection */}
                     <div className="space-y-3">
                       <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                         AVATAR (OPTIONAL)
@@ -1409,7 +1419,6 @@ export default function ProfilePage() {
                       </div>
                     </div>
 
-                    {/* File Upload */}
                     {uploadMethod === 'file' && (
                       <div className="space-y-3">
                         <input
@@ -1425,7 +1434,6 @@ export default function ProfilePage() {
                       </div>
                     )}
 
-                    {/* URL Input */}
                     {uploadMethod === 'url' && (
                       <div className="space-y-3">
                         <input
@@ -1442,7 +1450,6 @@ export default function ProfilePage() {
                       </div>
                     )}
 
-                    {/* Preview */}
                     {((uploadMethod === 'url' && editAvatarUrl) || (uploadMethod === 'file' && previewUrl)) && (
                       <div className="space-y-3">
                         <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
@@ -1464,7 +1471,6 @@ export default function ProfilePage() {
                       </div>
                     )}
 
-                    {/* Error Display */}
                     {imageError && (
                       <div className="p-3 border border-red-400 text-red-400 text-xs tracking-wide">
                         {imageError}
@@ -1520,7 +1526,6 @@ export default function ProfilePage() {
                     </p>
                   </div>
 
-                  {/* Search Input */}
                   <input
                     type="text"
                     value={followersSearchQuery}
@@ -1530,7 +1535,6 @@ export default function ProfilePage() {
                     style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '16px' }}
                   />
 
-                  {/* User List */}
                   <div className="space-y-4 max-h-64 overflow-y-auto">
                     {(followersModalType === 'followers' ? filteredFollowers : filteredFollowing).map((user) => (
                       <div key={user.id} className="flex items-center justify-between p-4 border border-white/20 hover:border-white/40 transition-all">
@@ -1567,7 +1571,6 @@ export default function ProfilePage() {
                           </div>
                         </div>
 
-                        {/* Remove/Unfollow button for owner */}
                         {isOwner && (
                           <button
                             onClick={() => {
@@ -1618,7 +1621,6 @@ export default function ProfilePage() {
 
               <div className="bg-white border-2 border-white overflow-hidden max-h-[85vh] md:max-h-[90vh] overflow-y-auto">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-                  {/* Image */}
                   <div
                     className="aspect-square bg-black/5 overflow-hidden cursor-pointer"
                     onClick={() => {
@@ -1634,7 +1636,6 @@ export default function ProfilePage() {
                     />
                   </div>
 
-                  {/* Details */}
                   <div className="p-6 md:p-8 space-y-4 md:space-y-6">
                     <h2 className="text-2xl md:text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
                       {expandedItem.title}
@@ -1652,7 +1653,7 @@ export default function ProfilePage() {
 
                     {expandedItem.price && (
                       <p className="text-xl md:text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                        {expandedItem.price}
+                        ${expandedItem.price}
                       </p>
                     )}
 

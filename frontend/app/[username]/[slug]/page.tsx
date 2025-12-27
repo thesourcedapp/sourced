@@ -690,7 +690,7 @@ export default function CatalogDetailPage() {
 
   // Generate share metadata
   const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
-  const shareTitle = catalog ? `${catalog.name} by @${catalog.owner.username} | Sourced` : 'Sourced';
+  const shareTitle = catalog ? `Sourced - ${catalog.name}` : 'Sourced';
   const shareDescription = catalog?.description || `Check out this catalog with ${items.length} items on Sourced`;
   const shareImage = catalog?.image_url || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='; // Black 1x1 pixel
 
@@ -783,12 +783,12 @@ export default function CatalogDetailPage() {
               </div>
 
               <div className="flex-1 space-y-3 md:space-y-4">
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-4">
                   <h1 className="text-3xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{catalog.name}</h1>
                   {isOwner && (
                     <button
                       onClick={openEditCatalogModal}
-                      className="px-3 py-1 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-[10px] tracking-wider"
+                      className="hidden md:block px-4 py-2 border-2 border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-[0.3em] font-black"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       EDIT
@@ -835,8 +835,38 @@ export default function CatalogDetailPage() {
                       )}
                     </>
                   ) : (
-                    <button onClick={toggleBookmark} className={`px-4 md:px-6 py-2 border-2 transition-all text-[10px] md:text-xs tracking-[0.4em] font-black ${isBookmarked ? 'bg-black text-white border-black hover:bg-white hover:text-black' : 'border-black text-black hover:bg-black hover:text-white'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{isBookmarked ? '🔖 BOOKMARKED' : 'BOOKMARK'}</button>
+                    <>
+                      <button onClick={toggleBookmark} className={`px-4 md:px-6 py-2 border-2 transition-all text-[10px] md:text-xs tracking-[0.4em] font-black ${isBookmarked ? 'bg-black text-white border-black hover:bg-white hover:text-black' : 'border-black text-black hover:bg-black hover:text-white'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{isBookmarked ? '🔖 BOOKMARKED' : 'BOOKMARK'}</button>
+                    </>
                   )}
+                  <button
+                    onClick={async () => {
+                      if (navigator.share) {
+                        try {
+                          await navigator.share({
+                            title: shareTitle,
+                            text: shareDescription,
+                            url: window.location.href,
+                          });
+                        } catch (err) {
+                          // User cancelled or share failed
+                          if (err instanceof Error && err.name !== 'AbortError') {
+                            // Fallback to clipboard
+                            navigator.clipboard.writeText(window.location.href);
+                            alert('Link copied to clipboard!');
+                          }
+                        }
+                      } else {
+                        // Fallback for browsers without Web Share API
+                        navigator.clipboard.writeText(window.location.href);
+                        alert('Link copied to clipboard!');
+                      }
+                    }}
+                    className="px-4 md:px-6 py-2 border-2 border-black hover:bg-black hover:text-white transition-all text-[10px] md:text-xs tracking-[0.4em] font-black"
+                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                  >
+                    SHARE
+                  </button>
                 </div>
               </div>
             </div>
