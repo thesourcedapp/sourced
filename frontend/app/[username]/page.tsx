@@ -754,11 +754,6 @@ export default function ProfilePage() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setImageError('Image must be smaller than 5MB');
-      return;
-    }
-
     setSelectedFile(file);
     setImageError('');
 

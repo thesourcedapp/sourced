@@ -240,11 +240,6 @@ export default function CatalogsPage() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setImageError('Image must be smaller than 5MB');
-      return;
-    }
-
     setSelectedFile(file);
     setImageError('');
     setCatalogImageUrl('');
@@ -271,15 +266,9 @@ export default function CatalogsPage() {
 
     setCheckingImage(true);
 
-    setTimeout(async () => {
-      const safetyCheck = await checkImageSafety(url);
+    setTimeout(() => {
       setCheckingImage(false);
-
-      if (!safetyCheck.safe) {
-        setImageError(safetyCheck.error || "Image contains inappropriate content");
-      } else {
-        setPreviewUrl(url);
-      }
+      setPreviewUrl(url);
     }, 500);
   }
 
@@ -302,20 +291,7 @@ export default function CatalogsPage() {
         }
 
         finalImageUrl = uploadResult.url;
-
-        const safetyCheck = await checkImageSafety(finalImageUrl);
-        if (!safetyCheck.safe) {
-          setImageError("Image contains inappropriate content");
-          setCreating(false);
-          return;
-        }
       } else if (uploadMethod === 'url' && catalogImageUrl.trim()) {
-        const safetyCheck = await checkImageSafety(catalogImageUrl);
-        if (!safetyCheck.safe) {
-          setImageError("Image contains inappropriate content");
-          setCreating(false);
-          return;
-        }
         finalImageUrl = catalogImageUrl;
       }
 

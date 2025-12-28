@@ -367,11 +367,6 @@ export default function CatalogDetailPage() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setImageError('Image must be smaller than 5MB');
-      return;
-    }
-
     setSelectedFile(file);
     setImageError('');
 
@@ -568,11 +563,6 @@ export default function CatalogDetailPage() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setEditCatalogError('Image must be smaller than 5MB');
-      return;
-    }
-
     setEditCatalogFile(file);
     setEditCatalogError('');
 
@@ -621,39 +611,9 @@ export default function CatalogDetailPage() {
           return;
         }
 
-        // Check image with moderation API
-        const moderationResponse = await fetch('https://sourced-5ovn.onrender.com/check-catalog-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image_url: uploadResult.url })
-        });
-
-        const moderationResult = await moderationResponse.json();
-
-        if (!moderationResponse.ok || !moderationResult.safe) {
-          setEditCatalogError(moderationResult.message || 'Image rejected by content moderation');
-          setEditingCatalog(false);
-          return;
-        }
-
         finalImageUrl = uploadResult.url;
 
       } else if (editCatalogMethod === 'url' && editCatalogImageUrl.trim()) {
-        // Check URL image with moderation API
-        const moderationResponse = await fetch('https://sourced-5ovn.onrender.com/check-catalog-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image_url: editCatalogImageUrl })
-        });
-
-        const moderationResult = await moderationResponse.json();
-
-        if (!moderationResponse.ok || !moderationResult.safe) {
-          setEditCatalogError(moderationResult.message || 'Image rejected by content moderation');
-          setEditingCatalog(false);
-          return;
-        }
-
         finalImageUrl = editCatalogImageUrl;
       }
 
