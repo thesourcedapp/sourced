@@ -5,6 +5,7 @@ import openai
 import os
 import json
 from backend.config import NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY
+
 router = APIRouter()
 
 # Initialize clients
@@ -32,42 +33,15 @@ class CreateItemResponse(BaseModel):
     metadata: dict | None = None
 
 
-async def check_image_safety(image_url: str) -> bool:
-    """
-    Check if image is safe using OpenAI moderation.
-    Returns True if safe, False if unsafe.
-    """
-    try:
-        # Use OpenAI's moderation API or vision model
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Is this image appropriate and safe? Answer only YES or NO."},
-                        {"type": "image_url", "image_url": {"url": image_url}}
-                    ]
-                }
-            ],
-            max_tokens=10
-        )
-
-        answer = response.choices[0].message.content.strip().upper()
-        return "YES" in answer
-
-    except Exception as e:
-        print(f"Image safety check error: {e}")
-        # Fail safe - reject on error
-        return False
-
-
 async def categorize_item(title: str, image_url: str, product_url: str | None, price: str | None) -> dict:
     """
-    Categorize item using AI. Returns metadata dict.
+    Categorize item using AI and verify it's actually clothing/fashion.
+    Returns metadata dict with is_clothing flag.
     """
     try:
-        system_prompt = """You are a fashion expert AI. Categorize clothing items with precision.
+        system_prompt = """You are a fashion expert AI. Categorize clothing and fashion items with precision.
+IMPORTANT: First determine if this is actually a clothing/fashion item (clothing, shoes, bags, accessories, jewelry).
+If it's NOT a fashion item (furniture, food, electronics, etc.), set is_clothing to false.
 Return ONLY valid JSON, no markdown."""
 
         user_prompt = f"""Analyze this item:
@@ -78,6 +52,7 @@ URL: {product_url or 'Not provided'}
 
 Return JSON with:
 {{
+  "is_clothing": true/false (Is this actually a fashion/clothing item?),
   "category": "tops/bottoms/outerwear/shoes/accessories/dresses/activewear/bags/jewelry/other",
   "subcategory": "specific type",
   "brand": "brand name or null",
@@ -94,7 +69,9 @@ Return JSON with:
   "occasion_tags": ["everyday", "work"],
   "price_tier": "budget/mid-range/luxury or null",
   "confidence": 0.95
-}}"""
+}}
+
+If is_clothing is false, still provide best-guess values for other fields but they won't be used."""
 
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
@@ -123,6 +100,7 @@ Return JSON with:
         print(f"Categorization error: {e}")
         # Return default metadata on error
         return {
+            "is_clothing": True,  # Assume it's clothing on error to not block legitimate items
             "category": "other",
             "subcategory": "unknown",
             "brand": None,
@@ -149,9 +127,8 @@ async def create_catalog_item(request: CreateItemRequest):
 
     Does everything:
     1. Verifies user owns catalog
-    2. Checks image safety
-    3. Categorizes with AI
-    4. Inserts to database
+    2. Categorizes with AI (includes clothing verification)
+    3. Inserts to database
 
     Returns: Success + item data with metadata
     """
@@ -166,22 +143,20 @@ async def create_catalog_item(request: CreateItemRequest):
         if catalog.data['owner_id'] != request.user_id:
             raise HTTPException(status_code=403, detail="You don't own this catalog")
 
-        # 2. Check image safety
-        is_safe = await check_image_safety(request.image_url)
-
-        if not is_safe:
-            raise HTTPException(
-                status_code=400,
-                detail="Image contains inappropriate content"
-            )
-
-        # 3. Categorize with AI
+        # 2. Categorize with AI (includes clothing check)
         metadata = await categorize_item(
             title=request.title,
             image_url=request.image_url,
             product_url=request.product_url,
             price=request.price
         )
+
+        # 3. Verify it's actually clothing/fashion
+        if not metadata.get('is_clothing', True):
+            raise HTTPException(
+                status_code=400,
+                detail="This doesn't appear to be a clothing or fashion item. Sourced is for fashion catalogs only."
+            )
 
         # 4. Insert to database WITH metadata
         item_data = {
