@@ -35,13 +35,22 @@ class CreateItemResponse(BaseModel):
 
 async def categorize_item(title: str, image_url: str, product_url: str | None, price: str | None) -> dict:
     """
-    Categorize item using AI and verify it's actually clothing/fashion.
-    Returns metadata dict with is_clothing flag.
+    Categorize item using AI and verify it's actually a fashion item.
+    Returns metadata dict with is_fashion_item flag.
     """
     try:
-        system_prompt = """You are a fashion expert AI. Categorize clothing and fashion items with precision.
-IMPORTANT: First determine if this is actually a clothing/fashion item (clothing, shoes, bags, accessories, jewelry).
-If it's NOT a fashion item (furniture, food, electronics, etc.), set is_clothing to false.
+        system_prompt = """You are a fashion expert AI. Categorize fashion items with precision.
+IMPORTANT: First determine if this is actually a FASHION item. Fashion includes:
+- Clothing (shirts, pants, dresses, etc.)
+- Footwear (shoes, sneakers, boots, sandals)
+- Accessories (bags, belts, hats, scarves, gloves)
+- Jewelry (rings, necklaces, bracelets, earrings)
+- Eyewear (sunglasses, glasses)
+- Watches
+- Hair accessories
+- Any wearable fashion item
+
+NOT fashion: furniture, food, electronics (unless wearable tech like smartwatches), home decor, cars, etc.
 Return ONLY valid JSON, no markdown."""
 
         user_prompt = f"""Analyze this item:
@@ -52,11 +61,11 @@ URL: {product_url or 'Not provided'}
 
 Return JSON with:
 {{
-  "is_clothing": true/false (Is this actually a fashion/clothing item?),
-  "category": "tops/bottoms/outerwear/shoes/accessories/dresses/activewear/bags/jewelry/other",
+  "is_fashion_item": true/false (Is this a wearable fashion item?),
+  "category": "tops/bottoms/outerwear/shoes/accessories/dresses/activewear/bags/jewelry/eyewear/watches/other",
   "subcategory": "specific type",
   "brand": "brand name or null",
-  "product_type": "casual/formal/athletic/streetwear",
+  "product_type": "casual/formal/athletic/streetwear/luxury",
   "colors": ["array"],
   "primary_color": "main color",
   "material": "material or null",
@@ -71,7 +80,7 @@ Return JSON with:
   "confidence": 0.95
 }}
 
-If is_clothing is false, still provide best-guess values for other fields but they won't be used."""
+If is_fashion_item is false, still provide best-guess values for other fields but they won't be used."""
 
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
@@ -100,7 +109,7 @@ If is_clothing is false, still provide best-guess values for other fields but th
         print(f"Categorization error: {e}")
         # Return default metadata on error
         return {
-            "is_clothing": True,  # Assume it's clothing on error to not block legitimate items
+            "is_fashion_item": True,  # Assume it's fashion on error to not block legitimate items
             "category": "other",
             "subcategory": "unknown",
             "brand": None,
@@ -127,8 +136,10 @@ async def create_catalog_item(request: CreateItemRequest):
 
     Does everything:
     1. Verifies user owns catalog
-    2. Categorizes with AI (includes clothing verification)
+    2. Categorizes with AI (includes fashion item verification)
     3. Inserts to database
+
+    Accepts all fashion items: clothing, shoes, bags, accessories, jewelry, watches, eyewear, etc.
 
     Returns: Success + item data with metadata
     """
@@ -143,7 +154,7 @@ async def create_catalog_item(request: CreateItemRequest):
         if catalog.data['owner_id'] != request.user_id:
             raise HTTPException(status_code=403, detail="You don't own this catalog")
 
-        # 2. Categorize with AI (includes clothing check)
+        # 2. Categorize with AI (includes fashion item check)
         metadata = await categorize_item(
             title=request.title,
             image_url=request.image_url,
@@ -151,11 +162,11 @@ async def create_catalog_item(request: CreateItemRequest):
             price=request.price
         )
 
-        # 3. Verify it's actually clothing/fashion
-        if not metadata.get('is_clothing', True):
+        # 3. Verify it's actually a fashion item
+        if not metadata.get('is_fashion_item', True):
             raise HTTPException(
                 status_code=400,
-                detail="This doesn't appear to be a clothing or fashion item. Sourced is for fashion catalogs only."
+                detail="This doesn't appear to be a fashion item. Sourced is for fashion and wearable items only."
             )
 
         # 4. Insert to database WITH metadata
