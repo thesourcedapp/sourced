@@ -162,7 +162,7 @@ export default function ProfilePage() {
 
   // Generate dynamic OG image URL
   const ogImageUrl = profile
-    ? `/api/og/profile?username=${encodeURIComponent(profile.username)}${profile.bio ? `&bio=${encodeURIComponent(profile.bio)}` : ''}&catalogs=${profile.catalog_count || 0}&followers=${profile.follower_count || 0}${profile.avatar_url ? `&avatar=${encodeURIComponent(profile.avatar_url)}` : ''}`
+    ? `/api/og/profile?username=${encodeURIComponent(profile.username)}${profile.bio ? `&bio=${encodeURIComponent(profile.bio)}` : ''}&catalogs=${catalogs.length}&followers=${profile.followers_count || 0}${profile.avatar_url ? `&avatar=${encodeURIComponent(profile.avatar_url)}` : ''}`
     : 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
   const shareImage = ogImageUrl;
