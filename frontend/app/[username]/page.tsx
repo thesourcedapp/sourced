@@ -76,7 +76,7 @@ async function uploadImageToStorage(file: File, userId: string): Promise<{ url: 
       .from('avatars')
       .upload(fileName, file, {
         cacheControl: '3600',
-        upsert: false
+        upsert: true
       });
 
     if (error) {
@@ -155,11 +155,17 @@ export default function ProfilePage() {
 
   const isOwner = currentUserId === profileId;
 
-  // Generate share metadata
+  // Generate share metadata with dynamic OG image
   const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
   const shareTitle = profile ? `Sourced - ${profile.username}` : 'Sourced';
   const shareDescription = `@${username} on Sourced`;
-  const shareImage = profile?.avatar_url || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='; // Black 1x1 pixel
+
+  // Generate dynamic OG image URL
+  const ogImageUrl = profile
+    ? `/api/og/profile?username=${encodeURIComponent(profile.username)}${profile.bio ? `&bio=${encodeURIComponent(profile.bio)}` : ''}&catalogs=${profile.catalog_count || 0}&followers=${profile.follower_count || 0}${profile.avatar_url ? `&avatar=${encodeURIComponent(profile.avatar_url)}` : ''}`
+    : 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  const shareImage = ogImageUrl;
 
   useEffect(() => {
     async function initProfile() {
@@ -555,9 +561,8 @@ export default function ProfilePage() {
   async function handleShareProfile() {
     try {
       if (navigator.share) {
+        // Just share the URL - let OG tags do the work
         await navigator.share({
-          title: shareTitle,
-          text: shareDescription,
           url: window.location.href,
         });
       } else {

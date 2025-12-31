@@ -648,11 +648,17 @@ export default function CatalogDetailPage() {
 
   const totalLikes = items.reduce((sum, item) => sum + item.like_count, 0);
 
-  // Generate share metadata
+  // Generate share metadata with dynamic OG image
   const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
   const shareTitle = catalog ? `Sourced - ${catalog.name}` : 'Sourced';
   const shareDescription = `${catalog?.name || 'Catalog'} on Sourced`;
-  const shareImage = catalog?.image_url || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='; // Black 1x1 pixel
+
+  // Generate dynamic OG image URL
+  const ogImageUrl = catalog
+    ? `/api/og/catalog?catalog=${encodeURIComponent(catalog.name)}&username=${encodeURIComponent(catalog.owner.username)}&items=${items.length}${catalog.image_url ? `&image=${encodeURIComponent(catalog.image_url)}` : ''}`
+    : 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  const shareImage = ogImageUrl;
 
   if (loading) {
     return (
@@ -803,20 +809,61 @@ export default function CatalogDetailPage() {
                     onClick={async () => {
                       try {
                         if (navigator.share) {
+                          // Try to share with image for Instagram/Snapchat
+                          if (catalog?.image_url && navigator.canShare) {
+                            try {
+                              console.log('🖼️ Attempting to share with image:', catalog.image_url);
+
+                              // Fetch the image
+                              const response = await fetch(catalog.image_url, {
+                                mode: 'cors',
+                                credentials: 'omit'
+                              });
+                              console.log('✅ Image fetched, status:', response.status);
+
+                              const blob = await response.blob();
+                              console.log('✅ Blob created, type:', blob.type, 'size:', blob.size);
+
+                              const file = new File([blob], `${catalog.name.replace(/[^a-z0-9]/gi, '-')}.jpg`, {
+                                type: 'image/jpeg'
+                              });
+                              console.log('✅ File created:', file.name);
+
+                              // Check if we can share files
+                              const canShareFiles = navigator.canShare({ files: [file] });
+                              console.log('📤 Can share files?', canShareFiles);
+
+                              if (canShareFiles) {
+                                console.log('🚀 Sharing with image...');
+                                await navigator.share({
+                                  files: [file],
+                                  title: shareTitle,
+                                  text: shareDescription,
+                                  url: window.location.href,
+                                });
+                                console.log('✅ Share completed!');
+                                return;
+                              } else {
+                                console.log('❌ Cannot share files on this platform');
+                              }
+                            } catch (imageError) {
+                              console.error('❌ Image share failed:', imageError);
+                            }
+                          }
+
+                          // Fallback to URL-only share
+                          console.log('📤 Sharing URL only...');
                           await navigator.share({
-                            title: shareTitle,
-                            text: shareDescription,
                             url: window.location.href,
                           });
                         } else {
-                          // Desktop fallback - copy to clipboard
+                          // Desktop fallback
                           await navigator.clipboard.writeText(window.location.href);
                           alert('Link copied to clipboard!');
                         }
                       } catch (err) {
-                        // User cancelled or error occurred
+                        console.error('❌ Share error:', err);
                         if (err instanceof Error && err.name !== 'AbortError') {
-                          // Fallback to clipboard if share fails
                           try {
                             await navigator.clipboard.writeText(window.location.href);
                             alert('Link copied to clipboard!');
