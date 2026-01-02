@@ -272,66 +272,105 @@ export default function CatalogsPage() {
     }, 500);
   }
 
-  async function handleCreateCatalog(e: React.FormEvent) {
-    e.preventDefault();
-    if (!currentUserId || !catalogName.trim()) return;
+// Updated handleCreateCatalog function for catalogs page
+// This saves external cover image URLs to your Supabase bucket
 
-    setCreating(true);
-    setImageError('');
+async function handleCreateCatalog(e: React.FormEvent) {
+  e.preventDefault();
+  if (!currentUserId || !catalogName.trim()) return;
 
-    try {
-      let finalImageUrl = '';
+  setCreating(true);
+  setImageError('');
 
-      if (uploadMethod === 'file' && selectedFile) {
-        const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
+  try {
+    let finalImageUrl = '';
+
+    // Handle file upload
+    if (uploadMethod === 'file' && selectedFile) {
+      const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
+      if (!uploadResult.url) {
+        setImageError(uploadResult.error || "Failed to upload image");
+        setCreating(false);
+        return;
+      }
+
+      finalImageUrl = uploadResult.url;
+    }
+    // Handle external URL - download and save to our bucket
+    else if (uploadMethod === 'url' && catalogImageUrl.trim()) {
+      setCheckingImage(true);
+      try {
+        // Fetch the external image
+        const response = await fetch(catalogImageUrl);
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch image');
+        }
+
+        const blob = await response.blob();
+
+        // Create a file from the blob
+        const file = new File([blob], `catalog-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+
+        // Upload to our bucket
+        const uploadResult = await uploadImageToStorage(file, currentUserId);
+
         if (!uploadResult.url) {
-          setImageError(uploadResult.error || "Failed to upload image");
+          setImageError(uploadResult.error || "Failed to save image");
           setCreating(false);
+          setCheckingImage(false);
           return;
         }
 
         finalImageUrl = uploadResult.url;
-      } else if (uploadMethod === 'url' && catalogImageUrl.trim()) {
-        finalImageUrl = catalogImageUrl;
+      } catch (err: any) {
+        console.error('Error saving image:', err);
+        setImageError("Failed to save image from URL. Make sure the URL is accessible.");
+        setCreating(false);
+        setCheckingImage(false);
+        return;
+      } finally {
+        setCheckingImage(false);
       }
-
-      const slug = generateSlug(catalogName);
-
-      const { data, error } = await supabase
-        .from('catalogs')
-        .insert({
-          name: catalogName.trim(),
-          slug: slug,
-          description: catalogDescription.trim() || null,
-          image_url: finalImageUrl || null,
-          visibility: catalogVisibility,
-          owner_id: currentUserId
-        })
-        .select('*, profiles!catalogs_owner_id_fkey(username)')
-        .single();
-
-      if (error) throw error;
-
-      setCatalogName('');
-      setCatalogDescription('');
-      setSelectedFile(null);
-      setCatalogImageUrl('');
-      setPreviewUrl(null);
-      setCatalogVisibility('public');
-      setUploadMethod('file');
-      setShowCreateModal(false);
-
-      await loadCatalogs();
-
-      const owner = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
-      router.push(`/${owner.username}/${slug}`);
-    } catch (error) {
-      console.error('Error creating catalog:', error);
-      alert('Failed to create catalog');
-    } finally {
-      setCreating(false);
     }
+
+    const slug = generateSlug(catalogName);
+
+    const { data, error } = await supabase
+      .from('catalogs')
+      .insert({
+        name: catalogName.trim(),
+        slug: slug,
+        description: catalogDescription.trim() || null,
+        image_url: finalImageUrl || null, // Now this is always a Supabase storage URL
+        visibility: catalogVisibility,
+        owner_id: currentUserId
+      })
+      .select('*, profiles!catalogs_owner_id_fkey(username)')
+      .single();
+
+    if (error) throw error;
+
+    setCatalogName('');
+    setCatalogDescription('');
+    setSelectedFile(null);
+    setCatalogImageUrl('');
+    setPreviewUrl(null);
+    setCatalogVisibility('public');
+    setUploadMethod('file');
+    setShowCreateModal(false);
+
+    await loadCatalogs();
+
+    const owner = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
+    router.push(`/${owner.username}/${slug}`);
+  } catch (error) {
+    console.error('Error creating catalog:', error);
+    alert('Failed to create catalog');
+  } finally {
+    setCreating(false);
   }
+}
 
   const totalItems = userCatalogs.reduce((sum, cat) => sum + cat.item_count, 0);
   const publicCount = userCatalogs.filter(cat => cat.visibility === 'public').length;

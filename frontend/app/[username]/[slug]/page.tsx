@@ -417,129 +417,169 @@ export default function CatalogDetailPage() {
     setCreatingStatus('');
   }
 
-  async function handleAddItem(e: React.FormEvent) {
-    e.preventDefault();
+  // Updated handleAddItem function
+// Replace your existing handleAddItem with this version
+// This saves external image URLs to your Supabase bucket to prevent broken links
 
-    if (!currentUserId) {
-      setImageError('You must be logged in');
+async function handleAddItem(e: React.FormEvent) {
+  e.preventDefault();
+
+  if (!currentUserId) {
+    setImageError('You must be logged in');
+    return;
+  }
+
+  if (!catalog) {
+    setImageError('Catalog not loaded');
+    return;
+  }
+
+  setCreating(true);
+  setImageError('');
+  setProductUrlError('');
+
+  try {
+    if (!itemProductUrl.trim()) {
+      setProductUrlError('Product URL is required');
+      setCreating(false);
       return;
     }
-
-    if (!catalog) {
-      setImageError('Catalog not loaded');
-      return;
-    }
-
-    setCreating(true);
-    setImageError('');
-    setProductUrlError('');
 
     try {
-      if (!itemProductUrl.trim()) {
-        setProductUrlError('Product URL is required');
+      new URL(itemProductUrl);
+    } catch {
+      setProductUrlError('Please enter a valid URL');
+      setCreating(false);
+      return;
+    }
+
+    let finalImageUrl = itemImageUrl;
+
+    // Handle file upload
+    if (uploadMethod === 'file' && selectedFile) {
+      setCreatingStatus('Uploading image...');
+      const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
+
+      if (!uploadResult.url) {
+        setImageError(uploadResult.error || "Failed to upload image");
         setCreating(false);
+        setCreatingStatus('');
         return;
       }
 
+      finalImageUrl = uploadResult.url;
+    }
+    // Handle external URL - download and save to our bucket
+    else if (uploadMethod === 'url' && itemImageUrl) {
+      setCreatingStatus('Saving image to storage...');
       try {
-        new URL(itemProductUrl);
-      } catch {
-        setProductUrlError('Please enter a valid URL');
-        setCreating(false);
-        return;
-      }
+        // Fetch the external image
+        const response = await fetch(itemImageUrl);
 
-      let finalImageUrl = itemImageUrl;
+        if (!response.ok) {
+          throw new Error('Failed to fetch image');
+        }
 
-      if (uploadMethod === 'file' && selectedFile) {
-        setCreatingStatus('Uploading image...');
-        const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
+        const blob = await response.blob();
+
+        // Create a file from the blob
+        const file = new File([blob], `item-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+
+        // Upload to our bucket
+        const uploadResult = await uploadImageToStorage(file, currentUserId);
 
         if (!uploadResult.url) {
-          setImageError(uploadResult.error || "Failed to upload image");
+          setImageError(uploadResult.error || "Failed to save image");
           setCreating(false);
           setCreatingStatus('');
           return;
         }
 
         finalImageUrl = uploadResult.url;
-      }
-
-      if (!finalImageUrl) {
-        setImageError('Image is required');
+      } catch (err: any) {
+        console.error('Error saving image:', err);
+        setImageError("Failed to save image from URL. Make sure the URL is accessible.");
         setCreating(false);
+        setCreatingStatus('');
         return;
       }
-
-      setCreatingStatus('Categorizing with AI...');
-
-      const requestBody = {
-        catalog_id: catalog.id,
-        title: itemTitle.trim(),
-        image_url: finalImageUrl,
-        product_url: itemProductUrl.trim(),
-        seller: itemSeller.trim() || null,
-        price: itemPrice.trim() || null,
-        user_id: currentUserId
-      };
-
-      // Call backend API with AI categorization
-      const response = await fetch(`https://sourced-5ovn.onrender.com/create-catalog-item`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      let result;
-      try {
-        result = await response.json();
-      } catch (parseError) {
-        throw new Error('Server returned invalid response');
-      }
-
-      if (!response.ok) {
-        // If it's a duplicate error (item already exists), consider it success
-        if (result.detail && result.detail.includes('duplicate') || result.detail.includes('already exists')) {
-          console.log('Item already exists, treating as success');
-          resetAddItemForm();
-          setShowAddItemModal(false);
-          await loadItems();
-          return;
-        }
-        throw new Error(result.detail || `Server error: ${response.status}`);
-      }
-
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to create item');
-      }
-
-      resetAddItemForm();
-      setShowAddItemModal(false);
-      await loadItems();
-
-    } catch (error: any) {
-      console.error('❌ Error adding item:', error);
-
-      let errorMessage = error.message || 'Failed to add item';
-
-      // Better error handling for common issues
-      if (errorMessage.includes('fetch')) {
-        errorMessage = 'Cannot connect to server. Make sure backend is running.';
-      } else if (errorMessage.includes('Network')) {
-        errorMessage = 'Network error. Check your connection.';
-      } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
-        errorMessage = 'Request timed out. The item may have been added - please check before retrying.';
-      }
-
-      setImageError(errorMessage);
-    } finally {
-      setCreating(false);
-      setCreatingStatus('');
     }
+
+    if (!finalImageUrl) {
+      setImageError('Image is required');
+      setCreating(false);
+      return;
+    }
+
+    setCreatingStatus('Categorizing with AI...');
+
+    const requestBody = {
+      catalog_id: catalog.id,
+      title: itemTitle.trim(),
+      image_url: finalImageUrl, // Now this is always a Supabase storage URL
+      product_url: itemProductUrl.trim(),
+      seller: itemSeller.trim() || null,
+      price: itemPrice.trim() || null,
+      user_id: currentUserId
+    };
+
+    // Call backend API with AI categorization
+    const response = await fetch(`https://sourced-5ovn.onrender.com/create-catalog-item`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    let result;
+    try {
+      result = await response.json();
+    } catch (parseError) {
+      throw new Error('Server returned invalid response');
+    }
+
+    if (!response.ok) {
+      // If it's a duplicate error (item already exists), consider it success
+      if (result.detail && result.detail.includes('duplicate') || result.detail.includes('already exists')) {
+        console.log('Item already exists, treating as success');
+        resetAddItemForm();
+        setShowAddItemModal(false);
+        await loadItems();
+        return;
+      }
+      throw new Error(result.detail || `Server error: ${response.status}`);
+    }
+
+    if (!result.success) {
+      throw new Error(result.message || 'Failed to create item');
+    }
+
+    resetAddItemForm();
+    setShowAddItemModal(false);
+    await loadItems();
+
+  } catch (error: any) {
+    console.error('❌ Error adding item:', error);
+
+    let errorMessage = error.message || 'Failed to add item';
+
+    // Better error handling for common issues
+    if (errorMessage.includes('fetch')) {
+      errorMessage = 'Cannot connect to server. Make sure backend is running.';
+    } else if (errorMessage.includes('Network')) {
+      errorMessage = 'Network error. Check your connection.';
+    } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+      errorMessage = 'Request timed out. The item may have been added - please check before retrying.';
+    }
+
+    setImageError(errorMessage);
+  } finally {
+    setCreating(false);
+    setCreatingStatus('');
   }
+}
 
   // Edit Catalog Functions
   function openEditCatalogModal() {
