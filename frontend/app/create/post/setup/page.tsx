@@ -163,13 +163,8 @@ export default function CreatePostPage() {
       return;
     }
 
-    try {
-      new URL(url);
-      setItemPreviewUrl(url);
-    } catch {
-      setItemError("Invalid URL format");
-      setItemPreviewUrl(null);
-    }
+    // Just set preview, don't validate URL format yet
+    setItemPreviewUrl(url);
   }
 
   function handleItemProductUrlChange(url: string) {
@@ -275,33 +270,9 @@ export default function CreatePostPage() {
         return;
       }
 
-      setItemCreatingStatus('Categorizing with AI...');
+      setItemCreatingStatus('Adding item...');
 
-      const requestBody = {
-        title: itemTitle.trim(),
-        image_url: finalImageUrl,
-        product_url: itemProductUrl.trim(),
-        seller: itemSeller.trim() || null,
-        price: itemPrice.trim() || null
-      };
-
-      // Call backend API with AI categorization
-      const response = await fetch(`/api/create-feed-post-item`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create item');
-      }
-
-      // Add to items array
+      // Add to items array directly (no AI categorization needed for now)
       setItems([...items, {
         temp_id: Date.now(),
         title: itemTitle.trim(),
@@ -309,7 +280,7 @@ export default function CreatePostPage() {
         product_url: itemProductUrl.trim(),
         price: itemPrice.trim() || null,
         seller: itemSeller.trim() || null,
-        category: data.category || null
+        category: null
       }]);
 
       resetItemForm();
