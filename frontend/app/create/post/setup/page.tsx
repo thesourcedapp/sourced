@@ -831,7 +831,7 @@ export default function CreatePostPage() {
                     <div className="flex gap-2 pt-2">
                       <button
                         type="submit"
-                        disabled={generatingItem || !itemTitle.trim() || !itemProductUrl.trim() || ((itemUploadMethod === 'file' && !selectedItemFile) && (itemUploadMethod === 'url' && !itemImageUrl.trim()))}
+                        disabled={generatingItem || !itemTitle.trim() || !itemProductUrl.trim() || (itemUploadMethod === 'file' ? !selectedItemFile : !itemImageUrl.trim())}
                         className="flex-1 px-4 py-2 bg-white text-black font-black hover:bg-black hover:text-white hover:border-2 hover:border-white transition-all rounded-lg disabled:opacity-50"
                         style={{ fontFamily: 'Bebas Neue' }}
                       >
