@@ -94,12 +94,14 @@ export default function FeedPage() {
         return;
       }
 
+      // Get liked posts for current user
       let likedPostIds: Set<string> = new Set();
       if (currentUserId) {
         const { data: likedData } = await supabase
           .from('liked_feed_posts')
           .select('feed_post_id')
           .eq('user_id', currentUserId);
+
         if (likedData) {
           likedPostIds = new Set(likedData.map(like => like.feed_post_id));
         }
@@ -129,7 +131,7 @@ export default function FeedPage() {
           caption: post.caption,
           music_preview_url: post.music_preview_url,
           like_count: post.like_count,
-          is_liked: likedPostIds.has(post.id),
+          is_liked: likedPostIds.has(post.id), // Check if current user liked it
           comment_count: post.comment_count || 0,
           owner: {
             id: owner.id,
@@ -202,16 +204,10 @@ export default function FeedPage() {
         await supabase.from('liked_feed_posts').delete()
           .eq('user_id', currentUserId)
           .eq('feed_post_id', postId);
-
-        // Update post like count in database
-        await supabase.rpc('decrement_feed_post_likes', { post_id: postId });
       } else {
         // Like
         await supabase.from('liked_feed_posts')
           .insert({ user_id: currentUserId, feed_post_id: postId });
-
-        // Update post like count in database
-        await supabase.rpc('increment_feed_post_likes', { post_id: postId });
       }
 
       // Update local state immediately
@@ -511,15 +507,6 @@ export default function FeedPage() {
               </p>
             </div>
           )}
-        </div>
-
-        {/* Scrolling SOURCED Pattern - Bottom of screen */}
-        <div className="absolute bottom-24 left-0 right-0 overflow-hidden">
-          <div className="flex whitespace-nowrap animate-scroll">
-            <span className="text-white/15 text-xs font-black tracking-[0.3em] mx-4" style={{ fontFamily: 'Bebas Neue' }}>
-              SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED
-            </span>
-          </div>
         </div>
 
         {/* Toast */}

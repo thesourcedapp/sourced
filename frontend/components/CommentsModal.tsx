@@ -94,9 +94,6 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
 
       if (error) throw error;
 
-      // Increment comment count
-      await supabase.rpc('increment_feed_post_comments', { post_id: postId });
-
       setNewComment('');
       loadComments(); // Reload comments
     } catch (error) {
