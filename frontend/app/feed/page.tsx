@@ -46,6 +46,7 @@ export default function FeedPage() {
   const [isMuted, setIsMuted] = useState(false);
   const [failedAudioPosts, setFailedAudioPosts] = useState<Set<string>>(new Set());
   const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [expandedItem, setExpandedItem] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const startY = useRef(0);
@@ -191,6 +192,12 @@ export default function FeedPage() {
   }
 
   async function toggleLike(postId: string, currentlyLiked: boolean) {
+    console.log('=== LIKE DEBUG ===');
+    console.log('Post ID:', postId);
+    console.log('Currently Liked:', currentlyLiked);
+    console.log('Current User ID:', currentUserId);
+    console.log('Is Onboarded:', isOnboarded);
+
     if (!currentUserId || !isOnboarded) {
       setToastMessage('Please log in to like posts');
       setShowToast(true);
@@ -208,26 +215,34 @@ export default function FeedPage() {
     try {
       if (currentlyLiked) {
         // Unlike
-        const { error } = await supabase
+        console.log('Attempting to UNLIKE...');
+        const { data, error } = await supabase
           .from('liked_feed_posts')
           .delete()
           .eq('user_id', currentUserId)
-          .eq('feed_post_id', postId);
+          .eq('feed_post_id', postId)
+          .select();
 
+        console.log('Unlike result:', { data, error });
         if (error) throw error;
       } else {
         // Like
-        const { error } = await supabase
+        console.log('Attempting to LIKE...');
+        const { data, error } = await supabase
           .from('liked_feed_posts')
           .insert({
             user_id: currentUserId,
             feed_post_id: postId
-          });
+          })
+          .select();
 
+        console.log('Like result:', { data, error });
         if (error) throw error;
       }
+
+      console.log('Like toggle SUCCESS');
     } catch (error) {
-      console.error('Error toggling like:', error);
+      console.error('Like toggle ERROR:', error);
       // Revert on error
       setPosts(prev => prev.map(post =>
         post.id === postId
@@ -378,11 +393,12 @@ export default function FeedPage() {
         {/* Main Content */}
         <div className="relative h-full flex flex-col items-center justify-center px-3 pt-20 pb-24">
 
-          {/* Image Card - BIGGER for mobile */}
+          {/* Image Card - TALL for mobile using min-height */}
           <div
             className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 border border-white/10 cursor-pointer mb-3"
             style={{
-              height: '75vh',
+              minHeight: '80vh',
+              maxHeight: '85vh',
               transform: isDragging ? `translateY(${-dragOffset * 0.5}px) scale(${1 - Math.abs(dragOffset) * 0.0002})` : 'none',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
@@ -417,7 +433,11 @@ export default function FeedPage() {
                       SHOP THE LOOK
                     </h2>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setViewMode('discover'); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setViewMode('discover');
+                        setExpandedItem(null);
+                      }}
                       className="w-10 h-10 flex items-center justify-center text-white bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-colors"
                     >
                       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -426,56 +446,106 @@ export default function FeedPage() {
                     </button>
                   </div>
 
-                  {/* Items Grid */}
-                  <div className="flex-1 overflow-y-auto px-4 pb-6">
-                    <div className="grid grid-cols-2 gap-3 mt-2">
-                      {currentPost.items.map((item, idx) => (
-                        <div
-                          key={item.id}
-                          className="bg-white/95 backdrop-blur-md rounded-2xl overflow-hidden shadow-xl slide-up"
-                          style={{ animationDelay: `${idx * 0.05}s` }}
-                        >
-                          {/* Image */}
-                          <div className="aspect-square bg-neutral-100 overflow-hidden">
-                            <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                          </div>
+                  {/* Items Grid or Expanded View */}
+                  {!expandedItem ? (
+                    <div className="flex-1 overflow-y-auto px-4 pb-6">
+                      <div className="grid grid-cols-2 gap-3 mt-2">
+                        {currentPost.items.map((item, idx) => (
+                          <div
+                            key={item.id}
+                            className="bg-white/95 backdrop-blur-md rounded-2xl overflow-hidden shadow-xl slide-up"
+                            style={{ animationDelay: `${idx * 0.05}s` }}
+                          >
+                            {/* Image */}
+                            <div className="aspect-square bg-neutral-100 overflow-hidden">
+                              <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                            </div>
 
-                          {/* Content */}
-                          <div className="p-3 space-y-2">
-                            <h3 className="font-black text-xs leading-tight line-clamp-2 text-black" style={{ fontFamily: 'Bebas Neue' }}>
-                              {item.title}
-                            </h3>
+                            {/* Content */}
+                            <div className="p-3 space-y-2">
+                              <h3 className="font-black text-xs leading-tight line-clamp-2 text-black" style={{ fontFamily: 'Bebas Neue' }}>
+                                {item.title}
+                              </h3>
 
-                            {item.price && (
-                              <p className="text-lg font-black text-black" style={{ fontFamily: 'Archivo Black' }}>
-                                ${item.price}
-                              </p>
-                            )}
+                              {item.price && (
+                                <p className="text-lg font-black text-black" style={{ fontFamily: 'Archivo Black' }}>
+                                  ${item.price}
+                                </p>
+                              )}
 
-                            {item.seller && (
-                              <p className="text-[10px] text-black/50 uppercase tracking-wider font-semibold">
-                                {item.seller}
-                              </p>
-                            )}
-
-                            {/* View Button */}
-                            {item.product_url && (
+                              {/* View Button */}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  window.open(item.product_url!, '_blank');
+                                  setExpandedItem(item.id);
                                 }}
                                 className="w-full py-2.5 bg-black text-white font-black text-xs tracking-widest hover:bg-neutral-800 transition-colors rounded-lg"
                                 style={{ fontFamily: 'Bebas Neue' }}
                               >
                                 VIEW
                               </button>
-                            )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex-1 overflow-y-auto px-6 pb-6 flex items-center justify-center">
+                      {(() => {
+                        const item = currentPost.items.find(i => i.id === expandedItem);
+                        if (!item) return null;
+
+                        return (
+                          <div className="w-full max-w-sm bg-white/98 backdrop-blur-xl rounded-3xl overflow-hidden shadow-2xl fade-in">
+                            {/* Large Image */}
+                            <div className="aspect-[4/5] bg-neutral-100 overflow-hidden">
+                              <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                            </div>
+
+                            {/* Details */}
+                            <div className="p-6 space-y-4">
+                              <div>
+                                <h2 className="font-black text-2xl leading-tight mb-2 text-black" style={{ fontFamily: 'Bebas Neue' }}>
+                                  {item.title}
+                                </h2>
+                                {item.seller && (
+                                  <p className="text-sm text-black/60 uppercase tracking-wider font-semibold">
+                                    {item.seller}
+                                  </p>
+                                )}
+                              </div>
+
+                              {item.price && (
+                                <p className="text-4xl font-black text-black" style={{ fontFamily: 'Archivo Black' }}>
+                                  ${item.price}
+                                </p>
+                              )}
+
+                              {/* Action Buttons */}
+                              <div className="space-y-3 pt-2">
+                                {item.product_url && (
+                                  <button
+                                    onClick={() => window.open(item.product_url!, '_blank')}
+                                    className="w-full py-4 bg-black text-white font-black text-sm tracking-widest hover:bg-neutral-800 transition-colors rounded-xl"
+                                    style={{ fontFamily: 'Bebas Neue' }}
+                                  >
+                                    BUY NOW
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setExpandedItem(null)}
+                                  className="w-full py-4 bg-white/50 text-black font-black text-sm tracking-widest hover:bg-white/70 transition-colors rounded-xl border-2 border-black/10"
+                                  style={{ fontFamily: 'Bebas Neue' }}
+                                >
+                                  BACK TO ITEMS
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

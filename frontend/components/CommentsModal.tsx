@@ -116,7 +116,7 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
     const now = new Date();
     const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-    if (seconds < 60) return 'just now';
+    if (seconds < 60) return `${seconds}s`;
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m`;
     const hours = Math.floor(minutes / 60);
@@ -124,7 +124,24 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
     const days = Math.floor(hours / 24);
     if (days < 7) return `${days}d`;
     const weeks = Math.floor(days / 7);
-    return `${weeks}w`;
+    if (weeks < 4) return `${weeks}w`;
+    const months = Math.floor(days / 30);
+    return `${months}mo`;
+  }
+
+  async function deleteComment(commentId: string) {
+    try {
+      const { error } = await supabase
+        .from('feed_post_comments')
+        .delete()
+        .eq('id', commentId);
+
+      if (error) throw error;
+
+      await loadComments();
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+    }
   }
 
   if (!isOpen) return null;
@@ -190,6 +207,14 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
                     <span className="text-white/40 text-xs">
                       {formatTimeAgo(comment.created_at)}
                     </span>
+                    {comment.user.id === currentUserId && (
+                      <button
+                        onClick={() => deleteComment(comment.id)}
+                        className="ml-auto text-red-400 hover:text-red-300 text-xs font-bold"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                   <p className="text-white/90 text-sm leading-relaxed break-words">
                     {comment.comment_text}
