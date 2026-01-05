@@ -198,26 +198,42 @@ export default function FeedPage() {
       return;
     }
 
+    // Optimistic update
+    setPosts(prev => prev.map(post =>
+      post.id === postId
+        ? { ...post, is_liked: !currentlyLiked, like_count: currentlyLiked ? post.like_count - 1 : post.like_count + 1 }
+        : post
+    ));
+
     try {
       if (currentlyLiked) {
         // Unlike
-        await supabase.from('liked_feed_posts').delete()
+        const { error } = await supabase
+          .from('liked_feed_posts')
+          .delete()
           .eq('user_id', currentUserId)
           .eq('feed_post_id', postId);
+
+        if (error) throw error;
       } else {
         // Like
-        await supabase.from('liked_feed_posts')
-          .insert({ user_id: currentUserId, feed_post_id: postId });
-      }
+        const { error } = await supabase
+          .from('liked_feed_posts')
+          .insert({
+            user_id: currentUserId,
+            feed_post_id: postId
+          });
 
-      // Update local state immediately
-      setPosts(prev => prev.map(post =>
-        post.id === postId
-          ? { ...post, is_liked: !currentlyLiked, like_count: currentlyLiked ? post.like_count - 1 : post.like_count + 1 }
-          : post
-      ));
+        if (error) throw error;
+      }
     } catch (error) {
       console.error('Error toggling like:', error);
+      // Revert on error
+      setPosts(prev => prev.map(post =>
+        post.id === postId
+          ? { ...post, is_liked: currentlyLiked, like_count: currentlyLiked ? post.like_count + 1 : post.like_count - 1 }
+          : post
+      ));
     }
   }
 
@@ -379,43 +395,87 @@ export default function FeedPage() {
               className="w-full h-full object-cover"
             />
 
-            {/* Shop Overlay */}
+            {/* Shop Overlay - Blurred Photo Background */}
             {viewMode === 'shop' && (
-              <div className="absolute inset-0 bg-black/95 backdrop-blur-xl overflow-y-auto p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-black text-white" style={{ fontFamily: 'Archivo Black' }}>
-                    SHOP THE LOOK
-                  </h2>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setViewMode('discover'); }}
-                    className="w-8 h-8 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-colors"
-                  >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+              <div className="absolute inset-0 z-30 flex flex-col">
+                {/* Blurred Background */}
+                <div
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{
+                    backgroundImage: `url(${currentPost.image_url})`,
+                    filter: 'blur(40px)',
+                    transform: 'scale(1.1)'
+                  }}
+                ></div>
+                <div className="absolute inset-0 bg-black/60"></div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  {currentPost.items.map((item, idx) => (
-                    <div
-                      key={item.id}
-                      onClick={(e) => { e.stopPropagation(); if (item.product_url) window.open(item.product_url, '_blank'); }}
-                      className="bg-white rounded-xl p-3 cursor-pointer hover:scale-105 transition-transform"
+                {/* Content */}
+                <div className="relative flex flex-col h-full">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-6 py-5 bg-gradient-to-b from-black/50 to-transparent">
+                    <h2 className="text-white text-2xl font-black tracking-wider" style={{ fontFamily: 'Bebas Neue' }}>
+                      SHOP THE LOOK
+                    </h2>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setViewMode('discover'); }}
+                      className="w-10 h-10 flex items-center justify-center text-white bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-colors"
                     >
-                      <div className="aspect-square bg-neutral-100 rounded-lg overflow-hidden mb-2">
-                        <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                      </div>
-                      <h3 className="font-black text-xs mb-1 leading-tight line-clamp-2" style={{ fontFamily: 'Bebas Neue' }}>
-                        {item.title}
-                      </h3>
-                      {item.price && (
-                        <p className="text-base font-black" style={{ fontFamily: 'Archivo Black' }}>
-                          ${item.price}
-                        </p>
-                      )}
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Items Grid */}
+                  <div className="flex-1 overflow-y-auto px-4 pb-6">
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                      {currentPost.items.map((item, idx) => (
+                        <div
+                          key={item.id}
+                          className="bg-white/95 backdrop-blur-md rounded-2xl overflow-hidden shadow-xl slide-up"
+                          style={{ animationDelay: `${idx * 0.05}s` }}
+                        >
+                          {/* Image */}
+                          <div className="aspect-square bg-neutral-100 overflow-hidden">
+                            <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                          </div>
+
+                          {/* Content */}
+                          <div className="p-3 space-y-2">
+                            <h3 className="font-black text-xs leading-tight line-clamp-2 text-black" style={{ fontFamily: 'Bebas Neue' }}>
+                              {item.title}
+                            </h3>
+
+                            {item.price && (
+                              <p className="text-lg font-black text-black" style={{ fontFamily: 'Archivo Black' }}>
+                                ${item.price}
+                              </p>
+                            )}
+
+                            {item.seller && (
+                              <p className="text-[10px] text-black/50 uppercase tracking-wider font-semibold">
+                                {item.seller}
+                              </p>
+                            )}
+
+                            {/* View Button */}
+                            {item.product_url && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(item.product_url!, '_blank');
+                                }}
+                                className="w-full py-2.5 bg-black text-white font-black text-xs tracking-widest hover:bg-neutral-800 transition-colors rounded-lg"
+                                style={{ fontFamily: 'Bebas Neue' }}
+                              >
+                                VIEW
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </div>
               </div>
             )}

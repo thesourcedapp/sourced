@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 
 type Comment = {
   id: string;
-  content: string;
+  comment_text: string;
   created_at: string;
   user: {
     id: string;
@@ -45,7 +45,7 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
         .from('feed_post_comments')
         .select(`
           id,
-          content,
+          comment_text,
           created_at,
           user_id,
           profiles!feed_post_comments_user_id_fkey(id, username, avatar_url, is_verified)
@@ -53,13 +53,16 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
         .eq('feed_post_id', postId)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error loading comments:', error);
+        throw error;
+      }
 
       const formattedComments: Comment[] = (data || []).map((comment: any) => {
         const profile = Array.isArray(comment.profiles) ? comment.profiles[0] : comment.profiles;
         return {
           id: comment.id,
-          content: comment.content,
+          comment_text: comment.comment_text,
           created_at: comment.created_at,
           user: {
             id: profile.id,
@@ -83,21 +86,26 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
 
     setSubmitting(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('feed_post_comments')
         .insert({
           feed_post_id: postId,
           user_id: currentUserId,
-          post_owner_id: postOwnerId,
-          content: newComment.trim()
-        });
+          comment_text: newComment.trim()
+        })
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Insert error:', error);
+        throw error;
+      }
 
+      console.log('Comment posted successfully:', data);
       setNewComment('');
-      loadComments(); // Reload comments
+      await loadComments(); // Reload comments
     } catch (error) {
       console.error('Error posting comment:', error);
+      alert('Failed to post comment. Check console for details.');
     } finally {
       setSubmitting(false);
     }
@@ -184,7 +192,7 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
                     </span>
                   </div>
                   <p className="text-white/90 text-sm leading-relaxed break-words">
-                    {comment.content}
+                    {comment.comment_text}
                   </p>
                 </div>
               </div>
