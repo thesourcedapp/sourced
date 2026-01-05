@@ -43,10 +43,10 @@ export default function FeedPage() {
   const [toastMessage, setToastMessage] = useState('');
   const [viewMode, setViewMode] = useState<'discover' | 'shop'>('discover');
   const [isMuted, setIsMuted] = useState(false);
+  const [failedAudioPosts, setFailedAudioPosts] = useState<Set<string>>(new Set());
 
   const containerRef = useRef<HTMLDivElement>(null);
   const startY = useRef(0);
-  const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   useEffect(() => {
     loadCurrentUser();
@@ -61,31 +61,6 @@ export default function FeedPage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentIndex, posts.length]);
-
-  // Auto-play music with unmuted state
-  useEffect(() => {
-    if (posts[currentIndex]?.music_preview_url) {
-      const audio = audioRefs.current[posts[currentIndex].id];
-      if (audio) {
-        audio.muted = isMuted;
-        // Force play with user interaction fallback
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(() => {
-            // Auto-play failed, will need user interaction
-            console.log('Autoplay prevented, waiting for user interaction');
-          });
-        }
-      }
-    }
-
-    // Pause others
-    Object.entries(audioRefs.current).forEach(([id, audio]) => {
-      if (id !== posts[currentIndex]?.id) {
-        audio.pause();
-      }
-    });
-  }, [currentIndex, posts, isMuted]);
 
   async function loadCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -186,20 +161,8 @@ export default function FeedPage() {
     }
   }
 
-  function toggleMute() {
-    setIsMuted(prev => !prev);
-  }
-
   function handleImageClick() {
-    if (currentPost.music_preview_url) {
-      const audio = audioRefs.current[currentPost.id];
-      if (audio) {
-        if (audio.paused) {
-          audio.play();
-        }
-        toggleMute();
-      }
-    }
+    // Just for potential future use
   }
 
   function handleTouchStart(e: React.TouchEvent) {
@@ -344,16 +307,6 @@ export default function FeedPage() {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Audio */}
-        {currentPost.music_preview_url && (
-          <audio
-            ref={(el) => { if (el) audioRefs.current[currentPost.id] = el; }}
-            src={currentPost.music_preview_url}
-            loop
-            playsInline
-          />
-        )}
-
         {/* Background */}
         <div className="absolute inset-0 overflow-hidden">
           <div
@@ -367,21 +320,32 @@ export default function FeedPage() {
           <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
         </div>
 
-        {/* FEED Header */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30">
-          <h1 className="text-white text-xl font-black tracking-[0.3em] opacity-90" style={{ fontFamily: 'Bebas Neue' }}>
-            FEED
-          </h1>
+        {/* FEED Header - TikTok/IG Style */}
+        <div className="absolute top-0 left-0 right-0 z-30 pt-4 pb-2">
+          <div className="flex items-center justify-between px-4">
+            <div className="w-10"></div>
+            <h1 className="text-white text-base font-bold tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>
+              Feed
+            </h1>
+            <button
+              onClick={() => router.push('/create/post/setup')}
+              className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
+            >
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Main Content */}
-        <div className="relative h-full flex flex-col items-center justify-center px-4 pt-16 pb-24">
+        <div className="relative h-full flex flex-col items-center justify-center px-4 pt-20 pb-24">
 
-          {/* Image Card - TALL aspect ratio for mobile */}
+          {/* Image Card - TALLER for mobile */}
           <div
             className="relative w-full max-w-md rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 border border-white/10 cursor-pointer mb-4"
             style={{
-              aspectRatio: '9/16',
+              height: '70vh',
               transform: isDragging ? `translateY(${-dragOffset * 0.5}px) scale(${1 - Math.abs(dragOffset) * 0.0002})` : 'none',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
@@ -393,28 +357,6 @@ export default function FeedPage() {
               alt=""
               className="w-full h-full object-cover"
             />
-
-            {/* Volume Button */}
-            {currentPost.music_preview_url && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleMute();
-                }}
-                className="absolute top-3 right-3 w-7 h-7 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-black/70 transition-all z-10"
-              >
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                  {isMuted ? (
-                    <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
-                  ) : (
-                    <>
-                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
-                      <path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-                    </>
-                  )}
-                </svg>
-              </button>
-            )}
 
             {/* Shop Overlay */}
             {viewMode === 'shop' && (
@@ -486,10 +428,10 @@ export default function FeedPage() {
             {currentPost.items.length > 0 && (
               <button
                 onClick={(e) => { e.stopPropagation(); setViewMode(viewMode === 'shop' ? 'discover' : 'shop'); }}
-                className="px-4 py-2 bg-white/90 backdrop-blur-sm text-black font-black text-xs tracking-widest rounded-full hover:bg-white transition-all"
+                className="px-3 py-2 bg-white/90 backdrop-blur-sm text-black font-black text-[10px] tracking-widest rounded-full hover:bg-white transition-all"
                 style={{ fontFamily: 'Bebas Neue' }}
               >
-                SHOP
+                SHOP THE LOOK
               </button>
             )}
           </div>
@@ -513,7 +455,23 @@ export default function FeedPage() {
               <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{currentPost.comment_count}</span>
             </button>
 
-            <button className="flex items-center gap-2 text-white hover:scale-110 transition-transform">
+            <button
+              onClick={() => {
+                const shareUrl = `${window.location.origin}/post/${currentPost.id}`;
+                if (navigator.share) {
+                  navigator.share({
+                    title: `@${currentPost.owner.username} on Sourced`,
+                    url: shareUrl
+                  });
+                } else {
+                  navigator.clipboard.writeText(shareUrl);
+                  setToastMessage('Link copied!');
+                  setShowToast(true);
+                  setTimeout(() => setShowToast(false), 2000);
+                }
+              }}
+              className="flex items-center gap-2 text-white hover:scale-110 transition-transform"
+            >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4m0 0L8 6m4-4v13" />
               </svg>
@@ -541,9 +499,9 @@ export default function FeedPage() {
           </div>
         )}
 
-        {/* Swipe Indicator */}
+        {/* Swipe Indicator - MUCH LOWER */}
         {currentIndex === 0 && (
-          <div className="absolute bottom-32 left-1/2 -translate-x-1/2 text-white/40 text-center z-20 fade-in">
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/40 text-center z-20 fade-in">
             <svg className="w-8 h-8 mx-auto mb-2 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
             </svg>
