@@ -9,14 +9,13 @@ type FeedPost = {
   id: string;
   image_url: string;
   caption: string | null;
+  music_preview_url: string | null;
   like_count: number;
   is_liked: boolean;
   comment_count: number;
-  created_at: string;
   owner: {
     id: string;
     username: string;
-    full_name: string | null;
     avatar_url: string | null;
     is_verified: boolean;
   };
@@ -28,28 +27,27 @@ type FeedPost = {
     price: string | null;
     seller: string | null;
   }>;
-  is_following: boolean;
 };
 
-export default function VogueFeed() {
+export default function RunwayFeed() {
   const router = useRouter();
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [direction, setDirection] = useState<'next' | 'prev'>('next');
-  const [feedType, setFeedType] = useState<'for-you' | 'following'>('for-you');
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
-  const [showCommentsForPost, setShowCommentsForPost] = useState<string | null>(null);
-  const [expandedCaptions, setExpandedCaptions] = useState<Set<string>>(new Set());
-  const [comments, setComments] = useState<Record<string, any[]>>({});
-  const [commentText, setCommentText] = useState('');
+
+  // Interactive states
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
-  const touchStartX = useRef(0);
-  const touchEndX = useRef(0);
+  const [viewMode, setViewMode] = useState<'discover' | 'shop'>('discover');
+  const [isMuted, setIsMuted] = useState(false);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const startY = useRef(0);
+  const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   useEffect(() => {
     loadCurrentUser();
@@ -57,23 +55,31 @@ export default function VogueFeed() {
   }, []);
 
   useEffect(() => {
-    if (currentUserId !== null) {
-      setCurrentIndex(0);
-      loadFeedPosts();
-    }
-  }, [feedType]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown') nextPost();
+      if (e.key === 'ArrowUp') prevPost();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentIndex, posts.length]);
 
+  // Auto-play music
   useEffect(() => {
-    if (showCommentsForPost) {
-      loadComments(showCommentsForPost);
+    if (posts[currentIndex]?.music_preview_url) {
+      const audio = audioRefs.current[posts[currentIndex].id];
+      if (audio) {
+        audio.muted = isMuted;
+        audio.play().catch(() => {});
+      }
     }
-  }, [showCommentsForPost]);
 
-  function showToastNotification(message: string) {
-    setToastMessage(message);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
-  }
+    // Pause others
+    Object.entries(audioRefs.current).forEach(([id, audio]) => {
+      if (id !== posts[currentIndex]?.id) {
+        audio.pause();
+      }
+    });
+  }, [currentIndex, posts, isMuted]);
 
   async function loadCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -90,99 +96,65 @@ export default function VogueFeed() {
 
   async function loadFeedPosts() {
     try {
-      let query = supabase
+      const { data: postsData } = await supabase
         .from('feed_posts')
         .select(`
-          id,
-          image_url,
-          caption,
-          like_count,
-          comment_count,
-          created_at,
-          owner_id,
-          profiles!feed_posts_owner_id_fkey(id, username, full_name, avatar_url, is_verified)
+          id, image_url, caption, like_count, comment_count, music_preview_url, owner_id,
+          profiles!feed_posts_owner_id_fkey(id, username, avatar_url, is_verified)
         `)
         .order('created_at', { ascending: false })
         .limit(50);
 
-      if (feedType === 'following' && currentUserId) {
-        const { data: followingData } = await supabase
-          .from('followers')
-          .select('following_id')
-          .eq('follower_id', currentUserId);
-
-        if (followingData && followingData.length > 0) {
-          const followingIds = followingData.map(f => f.following_id);
-          query = query.in('owner_id', followingIds);
-        } else {
-          setPosts([]);
-          setLoading(false);
-          return;
-        }
-      }
-
-      const { data: postsData, error: postsError } = await query;
-
-      if (postsError) throw postsError;
-      if (!postsData || postsData.length === 0) {
+      if (!postsData) {
         setPosts([]);
         setLoading(false);
         return;
       }
 
       let likedPostIds: Set<string> = new Set();
-      let followingIds: Set<string> = new Set();
-
       if (currentUserId) {
-        const [likedData, followingData] = await Promise.all([
-          supabase.from('liked_feed_posts').select('feed_post_id').eq('user_id', currentUserId),
-          supabase.from('followers').select('following_id').eq('follower_id', currentUserId)
-        ]);
-
-        if (likedData.data) {
-          likedPostIds = new Set(likedData.data.map(like => like.feed_post_id));
-        }
-        if (followingData.data) {
-          followingIds = new Set(followingData.data.map(f => f.following_id));
+        const { data: likedData } = await supabase
+          .from('liked_feed_posts')
+          .select('feed_post_id')
+          .eq('user_id', currentUserId);
+        if (likedData) {
+          likedPostIds = new Set(likedData.map(like => like.feed_post_id));
         }
       }
 
       const postIds = postsData.map(p => p.id);
-      const { data: linkedItemsData } = await supabase
+      const { data: itemsData } = await supabase
         .from('feed_post_items')
         .select('*')
         .in('feed_post_id', postIds);
 
       const itemsByPost = new Map<string, any[]>();
-      if (linkedItemsData) {
-        linkedItemsData.forEach((item: any) => {
-          const postId = item.feed_post_id;
-          if (!itemsByPost.has(postId)) {
-            itemsByPost.set(postId, []);
+      if (itemsData) {
+        itemsData.forEach((item: any) => {
+          if (!itemsByPost.has(item.feed_post_id)) {
+            itemsByPost.set(item.feed_post_id, []);
           }
-          itemsByPost.get(postId)!.push(item);
+          itemsByPost.get(item.feed_post_id)!.push(item);
         });
       }
 
       const feedPosts: FeedPost[] = postsData.map((post: any) => {
-        const owner = post.profiles;
+        const owner = Array.isArray(post.profiles) ? post.profiles[0] : post.profiles;
         return {
           id: post.id,
           image_url: post.image_url,
           caption: post.caption,
+          music_preview_url: post.music_preview_url,
           like_count: post.like_count,
           is_liked: likedPostIds.has(post.id),
           comment_count: post.comment_count || 0,
-          created_at: post.created_at,
           owner: {
             id: owner.id,
             username: owner.username,
-            full_name: owner.full_name,
             avatar_url: owner.avatar_url,
             is_verified: owner.is_verified || false
           },
-          items: itemsByPost.get(post.id) || [],
-          is_following: followingIds.has(owner.id)
+          items: itemsByPost.get(post.id) || []
         };
       });
 
@@ -195,42 +167,55 @@ export default function VogueFeed() {
   }
 
   function nextPost() {
-    if (isTransitioning || currentIndex >= posts.length - 1) return;
-    setDirection('next');
-    setIsTransitioning(true);
-    setTimeout(() => {
+    if (currentIndex < posts.length - 1) {
       setCurrentIndex(prev => prev + 1);
-      setTimeout(() => setIsTransitioning(false), 100);
-    }, 700);
+      setViewMode('discover');
+    }
   }
 
   function prevPost() {
-    if (isTransitioning || currentIndex <= 0) return;
-    setDirection('prev');
-    setIsTransitioning(true);
-    setTimeout(() => {
+    if (currentIndex > 0) {
       setCurrentIndex(prev => prev - 1);
-      setTimeout(() => setIsTransitioning(false), 100);
-    }, 700);
+      setViewMode('discover');
+    }
+  }
+
+  function toggleMute() {
+    setIsMuted(prev => !prev);
+  }
+
+  function handleImageClick() {
+    if (currentPost.music_preview_url) {
+      toggleMute();
+    }
   }
 
   function handleTouchStart(e: React.TouchEvent) {
-    touchStartX.current = e.touches[0].clientX;
+    startY.current = e.touches[0].clientY;
+    setIsDragging(true);
   }
 
-  function handleTouchEnd(e: React.TouchEvent) {
-    touchEndX.current = e.changedTouches[0].clientX;
-    const diff = touchStartX.current - touchEndX.current;
+  function handleTouchMove(e: React.TouchEvent) {
+    if (!isDragging) return;
+    const currentY = e.touches[0].clientY;
+    const diff = startY.current - currentY;
+    setDragOffset(diff);
+  }
 
-    if (Math.abs(diff) > 50) {
-      if (diff > 0) nextPost();
+  function handleTouchEnd() {
+    if (Math.abs(dragOffset) > 100) {
+      if (dragOffset > 0) nextPost();
       else prevPost();
     }
+    setDragOffset(0);
+    setIsDragging(false);
   }
 
   async function toggleLike(postId: string, currentlyLiked: boolean) {
     if (!currentUserId || !isOnboarded) {
-      showToastNotification('Please log in to like posts');
+      setToastMessage('Please log in to like posts');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
       return;
     }
 
@@ -246,11 +231,7 @@ export default function VogueFeed() {
 
       setPosts(prev => prev.map(post =>
         post.id === postId
-          ? {
-              ...post,
-              is_liked: !currentlyLiked,
-              like_count: currentlyLiked ? post.like_count - 1 : post.like_count + 1
-            }
+          ? { ...post, is_liked: !currentlyLiked, like_count: currentlyLiked ? post.like_count - 1 : post.like_count + 1 }
           : post
       ));
     } catch (error) {
@@ -258,116 +239,49 @@ export default function VogueFeed() {
     }
   }
 
-  async function toggleFollow(userId: string, currentlyFollowing: boolean) {
+  function handleComment() {
     if (!currentUserId || !isOnboarded) {
-      showToastNotification('Please log in to follow users');
+      setToastMessage('Please log in to comment');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
       return;
     }
-
-    try {
-      if (currentlyFollowing) {
-        await supabase.from('followers').delete()
-          .eq('follower_id', currentUserId)
-          .eq('following_id', userId);
-      } else {
-        await supabase.from('followers')
-          .insert({ follower_id: currentUserId, following_id: userId });
-      }
-
-      setPosts(prev => prev.map(post =>
-        post.owner.id === userId
-          ? { ...post, is_following: !currentlyFollowing }
-          : post
-      ));
-    } catch (error) {
-      console.error('Error toggling follow:', error);
-    }
-  }
-
-  async function loadComments(postId: string) {
-    try {
-      const { data, error } = await supabase
-        .from('feed_post_comments')
-        .select(`
-          id,
-          comment_text,
-          created_at,
-          user_id,
-          profiles!feed_post_comments_user_id_fkey(id, username, avatar_url, is_verified)
-        `)
-        .eq('feed_post_id', postId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setComments(prev => ({ ...prev, [postId]: data || [] }));
-    } catch (error) {
-      console.error('Error loading comments:', error);
-    }
-  }
-
-  async function submitComment(postId: string) {
-    if (!currentUserId || !isOnboarded || !commentText.trim()) return;
-
-    try {
-      const { error } = await supabase
-        .from('feed_post_comments')
-        .insert({
-          feed_post_id: postId,
-          user_id: currentUserId,
-          comment_text: commentText.trim()
-        });
-
-      if (error) throw error;
-
-      setCommentText('');
-      loadComments(postId);
-
-      setPosts(prev => prev.map(post =>
-        post.id === postId
-          ? { ...post, comment_count: post.comment_count + 1 }
-          : post
-      ));
-    } catch (error) {
-      console.error('Error submitting comment:', error);
-    }
+    // TODO: Open comments modal
   }
 
   if (loading) {
     return (
-      <>
-        <Head><title>Feed | Sourced</title></Head>
-        <div className="min-h-screen bg-black flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
-          </div>
+      <div className="fixed inset-0 bg-black flex items-center justify-center">
+        <div className="text-white text-2xl font-black tracking-widest animate-pulse" style={{ fontFamily: 'Bebas Neue' }}>
+          SOURCED
         </div>
-      </>
+      </div>
     );
   }
 
   if (posts.length === 0) {
     return (
-      <>
-        <Head><title>Feed | Sourced</title></Head>
-        <div className="min-h-screen bg-black flex items-center justify-center p-4">
-          <div className="text-center">
-            <h1 className="text-4xl font-black text-white mb-4">NO POSTS YET</h1>
-            <button
-              onClick={() => router.push('/create/post')}
-              className="px-6 py-3 bg-white text-black hover:bg-black hover:text-white hover:border-2 hover:border-white transition-all"
-            >
-              CREATE POST
-            </button>
-          </div>
+      <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
+        <div className="text-center">
+          <h1 className="text-4xl font-black text-white mb-4" style={{ fontFamily: 'Archivo Black' }}>NO POSTS YET</h1>
+          <button
+            onClick={() => router.push('/create/post')}
+            className="px-8 py-3 bg-white text-black hover:bg-black hover:text-white border-2 border-white transition-all font-black tracking-wider"
+            style={{ fontFamily: 'Bebas Neue' }}
+          >
+            CREATE FIRST POST
+          </button>
         </div>
-      </>
+      </div>
     );
   }
+
+  const currentPost = posts[currentIndex];
 
   return (
     <>
       <Head>
-        <title>Sourced | Fashion</title>
+        <title>Discover | Sourced</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
       </Head>
 
@@ -375,432 +289,409 @@ export default function VogueFeed() {
         @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');
 
         * {
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
+          -webkit-tap-highlight-color: transparent;
         }
 
         body {
           overflow: hidden;
           font-family: 'Bebas Neue', sans-serif;
-          color: #FFFFFF;
+          background: #000;
         }
 
-        @keyframes slideOutNext {
-          0% { transform: translateX(0%) scale(1); opacity: 1; }
-          100% { transform: translateX(-100%) scale(0.9); opacity: 0; }
+        @keyframes slideUp {
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
-
-        @keyframes slideOutPrev {
-          0% { transform: translateX(0%) scale(1); opacity: 1; }
-          100% { transform: translateX(100%) scale(0.9); opacity: 0; }
-        }
-
-        @keyframes slideInNext {
-          0% { transform: translateX(100%) scale(0.9); opacity: 0; }
-          100% { transform: translateX(0%) scale(1); opacity: 1; }
-        }
-
-        @keyframes slideInPrev {
-          0% { transform: translateX(-100%) scale(0.9); opacity: 0; }
-          100% { transform: translateX(0%) scale(1); opacity: 1; }
-        }
-
-        .transition-out-next { animation: slideOutNext 0.7s cubic-bezier(0.76, 0, 0.24, 1) forwards; }
-        .transition-out-prev { animation: slideOutPrev 0.7s cubic-bezier(0.76, 0, 0.24, 1) forwards; }
-        .transition-in-next { animation: slideInNext 0.7s cubic-bezier(0.76, 0, 0.24, 1) forwards; }
-        .transition-in-prev { animation: slideInPrev 0.7s cubic-bezier(0.76, 0, 0.24, 1) forwards; }
 
         @keyframes fadeIn {
-          0% { opacity: 0; transform: translate(-50%, -10px); }
-          100% { opacity: 1; transform: translate(-50%, 0); }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
 
-        .animate-fade-in {
+        @keyframes float {
+          0%, 100% { transform: translate(0, 0); }
+          50% { transform: translate(30px, -30px); }
+        }
+
+        @keyframes float-delay {
+          0%, 100% { transform: translate(0, 0); }
+          50% { transform: translate(-40px, 40px); }
+        }
+
+        @keyframes float-slow {
+          0%, 100% { transform: translate(0, 0); }
+          50% { transform: translate(20px, 20px); }
+        }
+
+        .slide-up {
+          animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .fade-in {
           animation: fadeIn 0.3s ease-out;
+        }
+
+        .animate-float {
+          animation: float 20s ease-in-out infinite;
+        }
+
+        .animate-float-delay {
+          animation: float-delay 25s ease-in-out infinite;
+        }
+
+        .animate-float-slow {
+          animation: float-slow 30s ease-in-out infinite;
+        }
+
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
         }
       `}</style>
 
       <div
-        className="fixed inset-0 bg-black overflow-y-auto"
+        ref={containerRef}
+        className="fixed inset-0 bg-black overflow-hidden"
         onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* SOURCED Title - Scrolls Away */}
-        <div className="text-center py-6 md:py-8 bg-black">
-          <h1 className="text-4xl md:text-7xl font-black tracking-tighter text-white" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
-            SOURCED
-          </h1>
+        {/* Audio */}
+        {currentPost.music_preview_url && (
+          <audio
+            ref={(el) => { if (el) audioRefs.current[currentPost.id] = el; }}
+            src={currentPost.music_preview_url}
+            loop
+            playsInline
+          />
+        )}
+
+        {/* Animated Background - Noise Texture + Dark Gradient */}
+        <div className="absolute inset-0 overflow-hidden">
+          {/* Blurred image layer */}
+          <div
+            className="absolute inset-0 scale-110 blur-3xl opacity-10 transition-all duration-1000"
+            style={{
+              backgroundImage: `url(${currentPost.image_url})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center'
+            }}
+          ></div>
+          {/* Dark gradient base */}
+          <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
+          {/* Noise texture overlay */}
+          <div
+            className="absolute inset-0 opacity-[0.015]"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'repeat'
+            }}
+          ></div>
         </div>
 
-        {/* For You / Following Tabs - Sticky */}
-        <div className="sticky top-0 z-40 bg-black border-b border-white/20">
-          <div className="flex items-center justify-center gap-8 py-4">
-            <button
-              onClick={() => setFeedType('for-you')}
-              className={`text-lg md:text-2xl font-black tracking-tight transition-all ${
-                feedType === 'for-you' ? 'text-white' : 'text-white/30'
-              }`}
+        {/* Floating Orbs */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-white/5 rounded-full blur-3xl animate-float"></div>
+          <div className="absolute bottom-40 right-20 w-96 h-96 bg-white/3 rounded-full blur-3xl animate-float-delay"></div>
+          <div className="absolute top-1/3 right-10 w-48 h-48 bg-white/4 rounded-full blur-3xl animate-float-slow"></div>
+        </div>
+
+        {/* Grid Pattern Overlay */}
+        <div className="absolute inset-0 pointer-events-none opacity-[0.02]">
+          <div className="absolute inset-0" style={{
+            backgroundImage: 'linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)',
+            backgroundSize: '50px 50px'
+          }}></div>
+        </div>
+
+        {/* Main Content Container */}
+        <div className="relative h-full flex items-center justify-center pt-8">
+
+          {/* TikTok-Style FEED Header - Top Center */}
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30">
+            <h1
+              className="text-white text-xl font-black tracking-[0.3em] opacity-90"
               style={{ fontFamily: 'Bebas Neue, sans-serif' }}
             >
-              FOR YOU
-              {feedType === 'for-you' && (
-                <div className="h-0.5 bg-white mt-1"></div>
-              )}
-            </button>
-            <div className="w-px h-6 bg-white/20"></div>
-            <button
-              onClick={() => setFeedType('following')}
-              className={`text-lg md:text-2xl font-black tracking-tight transition-all ${
-                feedType === 'following' ? 'text-white' : 'text-white/30'
-              }`}
-              style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-            >
-              FOLLOWING
-              {feedType === 'following' && (
-                <div className="h-0.5 bg-white mt-1"></div>
-              )}
-            </button>
+              FEED
+            </h1>
           </div>
-        </div>
 
-        {/* Scrollable Posts */}
-        <div>
-          {posts.map((post, idx) => (
-            <div key={post.id} className="w-full bg-black mb-6">
-              {/* Dark Grey Card Background */}
-              <div className="w-full max-w-7xl mx-auto bg-neutral-900 rounded-3xl p-4 md:p-6">
-
-                {/* Username Banner - Skinnier with Inward Triangles on Both Sides */}
-                <div className="flex items-center justify-between mb-4">
-                  <div
-                    onClick={() => router.push(`/@${post.owner.username}`)}
-                    className="flex items-center gap-3 text-base md:text-xl bg-white text-black px-5 py-1 cursor-pointer hover:opacity-90 transition-opacity"
-                    style={{
-                      clipPath: 'polygon(0 0, calc(100% - 8px) 0%, calc(100% - 0px) 50%, calc(100% - 8px) 100%, 0 100%, 8px 50%)'
-                    }}
-                  >
-                    <div className="w-7 h-7 md:w-9 md:h-9 rounded-full overflow-hidden border-2 border-black">
-                      {post.owner.avatar_url ? (
-                        <img src={post.owner.avatar_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-neutral-200 flex items-center justify-center text-sm text-black">👤</div>
-                      )}
-                    </div>
-                    <span className="font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>@{post.owner.username}</span>
-                    {post.owner.is_verified && (
-                      <div className="flex items-center justify-center w-5 h-5 bg-blue-500 rounded-full">
-                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Hole Punch Circle - Tag Style */}
-                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-full border-4 border-neutral-700 bg-black"></div>
-                </div>
-
-                {/* Hero Image with Shop Overlay - Clickable */}
-                <div className="mb-6 relative">
-                  <img
-                    src={post.image_url}
-                    alt=""
-                    onClick={() => post.items.length > 0 && setSelectedPostId(post.id === selectedPostId ? null : post.id)}
-                    className={`w-full h-auto object-cover ${post.items.length > 0 ? 'cursor-pointer' : ''}`}
-                    style={{ maxHeight: '80vh' }}
-                  />
-
-                  {/* Shop The Look Overlay */}
-                  {selectedPostId === post.id && post.items.length > 0 && (
-                    <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex flex-col p-6 overflow-y-auto">
-                      <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-2xl md:text-3xl font-black text-white" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
-                          SHOP THE LOOK
-                        </h2>
-                        <button
-                          onClick={() => setSelectedPostId(null)}
-                          className="w-10 h-10 flex items-center justify-center text-white hover:bg-white hover:text-black border-2 border-white transition-all"
-                        >
-                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        {post.items.map((item, itemIdx) => (
-                          <div
-                            key={item.id}
-                            onClick={() => item.product_url && window.open(item.product_url, '_blank')}
-                            className="cursor-pointer border-2 border-white hover:bg-white hover:text-black transition-all p-3 group"
-                          >
-                            <div className="aspect-square overflow-hidden mb-2 border-2 border-white group-hover:border-black">
-                              <img
-                                src={item.image_url}
-                                alt={item.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              />
-                            </div>
-                            <p className="text-xs tracking-[0.2em] mb-1 opacity-60 font-black text-white group-hover:text-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                              {String(itemIdx + 1).padStart(2, '0')}
-                            </p>
-                            <h3 className="text-sm font-black mb-1 leading-tight line-clamp-2 text-white group-hover:text-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                              {item.title}
-                            </h3>
-                            {item.price && (
-                              <p className="text-lg font-black text-white group-hover:text-black" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
-                                ${item.price}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Like + Comment + Share + Shop Buttons - Clean & Minimal */}
-                <div className="flex items-center gap-5 mb-4 px-2">
-                  <button
-                    onClick={() => toggleLike(post.id, post.is_liked)}
-                    className="flex items-center gap-1.5 hover:opacity-60 transition-opacity text-white"
-                  >
-                    <svg className="w-5 h-5 md:w-6 md:h-6" fill={post.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                    </svg>
-                    <span className="text-sm md:text-base font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{post.like_count}</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (!currentUserId || !isOnboarded) {
-                        showToastNotification('Please log in to comment');
-                        return;
-                      }
-                      setShowCommentsForPost(post.id);
-                    }}
-                    className="flex items-center gap-1.5 text-white hover:opacity-60 transition-opacity"
-                  >
-                    <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    <span className="text-sm md:text-base font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{post.comment_count}</span>
-                  </button>
-
-                  {/* Share Arrow */}
-                  <button className="text-white hover:opacity-60 transition-opacity">
-                    <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4m0 0L8 6m4-4v13" />
-                    </svg>
-                  </button>
-
-                  {/* Shop The Look - Realistic Barcode - Even Bigger */}
-                  {post.items.length > 0 && (
-                    <button
-                      onClick={() => setSelectedPostId(post.id === selectedPostId ? null : post.id)}
-                      className="ml-auto text-white hover:opacity-60 transition-opacity"
-                    >
-                      <svg className="w-24 h-8 md:w-32 md:h-10" viewBox="0 0 160 40" fill="none">
-                        <rect x="2" y="4" width="2" height="32" fill="currentColor"/>
-                        <rect x="6" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="9" y="4" width="3" height="32" fill="currentColor"/>
-                        <rect x="14" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="17" y="4" width="2" height="32" fill="currentColor"/>
-                        <rect x="21" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="24" y="4" width="4" height="32" fill="currentColor"/>
-                        <rect x="30" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="33" y="4" width="2" height="32" fill="currentColor"/>
-                        <rect x="37" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="40" y="4" width="3" height="32" fill="currentColor"/>
-                        <rect x="45" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="48" y="4" width="2" height="32" fill="currentColor"/>
-                        <rect x="52" y="4" width="4" height="32" fill="currentColor"/>
-                        <rect x="58" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="61" y="4" width="2" height="32" fill="currentColor"/>
-                        <rect x="65" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="68" y="4" width="3" height="32" fill="currentColor"/>
-                        <rect x="73" y="4" width="2" height="32" fill="currentColor"/>
-                        <rect x="77" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="80" y="4" width="3" height="32" fill="currentColor"/>
-                        <rect x="85" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="88" y="4" width="2" height="32" fill="currentColor"/>
-                        <rect x="92" y="4" width="4" height="32" fill="currentColor"/>
-                        <rect x="98" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="101" y="4" width="3" height="32" fill="currentColor"/>
-                        <rect x="106" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="109" y="4" width="2" height="32" fill="currentColor"/>
-                        <rect x="113" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="116" y="4" width="4" height="32" fill="currentColor"/>
-                        <rect x="122" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="125" y="4" width="2" height="32" fill="currentColor"/>
-                        <rect x="129" y="4" width="3" height="32" fill="currentColor"/>
-                        <rect x="134" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="137" y="4" width="2" height="32" fill="currentColor"/>
-                        <rect x="141" y="4" width="4" height="32" fill="currentColor"/>
-                        <rect x="147" y="4" width="1" height="32" fill="currentColor"/>
-                        <rect x="150" y="4" width="3" height="32" fill="currentColor"/>
-                        <rect x="155" y="4" width="2" height="32" fill="currentColor"/>
-                      </svg>
-                    </button>
-                  )}
-                </div>
-
-                {/* Caption with Show More */}
-                {post.caption && (
-                  <div className="px-2 mb-4">
-                    <p className="text-sm text-white">
-                      {expandedCaptions.has(post.id) ? (
-                        <>
-                          {post.caption}{' '}
-                          <button
-                            onClick={() => {
-                              const newSet = new Set(expandedCaptions);
-                              newSet.delete(post.id);
-                              setExpandedCaptions(newSet);
-                            }}
-                            className="text-white/60 font-black"
-                            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                          >
-                            ...less
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          {post.caption.length > 100 ? (
-                            <>
-                              {post.caption.slice(0, 100)}...{' '}
-                              <button
-                                onClick={() => {
-                                  const newSet = new Set(expandedCaptions);
-                                  newSet.add(post.id);
-                                  setExpandedCaptions(newSet);
-                                }}
-                                className="text-white/60 font-black"
-                                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                              >
-                                more
-                              </button>
-                            </>
-                          ) : (
-                            post.caption
-                          )}
-                        </>
-                      )}
-                    </p>
-                  </div>
-                )}
+          {/* Left Side - Progress Only */}
+          <div className="absolute left-8 top-1/2 -translate-y-1/2 hidden lg:block z-10">
+            <div className="text-white/60">
+              <p className="text-xs tracking-widest mb-2 font-black" style={{ fontFamily: 'Bebas Neue' }}>PROGRESS</p>
+              <div className="w-1 h-48 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="w-full bg-white transition-all duration-300"
+                  style={{ height: `${((currentIndex + 1) / posts.length) * 100}%` }}
+                ></div>
               </div>
             </div>
-          ))}
+          </div>
+
+          {/* Right Side - Actions */}
+          <div className="absolute right-8 top-1/2 -translate-y-1/2 hidden lg:flex flex-col gap-4 z-10">
+            {/* Like */}
+            <button
+              onClick={() => toggleLike(currentPost.id, currentPost.is_liked)}
+              className="w-14 h-14 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-all hover:scale-110 border border-white/20"
+            >
+              <svg className="w-7 h-7" fill={currentPost.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            </button>
+            <div className="text-white/60 text-xs font-black text-center" style={{ fontFamily: 'Bebas Neue' }}>
+              {currentPost.like_count}
+            </div>
+
+            {/* Comments */}
+            <button
+              onClick={handleComment}
+              className="w-14 h-14 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-all hover:scale-110 border border-white/20"
+            >
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </button>
+            <div className="text-white/60 text-xs font-black text-center" style={{ fontFamily: 'Bebas Neue' }}>
+              {currentPost.comment_count}
+            </div>
+
+            {/* Share - Arrow */}
+            <button
+              className="w-14 h-14 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-all hover:scale-110 border border-white/20"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4m0 0L8 6m4-4v13" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Central Image - The Focus */}
+          <div className="relative w-full max-w-6xl h-full flex flex-col items-center justify-center p-3 gap-3">
+
+            {/* Image Card with Glow - CLEAN, NO DOTS */}
+            <div className="absolute inset-8 bg-white/5 rounded-3xl blur-2xl"></div>
+
+            <div
+              className="relative w-full max-w-2xl aspect-[3/4] rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 border border-white/10 cursor-pointer"
+              style={{
+                transform: isDragging ? `translateY(${-dragOffset * 0.5}px) scale(${1 - Math.abs(dragOffset) * 0.0002})` : 'none',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 80px rgba(255, 255, 255, 0.05)'
+              }}
+              onClick={handleImageClick}
+            >
+              {/* Main Image - CLEAN */}
+              <img
+                src={currentPost.image_url}
+                alt=""
+                className="w-full h-full object-cover"
+              />
+
+              {/* Volume Button - SMALLER - Top Right Corner */}
+              {currentPost.music_preview_url && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleMute();
+                  }}
+                  className="absolute top-3 right-3 w-7 h-7 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-black/70 transition-all z-10"
+                >
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    {isMuted ? (
+                      <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                    ) : (
+                      <>
+                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+                        <path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                      </>
+                    )}
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {/* Username & Caption BELOW image */}
+            <div className="w-full max-w-2xl space-y-2">
+              {/* Username - Clickable */}
+              <div
+                onClick={() => router.push(`/${currentPost.owner.username}`)}
+                className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+              >
+                <div className="w-10 h-10 rounded-full border-2 border-white overflow-hidden bg-neutral-800">
+                  {currentPost.owner.avatar_url ? (
+                    <img src={currentPost.owner.avatar_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-white text-sm">👤</div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-white font-black text-lg tracking-wide" style={{ fontFamily: 'Bebas Neue' }}>
+                    {currentPost.owner.username}
+                  </span>
+                  {currentPost.owner.is_verified && (
+                    <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+
+              {/* Caption */}
+              {currentPost.caption && (
+                <p className="text-white/90 text-base leading-relaxed px-2">
+                  {currentPost.caption}
+                </p>
+              )}
+
+              {/* Mobile Actions Row */}
+              <div className="lg:hidden flex items-center gap-5 px-2">
+                <button
+                  onClick={() => toggleLike(currentPost.id, currentPost.is_liked)}
+                  className="flex items-center gap-2 text-white hover:scale-110 transition-transform"
+                >
+                  <svg className="w-7 h-7" fill={currentPost.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                  <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{currentPost.like_count}</span>
+                </button>
+
+                <button onClick={handleComment} className="flex items-center gap-2 text-white hover:scale-110 transition-transform">
+                  <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{currentPost.comment_count}</span>
+                </button>
+
+                <button className="flex items-center gap-2 text-white hover:scale-110 transition-transform">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4m0 0L8 6m4-4v13" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Shop Items Carousel - BELOW image */}
+              {currentPost.items.length > 0 && viewMode === 'discover' && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-2">
+                    <h3 className="text-white font-black text-lg tracking-wider" style={{ fontFamily: 'Bebas Neue' }}>
+                      SHOP THIS LOOK
+                    </h3>
+                    <button
+                      onClick={() => setViewMode('shop')}
+                      className="text-white/60 hover:text-white text-sm font-black transition-colors"
+                      style={{ fontFamily: 'Bebas Neue' }}
+                    >
+                      SEE ALL →
+                    </button>
+                  </div>
+
+                  {/* Horizontal Scroll Carousel */}
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide px-2">
+                    {currentPost.items.map((item, idx) => (
+                      <div
+                        key={item.id}
+                        onClick={() => item.product_url && window.open(item.product_url, '_blank')}
+                        className="flex-shrink-0 w-40 bg-white/10 backdrop-blur-md rounded-xl p-3 cursor-pointer hover:bg-white/20 transition-all border border-white/20"
+                      >
+                        <div className="aspect-square bg-white/5 rounded-lg overflow-hidden mb-2">
+                          <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                        </div>
+                        <p className="text-white text-xs font-black line-clamp-2 mb-1" style={{ fontFamily: 'Bebas Neue' }}>
+                          {item.title}
+                        </p>
+                        {item.price && (
+                          <p className="text-white/80 text-sm font-black" style={{ fontFamily: 'Archivo Black' }}>
+                            ${item.price}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Shop Mode - Full Screen Grid */}
+            {viewMode === 'shop' && (
+              <div className="absolute inset-0 bg-black/95 backdrop-blur-xl z-30 overflow-y-auto p-6 fade-in">
+                <div className="max-w-2xl mx-auto">
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-3xl font-black text-white" style={{ fontFamily: 'Archivo Black' }}>
+                      SHOP THIS LOOK
+                    </h2>
+                    <button
+                      onClick={() => setViewMode('discover')}
+                      className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {currentPost.items.map((item, idx) => (
+                      <div
+                        key={item.id}
+                        onClick={() => item.product_url && window.open(item.product_url, '_blank')}
+                        className="bg-white rounded-2xl p-4 cursor-pointer hover:scale-105 transition-transform slide-up"
+                        style={{ animationDelay: `${idx * 0.05}s` }}
+                      >
+                        <div className="aspect-square bg-neutral-100 rounded-xl overflow-hidden mb-3">
+                          <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="text-xs text-black/50 mb-1 uppercase tracking-wider font-black" style={{ fontFamily: 'Bebas Neue' }}>
+                          {String(idx + 1).padStart(2, '0')}
+                        </div>
+                        <h3 className="font-black text-sm mb-2 leading-tight line-clamp-2" style={{ fontFamily: 'Bebas Neue' }}>
+                          {item.title}
+                        </h3>
+                        {item.price && (
+                          <p className="text-xl font-black mb-1" style={{ fontFamily: 'Archivo Black' }}>
+                            ${item.price}
+                          </p>
+                        )}
+                        {item.seller && (
+                          <p className="text-xs text-black/50 uppercase tracking-wider">{item.seller}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
         </div>
 
-        {/* Toast Notification */}
+        {/* Toast */}
         {showToast && (
-          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-fade-in">
-            <div className="bg-white text-black px-6 py-3 rounded-lg border-2 border-black shadow-lg">
-              <p className="font-black text-sm" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 fade-in">
+            <div className="bg-white text-black px-6 py-3 rounded-full shadow-2xl">
+              <p className="font-black text-sm tracking-wider" style={{ fontFamily: 'Bebas Neue' }}>
                 {toastMessage}
               </p>
             </div>
           </div>
         )}
 
-        {/* Comments Overlay Modal */}
-        {showCommentsForPost && (() => {
-          const post = posts.find(p => p.id === showCommentsForPost);
-          if (!post) return null;
-
-          return (
-            <>
-              <div
-                className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50"
-                onClick={() => setShowCommentsForPost(null)}
-              />
-              <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-                <div className="relative w-full max-w-2xl h-[80vh] bg-neutral-900 border-2 border-white rounded-2xl flex flex-col">
-                  {/* Header */}
-                  <div className="flex items-center justify-between p-4 border-b-2 border-white">
-                    <h2 className="text-xl font-black text-white" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
-                      COMMENTS
-                    </h2>
-                    <button
-                      onClick={() => setShowCommentsForPost(null)}
-                      className="w-8 h-8 flex items-center justify-center text-white hover:bg-white hover:text-black border border-white transition-all"
-                    >
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-
-                  {/* Comments List */}
-                  <div className="flex-1 overflow-y-auto p-4">
-                    {comments[showCommentsForPost]?.length > 0 ? (
-                      comments[showCommentsForPost].map(comment => (
-                        <div key={comment.id} className="mb-4 flex gap-3">
-                          <div className="w-8 h-8 rounded-full overflow-hidden border border-white flex-shrink-0">
-                            {comment.profiles.avatar_url ? (
-                              <img src={comment.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full bg-neutral-700 flex items-center justify-center text-xs text-white">👤</div>
-                            )}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-sm font-black text-white" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                                {comment.profiles.username}
-                              </span>
-                              {comment.profiles.is_verified && (
-                                <div className="flex items-center justify-center w-4 h-4 bg-blue-500 rounded-full">
-                                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                  </svg>
-                                </div>
-                              )}
-                              <span className="text-xs text-white/40">
-                                {new Date(comment.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                            <p className="text-sm text-white">{comment.comment_text}</p>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-white/60 text-center py-8">No comments yet. Be the first!</p>
-                    )}
-                  </div>
-
-                  {/* Comment Input */}
-                  <div className="p-4 border-t-2 border-white">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            submitComment(showCommentsForPost);
-                          }
-                        }}
-                        placeholder="Add a comment..."
-                        className="flex-1 bg-black text-white border-2 border-white px-4 py-2 focus:outline-none focus:border-white/60"
-                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                      />
-                      <button
-                        onClick={() => submitComment(showCommentsForPost)}
-                        disabled={!commentText.trim()}
-                        className="px-6 py-2 bg-white text-black font-black disabled:opacity-30 hover:bg-black hover:text-white hover:border-2 hover:border-white transition-all"
-                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                      >
-                        POST
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </>
-          );
-        })()}
+        {/* Swipe Indicator (first post only) */}
+        {currentIndex === 0 && (
+          <div className="absolute bottom-32 left-1/2 -translate-x-1/2 text-white/40 text-center z-20 fade-in">
+            <svg className="w-8 h-8 mx-auto mb-2 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+            <p className="text-xs tracking-widest font-black" style={{ fontFamily: 'Bebas Neue' }}>
+              SWIPE TO DISCOVER
+            </p>
+          </div>
+        )}
       </div>
     </>
   );

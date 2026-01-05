@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const [isVisible, setIsVisible] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
   // Don't show nav on onboarding pages
@@ -18,11 +18,11 @@ export default function MobileBottomNav() {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
 
-      // Show nav when scrolling up, hide when scrolling down
-      if (currentScrollY < lastScrollY || currentScrollY < 50) {
-        setIsVisible(true);
-      } else if (currentScrollY > lastScrollY && currentScrollY > 100) {
-        setIsVisible(false);
+      // Auto-collapse when scrolling down (except on feed page)
+      if (!pathname.startsWith('/feed')) {
+        if (currentScrollY > lastScrollY && currentScrollY > 100) {
+          setIsExpanded(false);
+        }
       }
 
       setLastScrollY(currentScrollY);
@@ -30,7 +30,7 @@ export default function MobileBottomNav() {
 
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [lastScrollY]);
+  }, [lastScrollY, pathname]);
 
   const navItems = [
     {
@@ -86,52 +86,61 @@ export default function MobileBottomNav() {
   };
 
   return (
-    <>
-      <style jsx global>{`
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
+      <style jsx>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;600&display=swap');
       `}</style>
 
-      {/* Only show on mobile */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
-        <div className="flex justify-center px-4 pb-6">
-          <div
-            className={`
-              bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg
-              border border-black/5
-              transition-all duration-300 ease-out pointer-events-auto
-              ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0'}
-            `}
+      <div className="flex justify-center px-4 pb-6">
+
+        {!isExpanded ? (
+          <button
+            onClick={() => setIsExpanded(true)}
+            className="bg-white/80 backdrop-blur-xl rounded-full shadow-lg border border-black/5 p-3 transition-all duration-300 ease-out pointer-events-auto hover:bg-white hover:scale-110"
             style={{
               boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06)'
             }}
           >
-            <div className="flex items-center gap-0.5 p-1.5">
+            <svg className="w-5 h-5 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+        ) : (
+          <div
+            className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg border border-black/5 transition-all duration-300 ease-out pointer-events-auto"
+            style={{
+              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06)'
+            }}
+          >
+            <div className="flex justify-center pt-1 pb-0.5">
+              <button
+                onClick={() => setIsExpanded(false)}
+                className="p-0.5 hover:bg-black/5 rounded-full transition-colors"
+              >
+                <svg className="w-3 h-3 text-black/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-0.5 p-1.5 pt-0">
               {navItems.map((item) => (
                 <button
                   key={item.path}
                   onClick={() => router.push(item.path)}
-                  className={`
-                    flex flex-col items-center justify-center gap-0.5
-                    px-3 py-1.5 rounded-xl
-                    transition-all duration-200
-                    ${isActive(item.path)
-                      ? 'bg-black/5'
-                      : 'hover:bg-black/5'
-                    }
-                  `}
+                  className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl transition-all duration-200 ${
+                    isActive(item.path) ? 'bg-black/5' : 'hover:bg-black/5'
+                  }`}
                 >
-                  <div className={`
-                    transition-colors duration-200
-                    ${isActive(item.path) ? 'text-black' : 'text-black/40'}
-                  `}>
+                  <div className={`transition-colors duration-200 ${
+                    isActive(item.path) ? 'text-black' : 'text-black/40'
+                  }`}>
                     {item.icon}
                   </div>
                   <span
-                    className={`
-                      text-[8px] font-semibold tracking-tight
-                      transition-colors duration-200
-                      ${isActive(item.path) ? 'text-black' : 'text-black/40'}
-                    `}
+                    className={`text-[8px] font-semibold tracking-tight transition-colors duration-200 ${
+                      isActive(item.path) ? 'text-black' : 'text-black/40'
+                    }`}
                     style={{ fontFamily: 'Inter, sans-serif' }}
                   >
                     {item.name}
@@ -140,8 +149,8 @@ export default function MobileBottomNav() {
               ))}
             </div>
           </div>
-        </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
