@@ -282,12 +282,21 @@ export default function FeedPage() {
           to { opacity: 1; }
         }
 
+        @keyframes scroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+
         .slide-up {
           animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .fade-in {
           animation: fadeIn 0.3s ease-out;
+        }
+
+        .animate-scroll {
+          animation: scroll 20s linear infinite;
         }
 
         .scrollbar-hide {
@@ -320,13 +329,16 @@ export default function FeedPage() {
           <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
         </div>
 
-        {/* FEED Header - TikTok/IG Style */}
-        <div className="absolute top-0 left-0 right-0 z-30 pt-4 pb-2">
+        {/* FEED Header - TikTok/IG Style with Indicator */}
+        <div className="absolute top-0 left-0 right-0 z-30 pt-4 pb-2 bg-gradient-to-b from-black/80 to-transparent">
           <div className="flex items-center justify-between px-4">
             <div className="w-10"></div>
-            <h1 className="text-white text-base font-bold tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>
-              Feed
-            </h1>
+            <div className="flex flex-col items-center">
+              <h1 className="text-white text-lg font-semibold mb-1" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>
+                Feed
+              </h1>
+              <div className="w-12 h-0.5 bg-white rounded-full"></div>
+            </div>
             <button
               onClick={() => router.push('/create/post/setup')}
               className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
@@ -339,13 +351,13 @@ export default function FeedPage() {
         </div>
 
         {/* Main Content */}
-        <div className="relative h-full flex flex-col items-center justify-center px-4 pt-20 pb-24">
+        <div className="relative h-full flex flex-col items-center justify-center px-3 pt-20 pb-24">
 
-          {/* Image Card - TALLER for mobile */}
+          {/* Image Card - BIGGER for mobile */}
           <div
-            className="relative w-full max-w-md rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 border border-white/10 cursor-pointer mb-4"
+            className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 border border-white/10 cursor-pointer mb-3"
             style={{
-              height: '70vh',
+              height: '75vh',
               transform: isDragging ? `translateY(${-dragOffset * 0.5}px) scale(${1 - Math.abs(dragOffset) * 0.0002})` : 'none',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
@@ -401,7 +413,7 @@ export default function FeedPage() {
           </div>
 
           {/* Profile + Shop Button */}
-          <div className="w-full max-w-md flex items-center justify-between mb-3">
+          <div className="w-full max-w-lg flex items-center justify-between mb-2">
             <div
               onClick={() => router.push(`/${currentPost.owner.username}`)}
               className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity flex-1"
@@ -437,7 +449,7 @@ export default function FeedPage() {
           </div>
 
           {/* Actions */}
-          <div className="w-full max-w-md flex items-center gap-5 mb-3">
+          <div className="w-full max-w-lg flex items-center gap-5 mb-2">
             <button
               onClick={() => toggleLike(currentPost.id, currentPost.is_liked)}
               className="flex items-center gap-2 text-white hover:scale-110 transition-transform"
@@ -480,12 +492,21 @@ export default function FeedPage() {
 
           {/* Caption */}
           {currentPost.caption && (
-            <div className="w-full max-w-md">
+            <div className="w-full max-w-lg mb-3">
               <p className="text-white/90 text-sm leading-relaxed">
                 {currentPost.caption}
               </p>
             </div>
           )}
+
+          {/* Scrolling SOURCED Pattern */}
+          <div className="w-full max-w-lg overflow-hidden mb-4">
+            <div className="flex whitespace-nowrap animate-scroll">
+              <span className="text-white/20 text-xs font-black tracking-[0.3em] mx-4" style={{ fontFamily: 'Bebas Neue' }}>
+                SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED · SOURCED
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Toast */}
