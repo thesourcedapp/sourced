@@ -502,21 +502,20 @@ export default function FeedPage() {
           <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
         </div>
 
-        {/* FEED Header - Raised and bolder */}
-        <div className="absolute top-0 left-0 right-0 z-30 pt-6 pb-3">
-          <div className="flex items-center justify-between px-4">
+        {/* FEED Header - More prominent */}
+        <div className="absolute top-0 left-0 right-0 z-30 bg-black/40 backdrop-blur-md border-b border-white/10">
+          <div className="flex items-center justify-between px-5 py-4">
             <div className="w-10"></div>
             <div className="flex flex-col items-center">
-              <h1 className="text-white text-xl font-bold mb-1.5 tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', letterSpacing: '-0.02em' }}>
-                Feed
+              <h1 className="text-white text-2xl font-black tracking-wider" style={{ fontFamily: 'Bebas Neue', letterSpacing: '0.1em' }}>
+                FEED
               </h1>
-              <div className="w-10 h-0.5 bg-white rounded-full"></div>
             </div>
             <button
               onClick={() => router.push('/create/post/setup')}
               className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
             >
-              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
             </button>
