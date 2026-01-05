@@ -47,13 +47,38 @@ export default function FeedPage() {
   const [failedAudioPosts, setFailedAudioPosts] = useState<Set<string>>(new Set());
   const [showCommentsModal, setShowCommentsModal] = useState(false);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const startY = useRef(0);
-
   useEffect(() => {
     loadCurrentUser();
     loadFeedPosts();
   }, []);
+
+  useEffect(() => {
+    if (currentUserId && posts.length > 0) {
+      refreshLikeStates();
+    }
+  }, [currentUserId, currentIndex]);
+
+  async function refreshLikeStates() {
+    if (!currentUserId || posts.length === 0) return;
+
+    try {
+      const { data: likedData } = await supabase
+        .from('liked_feed_posts')
+        .select('feed_post_id')
+        .eq('user_id', currentUserId);
+
+      if (likedData) {
+        const likedPostIds = new Set(likedData.map(like => like.feed_post_id));
+
+        setPosts(prev => prev.map(post => ({
+          ...post,
+          is_liked: likedPostIds.has(post.id)
+        })));
+      }
+    } catch (error) {
+      console.error('Error refreshing like states:', error);
+    }
+  }
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -113,13 +138,31 @@ export default function FeedPage() {
         .select('*')
         .in('feed_post_id', postIds);
 
+      // Get liked items for current user
+      let likedItemIds: Set<string> = new Set();
+      if (currentUserId && itemsData) {
+        const itemIds = itemsData.map(item => item.id);
+        const { data: likedItemsData } = await supabase
+          .from('liked_items')
+          .select('item_id')
+          .eq('user_id', currentUserId)
+          .in('item_id', itemIds);
+
+        if (likedItemsData) {
+          likedItemIds = new Set(likedItemsData.map(like => like.item_id));
+        }
+      }
+
       const itemsByPost = new Map<string, any[]>();
       if (itemsData) {
         itemsData.forEach((item: any) => {
           if (!itemsByPost.has(item.feed_post_id)) {
             itemsByPost.set(item.feed_post_id, []);
           }
-          itemsByPost.get(item.feed_post_id)!.push(item);
+          itemsByPost.get(item.feed_post_id)!.push({
+            ...item,
+            is_liked: likedItemIds.has(item.id)
+          });
         });
       }
 
@@ -167,27 +210,6 @@ export default function FeedPage() {
 
   function handleImageClick() {
     // Just for potential future use
-  }
-
-  function handleTouchStart(e: React.TouchEvent) {
-    startY.current = e.touches[0].clientY;
-    setIsDragging(true);
-  }
-
-  function handleTouchMove(e: React.TouchEvent) {
-    if (!isDragging) return;
-    const currentY = e.touches[0].clientY;
-    const diff = startY.current - currentY;
-    setDragOffset(diff);
-  }
-
-  function handleTouchEnd() {
-    if (Math.abs(dragOffset) > 100) {
-      if (dragOffset > 0) nextPost();
-      else prevPost();
-    }
-    setDragOffset(0);
-    setIsDragging(false);
   }
 
   async function toggleLike(postId: string, currentlyLiked: boolean) {
@@ -255,6 +277,64 @@ export default function FeedPage() {
     }
 
     setShowCommentsModal(true);
+  }
+
+  async function toggleItemLike(itemId: string, currentlyLiked: boolean) {
+    if (!currentUserId || !isOnboarded) {
+      setToastMessage('Please log in to like items');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+      return;
+    }
+
+    try {
+      if (currentlyLiked) {
+        // Unlike
+        const { error } = await supabase
+          .from('liked_items')
+          .delete()
+          .eq('user_id', currentUserId)
+          .eq('item_id', itemId);
+
+        if (error) {
+          console.error('Unlike item error:', error);
+          return;
+        }
+      } else {
+        // Like
+        const { error } = await supabase
+          .from('liked_items')
+          .insert({
+            user_id: currentUserId,
+            item_id: itemId
+          });
+
+        if (error && !error.message.includes('duplicate')) {
+          console.error('Like item error:', error);
+          return;
+        }
+      }
+
+      // Update items in current post
+      setPosts(prev => prev.map(post =>
+        post.id === currentPost.id
+          ? {
+              ...post,
+              items: post.items.map(item =>
+                item.id === itemId
+                  ? {
+                      ...item,
+                      is_liked: !currentlyLiked,
+                      like_count: currentlyLiked ? (item.like_count || 0) - 1 : (item.like_count || 0) + 1
+                    }
+                  : item
+              )
+            }
+          : post
+      ));
+    } catch (error) {
+      console.error('Toggle item like failed:', error);
+    }
   }
 
   if (loading) {
@@ -344,11 +424,8 @@ export default function FeedPage() {
       `}</style>
 
       <div
-        ref={containerRef}
         className="fixed inset-0 bg-black overflow-hidden"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        style={{ touchAction: 'pan-y' }}
       >
         {/* Background */}
         <div className="absolute inset-0 overflow-hidden">
@@ -363,8 +440,8 @@ export default function FeedPage() {
           <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
         </div>
 
-        {/* FEED Header - TikTok/IG Style with Indicator */}
-        <div className="absolute top-0 left-0 right-0 z-30 pt-4 pb-2 bg-gradient-to-b from-black/80 to-transparent">
+        {/* FEED Header - No blur, cleaner */}
+        <div className="absolute top-0 left-0 right-0 z-30 pt-4 pb-2">
           <div className="flex items-center justify-between px-4">
             <div className="w-10"></div>
             <div className="flex flex-col items-center">
@@ -384,19 +461,18 @@ export default function FeedPage() {
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="relative h-full flex flex-col items-center justify-center px-3 pt-20 pb-24">
+        {/* Main Content - Moved down more */}
+        <div className="relative h-full flex flex-col items-center justify-center px-3 pt-28 pb-24">
 
-          {/* Image Card - 15% smaller */}
+          {/* Image Card - No drag, smooth */}
           <div
-            className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 border border-white/10 cursor-pointer mb-3"
+            className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-3"
             style={{
               minHeight: '64vh',
               maxHeight: '66vh',
-              transform: isDragging ? `translateY(${-dragOffset * 0.5}px) scale(${1 - Math.abs(dragOffset) * 0.0002})` : 'none',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
+              touchAction: 'pan-y' // Smooth vertical scrolling only
             }}
-            onClick={handleImageClick}
           >
             {/* Main Image */}
             <img
@@ -405,24 +481,24 @@ export default function FeedPage() {
               className="w-full h-full object-cover"
             />
 
-            {/* Shop Overlay - Horizontal Scrolling Cards */}
+            {/* Shop Overlay - Grid like Discover page */}
             {viewMode === 'shop' && (
               <div className="absolute inset-0 z-30 flex flex-col">
-                {/* Blurred Background */}
+                {/* Different Background - Darker with more contrast */}
                 <div
                   className="absolute inset-0 bg-cover bg-center"
                   style={{
                     backgroundImage: `url(${currentPost.image_url})`,
-                    filter: 'blur(40px)',
-                    transform: 'scale(1.1)'
+                    filter: 'blur(50px) brightness(0.4)',
+                    transform: 'scale(1.2)'
                   }}
                 ></div>
-                <div className="absolute inset-0 bg-black/60"></div>
+                <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/70 to-black/80"></div>
 
                 {/* Content */}
                 <div className="relative flex flex-col h-full">
                   {/* Header */}
-                  <div className="flex items-center justify-between px-6 py-5 bg-gradient-to-b from-black/50 to-transparent">
+                  <div className="flex items-center justify-between px-6 py-5">
                     <h2 className="text-white text-2xl font-black tracking-wider" style={{ fontFamily: 'Bebas Neue' }}>
                       SHOP THE LOOK
                     </h2>
@@ -439,44 +515,82 @@ export default function FeedPage() {
                     </button>
                   </div>
 
-                  {/* Horizontal Scrolling Items */}
-                  <div className="flex-1 overflow-x-auto overflow-y-hidden px-6 pb-6 pt-4 scrollbar-hide">
-                    <div className="flex gap-4 h-full items-center">
+                  {/* Items Grid - Black Cards */}
+                  <div className="flex-1 overflow-y-auto px-4 pb-6 scrollbar-hide">
+                    <div className="grid grid-cols-2 gap-4 mt-2">
                       {currentPost.items.map((item, idx) => (
                         <div
                           key={item.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (item.product_url) window.open(item.product_url, '_blank');
-                          }}
-                          className="flex-shrink-0 w-56 bg-white/95 backdrop-blur-md rounded-2xl overflow-hidden shadow-xl cursor-pointer hover:scale-105 transition-transform slide-up"
+                          className="bg-black border border-white/20 rounded-xl overflow-hidden shadow-xl slide-up hover:border-white/40 transition-all"
                           style={{ animationDelay: `${idx * 0.05}s` }}
                         >
-                          {/* Image - Smaller */}
-                          <div className="aspect-[4/5] bg-neutral-100 overflow-hidden">
-                            <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                          {/* Image */}
+                          <div
+                            className="aspect-square bg-neutral-900 overflow-hidden cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (item.product_url) window.open(item.product_url, '_blank');
+                            }}
+                          >
+                            <img src={item.image_url} alt={item.title} className="w-full h-full object-cover hover:scale-105 transition-transform" />
                           </div>
 
-                          {/* Content - All Info Visible */}
-                          <div className="p-4 space-y-2">
+                          {/* Content - Black Card */}
+                          <div className="p-3 bg-black border-t border-white/20">
                             {/* Seller */}
                             {item.seller && (
-                              <p className="text-[10px] text-black/50 uppercase tracking-wider font-bold">
+                              <p className="text-[9px] text-white/50 uppercase tracking-wider font-bold mb-1.5">
                                 {item.seller}
                               </p>
                             )}
 
                             {/* Title */}
-                            <h3 className="font-black text-sm leading-tight line-clamp-2 text-black" style={{ fontFamily: 'Bebas Neue' }}>
+                            <h3 className="text-xs font-black tracking-wide uppercase leading-tight text-white mb-2 line-clamp-2" style={{ fontFamily: 'Bebas Neue' }}>
                               {item.title}
                             </h3>
 
                             {/* Price */}
                             {item.price && (
-                              <p className="text-2xl font-black text-black" style={{ fontFamily: 'Archivo Black' }}>
+                              <p className="text-base font-black text-white mb-2" style={{ fontFamily: 'Archivo Black' }}>
                                 ${item.price}
                               </p>
                             )}
+
+                            {/* Like Count */}
+                            <div className="flex items-center gap-1 text-[10px] tracking-wider text-white/60 mb-2">
+                              <span>♥</span>
+                              <span>{item.like_count || 0}</span>
+                            </div>
+
+                            {/* Buttons */}
+                            <div className="flex gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleItemLike(item.id, item.is_liked);
+                                }}
+                                className={`flex-1 py-1.5 border transition-all text-[10px] font-black flex items-center justify-center gap-1 ${
+                                  item.is_liked
+                                    ? 'border-white bg-white text-black hover:bg-white/90'
+                                    : 'border-white/40 text-white hover:bg-white/10'
+                                }`}
+                                style={{ fontFamily: 'Bebas Neue' }}
+                              >
+                                {item.is_liked ? '♥' : '♡'}
+                              </button>
+                              {item.product_url && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.open(item.product_url!, '_blank');
+                                  }}
+                                  className="flex-1 py-1.5 border border-white/40 hover:bg-white hover:text-black transition-all text-[10px] font-black text-white"
+                                  style={{ fontFamily: 'Bebas Neue' }}
+                                >
+                                  VIEW
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}

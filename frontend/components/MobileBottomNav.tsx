@@ -7,30 +7,13 @@ export default function MobileBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const [isExpanded, setIsExpanded] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
 
   // Don't show nav on onboarding pages
   if (pathname.startsWith('/onboarding')) {
     return null;
   }
 
-  useEffect(() => {
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-
-      // Auto-collapse when scrolling down (except on feed page)
-      if (!pathname.startsWith('/feed')) {
-        if (currentScrollY > lastScrollY && currentScrollY > 100) {
-          setIsExpanded(false);
-        }
-      }
-
-      setLastScrollY(currentScrollY);
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [lastScrollY, pathname]);
+  // No scroll behavior - only manual toggle
 
   const navItems = [
     {
@@ -96,12 +79,9 @@ export default function MobileBottomNav() {
         {!isExpanded ? (
           <button
             onClick={() => setIsExpanded(true)}
-            className="bg-white/80 backdrop-blur-xl rounded-full shadow-lg border border-black/5 p-3 transition-all duration-300 ease-out pointer-events-auto hover:bg-white hover:scale-110"
-            style={{
-              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06)'
-            }}
+            className="transition-all duration-300 ease-out pointer-events-auto hover:scale-110 animate-bounce"
           >
-            <svg className="w-5 h-5 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <svg className="w-6 h-6 text-white/60 hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
             </svg>
           </button>
