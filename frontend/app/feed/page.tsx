@@ -46,7 +46,6 @@ export default function FeedPage() {
   const [isMuted, setIsMuted] = useState(false);
   const [failedAudioPosts, setFailedAudioPosts] = useState<Set<string>>(new Set());
   const [showCommentsModal, setShowCommentsModal] = useState(false);
-  const [expandedItem, setExpandedItem] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const startY = useRef(0);
@@ -210,7 +209,7 @@ export default function FeedPage() {
 
         if (error) {
           console.error('Unlike error:', error);
-          throw error;
+          return; // Silently fail
         }
 
         // Update local state
@@ -228,9 +227,10 @@ export default function FeedPage() {
             feed_post_id: postId
           });
 
-        if (error) {
+        // Ignore duplicate key errors (user already liked it)
+        if (error && !error.message.includes('duplicate')) {
           console.error('Like error:', error);
-          throw error;
+          return; // Silently fail
         }
 
         // Update local state
@@ -242,7 +242,7 @@ export default function FeedPage() {
       }
     } catch (error: any) {
       console.error('Toggle like failed:', error);
-      alert(`Failed to ${currentlyLiked ? 'unlike' : 'like'} post: ${error.message}`);
+      // Silently fail - no alerts
     }
   }
 
@@ -387,12 +387,12 @@ export default function FeedPage() {
         {/* Main Content */}
         <div className="relative h-full flex flex-col items-center justify-center px-3 pt-20 pb-24">
 
-          {/* Image Card - Slightly smaller now */}
+          {/* Image Card - 15% smaller */}
           <div
             className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 border border-white/10 cursor-pointer mb-3"
             style={{
-              minHeight: '75vh',
-              maxHeight: '78vh',
+              minHeight: '64vh',
+              maxHeight: '66vh',
               transform: isDragging ? `translateY(${-dragOffset * 0.5}px) scale(${1 - Math.abs(dragOffset) * 0.0002})` : 'none',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
@@ -405,7 +405,7 @@ export default function FeedPage() {
               className="w-full h-full object-cover"
             />
 
-            {/* Shop Overlay - Blurred Photo Background */}
+            {/* Shop Overlay - Horizontal Scrolling Cards */}
             {viewMode === 'shop' && (
               <div className="absolute inset-0 z-30 flex flex-col">
                 {/* Blurred Background */}
@@ -430,7 +430,6 @@ export default function FeedPage() {
                       onClick={(e) => {
                         e.stopPropagation();
                         setViewMode('discover');
-                        setExpandedItem(null);
                       }}
                       className="w-10 h-10 flex items-center justify-center text-white bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-colors"
                     >
@@ -440,134 +439,49 @@ export default function FeedPage() {
                     </button>
                   </div>
 
-                  {/* Items Grid or Expanded View */}
-                  {!expandedItem ? (
-                    <div className="flex-1 overflow-y-auto px-4 pb-6">
-                      <div className="grid grid-cols-2 gap-3 mt-2">
-                        {currentPost.items.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className="bg-white/95 backdrop-blur-md rounded-2xl overflow-hidden shadow-xl slide-up"
-                            style={{ animationDelay: `${idx * 0.05}s` }}
-                          >
-                            {/* Image */}
-                            <div className="aspect-square bg-neutral-100 overflow-hidden">
-                              <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                            </div>
-
-                            {/* Content */}
-                            <div className="p-3 space-y-2">
-                              <h3 className="font-black text-xs leading-tight line-clamp-2 text-black" style={{ fontFamily: 'Bebas Neue' }}>
-                                {item.title}
-                              </h3>
-
-                              {item.price && (
-                                <p className="text-lg font-black text-black" style={{ fontFamily: 'Archivo Black' }}>
-                                  ${item.price}
-                                </p>
-                              )}
-
-                              {/* View Button */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExpandedItem(item.id);
-                                }}
-                                className="w-full py-2.5 bg-black text-white font-black text-xs tracking-widest hover:bg-neutral-800 transition-colors rounded-lg"
-                                style={{ fontFamily: 'Bebas Neue' }}
-                              >
-                                VIEW
-                              </button>
-                            </div>
+                  {/* Horizontal Scrolling Items */}
+                  <div className="flex-1 overflow-x-auto overflow-y-hidden px-6 pb-6 pt-4 scrollbar-hide">
+                    <div className="flex gap-4 h-full items-center">
+                      {currentPost.items.map((item, idx) => (
+                        <div
+                          key={item.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (item.product_url) window.open(item.product_url, '_blank');
+                          }}
+                          className="flex-shrink-0 w-56 bg-white/95 backdrop-blur-md rounded-2xl overflow-hidden shadow-xl cursor-pointer hover:scale-105 transition-transform slide-up"
+                          style={{ animationDelay: `${idx * 0.05}s` }}
+                        >
+                          {/* Image - Smaller */}
+                          <div className="aspect-[4/5] bg-neutral-100 overflow-hidden">
+                            <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4">
-                      {(() => {
-                        const item = currentPost.items.find(i => i.id === expandedItem);
-                        if (!item) return null;
 
-                        return (
-                          <div className="w-full max-w-md mx-auto">
-                            {/* Close Button - Prominent */}
-                            <button
-                              onClick={() => setExpandedItem(null)}
-                              className="ml-auto mb-4 w-12 h-12 flex items-center justify-center bg-white/90 backdrop-blur-sm rounded-full shadow-xl hover:bg-white transition-all hover:scale-110"
-                            >
-                              <svg className="w-6 h-6 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
+                          {/* Content - All Info Visible */}
+                          <div className="p-4 space-y-2">
+                            {/* Seller */}
+                            {item.seller && (
+                              <p className="text-[10px] text-black/50 uppercase tracking-wider font-bold">
+                                {item.seller}
+                              </p>
+                            )}
 
-                            <div className="bg-white/98 backdrop-blur-xl rounded-3xl overflow-hidden shadow-2xl fade-in">
-                              {/* Image - Modest Size */}
-                              <div className="aspect-square bg-neutral-100 overflow-hidden">
-                                <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                              </div>
+                            {/* Title */}
+                            <h3 className="font-black text-sm leading-tight line-clamp-2 text-black" style={{ fontFamily: 'Bebas Neue' }}>
+                              {item.title}
+                            </h3>
 
-                              {/* Details */}
-                              <div className="p-5 space-y-3">
-                                {/* Title */}
-                                <div>
-                                  <h2 className="font-black text-xl leading-tight mb-1 text-black" style={{ fontFamily: 'Bebas Neue' }}>
-                                    {item.title}
-                                  </h2>
-                                  {item.seller && (
-                                    <p className="text-xs text-black/50 uppercase tracking-wider font-semibold">
-                                      Sold by {item.seller}
-                                    </p>
-                                  )}
-                                </div>
-
-                                {/* Price */}
-                                {item.price && (
-                                  <div className="py-2">
-                                    <p className="text-3xl font-black text-black" style={{ fontFamily: 'Archivo Black' }}>
-                                      ${item.price}
-                                    </p>
-                                  </div>
-                                )}
-
-                                {/* Additional Details */}
-                                <div className="pt-2 pb-1 space-y-2 border-t border-black/10">
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="text-black/60 font-semibold">Product Type</span>
-                                    <span className="text-black font-bold">Fashion Item</span>
-                                  </div>
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="text-black/60 font-semibold">Availability</span>
-                                    <span className="text-green-600 font-bold">In Stock</span>
-                                  </div>
-                                </div>
-
-                                {/* Action Buttons */}
-                                <div className="space-y-2 pt-3">
-                                  {item.product_url && (
-                                    <button
-                                      onClick={() => window.open(item.product_url!, '_blank')}
-                                      className="w-full py-3.5 bg-black text-white font-black text-sm tracking-widest hover:bg-neutral-800 transition-colors rounded-xl"
-                                      style={{ fontFamily: 'Bebas Neue' }}
-                                    >
-                                      BUY NOW
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => setExpandedItem(null)}
-                                    className="w-full py-3 bg-black/5 text-black font-black text-xs tracking-widest hover:bg-black/10 transition-colors rounded-xl"
-                                    style={{ fontFamily: 'Bebas Neue' }}
-                                  >
-                                    BACK TO ALL ITEMS
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
+                            {/* Price */}
+                            {item.price && (
+                              <p className="text-2xl font-black text-black" style={{ fontFamily: 'Archivo Black' }}>
+                                ${item.price}
+                              </p>
+                            )}
                           </div>
-                        );
-                      })()}
+                        </div>
+                      ))}
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             )}
@@ -699,15 +613,6 @@ export default function FeedPage() {
           currentUserId={currentUserId}
         />
       )}
-
-      {/* Hide bottom nav when comments open */}
-      <style jsx global>{`
-        ${showCommentsModal ? `
-          .mobile-bottom-nav {
-            display: none !important;
-          }
-        ` : ''}
-      `}</style>
     </>
   );
 }

@@ -150,12 +150,12 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50"
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60]"
         onClick={onClose}
       ></div>
 
       {/* Modal */}
-      <div className="fixed inset-x-0 bottom-0 z-50 bg-neutral-900 rounded-t-3xl max-h-[85vh] flex flex-col animate-slide-up">
+      <div className="fixed inset-x-0 bottom-0 z-[70] bg-neutral-900 rounded-t-3xl max-h-[85vh] flex flex-col animate-slide-up">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
           <h2 className="text-white font-black text-lg tracking-wider" style={{ fontFamily: 'Bebas Neue' }}>
