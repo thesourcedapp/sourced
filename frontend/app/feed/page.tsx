@@ -192,12 +192,6 @@ export default function FeedPage() {
   }
 
   async function toggleLike(postId: string, currentlyLiked: boolean) {
-    console.log('=== LIKE DEBUG ===');
-    console.log('Post ID:', postId);
-    console.log('Currently Liked:', currentlyLiked);
-    console.log('Current User ID:', currentUserId);
-    console.log('Is Onboarded:', isOnboarded);
-
     if (!currentUserId || !isOnboarded) {
       setToastMessage('Please log in to like posts');
       setShowToast(true);
@@ -205,50 +199,50 @@ export default function FeedPage() {
       return;
     }
 
-    // Optimistic update
-    setPosts(prev => prev.map(post =>
-      post.id === postId
-        ? { ...post, is_liked: !currentlyLiked, like_count: currentlyLiked ? post.like_count - 1 : post.like_count + 1 }
-        : post
-    ));
-
     try {
       if (currentlyLiked) {
-        // Unlike
-        console.log('Attempting to UNLIKE...');
-        const { data, error } = await supabase
+        // UNLIKE: Remove from liked_feed_posts
+        const { error } = await supabase
           .from('liked_feed_posts')
           .delete()
           .eq('user_id', currentUserId)
-          .eq('feed_post_id', postId)
-          .select();
+          .eq('feed_post_id', postId);
 
-        console.log('Unlike result:', { data, error });
-        if (error) throw error;
+        if (error) {
+          console.error('Unlike error:', error);
+          throw error;
+        }
+
+        // Update local state
+        setPosts(prev => prev.map(post =>
+          post.id === postId
+            ? { ...post, is_liked: false, like_count: Math.max(0, post.like_count - 1) }
+            : post
+        ));
       } else {
-        // Like
-        console.log('Attempting to LIKE...');
-        const { data, error } = await supabase
+        // LIKE: Add to liked_feed_posts
+        const { error } = await supabase
           .from('liked_feed_posts')
           .insert({
             user_id: currentUserId,
             feed_post_id: postId
-          })
-          .select();
+          });
 
-        console.log('Like result:', { data, error });
-        if (error) throw error;
+        if (error) {
+          console.error('Like error:', error);
+          throw error;
+        }
+
+        // Update local state
+        setPosts(prev => prev.map(post =>
+          post.id === postId
+            ? { ...post, is_liked: true, like_count: post.like_count + 1 }
+            : post
+        ));
       }
-
-      console.log('Like toggle SUCCESS');
-    } catch (error) {
-      console.error('Like toggle ERROR:', error);
-      // Revert on error
-      setPosts(prev => prev.map(post =>
-        post.id === postId
-          ? { ...post, is_liked: currentlyLiked, like_count: currentlyLiked ? post.like_count + 1 : post.like_count - 1 }
-          : post
-      ));
+    } catch (error: any) {
+      console.error('Toggle like failed:', error);
+      alert(`Failed to ${currentlyLiked ? 'unlike' : 'like'} post: ${error.message}`);
     }
   }
 
@@ -393,12 +387,12 @@ export default function FeedPage() {
         {/* Main Content */}
         <div className="relative h-full flex flex-col items-center justify-center px-3 pt-20 pb-24">
 
-          {/* Image Card - TALL for mobile using min-height */}
+          {/* Image Card - Slightly smaller now */}
           <div
             className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 border border-white/10 cursor-pointer mb-3"
             style={{
-              minHeight: '80vh',
-              maxHeight: '85vh',
+              minHeight: '75vh',
+              maxHeight: '78vh',
               transform: isDragging ? `translateY(${-dragOffset * 0.5}px) scale(${1 - Math.abs(dragOffset) * 0.0002})` : 'none',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
@@ -490,55 +484,83 @@ export default function FeedPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex-1 overflow-y-auto px-6 pb-6 flex items-center justify-center">
+                    <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4">
                       {(() => {
                         const item = currentPost.items.find(i => i.id === expandedItem);
                         if (!item) return null;
 
                         return (
-                          <div className="w-full max-w-sm bg-white/98 backdrop-blur-xl rounded-3xl overflow-hidden shadow-2xl fade-in">
-                            {/* Large Image */}
-                            <div className="aspect-[4/5] bg-neutral-100 overflow-hidden">
-                              <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                            </div>
+                          <div className="w-full max-w-md mx-auto">
+                            {/* Close Button - Prominent */}
+                            <button
+                              onClick={() => setExpandedItem(null)}
+                              className="ml-auto mb-4 w-12 h-12 flex items-center justify-center bg-white/90 backdrop-blur-sm rounded-full shadow-xl hover:bg-white transition-all hover:scale-110"
+                            >
+                              <svg className="w-6 h-6 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
 
-                            {/* Details */}
-                            <div className="p-6 space-y-4">
-                              <div>
-                                <h2 className="font-black text-2xl leading-tight mb-2 text-black" style={{ fontFamily: 'Bebas Neue' }}>
-                                  {item.title}
-                                </h2>
-                                {item.seller && (
-                                  <p className="text-sm text-black/60 uppercase tracking-wider font-semibold">
-                                    {item.seller}
-                                  </p>
-                                )}
+                            <div className="bg-white/98 backdrop-blur-xl rounded-3xl overflow-hidden shadow-2xl fade-in">
+                              {/* Image - Modest Size */}
+                              <div className="aspect-square bg-neutral-100 overflow-hidden">
+                                <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
                               </div>
 
-                              {item.price && (
-                                <p className="text-4xl font-black text-black" style={{ fontFamily: 'Archivo Black' }}>
-                                  ${item.price}
-                                </p>
-                              )}
+                              {/* Details */}
+                              <div className="p-5 space-y-3">
+                                {/* Title */}
+                                <div>
+                                  <h2 className="font-black text-xl leading-tight mb-1 text-black" style={{ fontFamily: 'Bebas Neue' }}>
+                                    {item.title}
+                                  </h2>
+                                  {item.seller && (
+                                    <p className="text-xs text-black/50 uppercase tracking-wider font-semibold">
+                                      Sold by {item.seller}
+                                    </p>
+                                  )}
+                                </div>
 
-                              {/* Action Buttons */}
-                              <div className="space-y-3 pt-2">
-                                {item.product_url && (
+                                {/* Price */}
+                                {item.price && (
+                                  <div className="py-2">
+                                    <p className="text-3xl font-black text-black" style={{ fontFamily: 'Archivo Black' }}>
+                                      ${item.price}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Additional Details */}
+                                <div className="pt-2 pb-1 space-y-2 border-t border-black/10">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <span className="text-black/60 font-semibold">Product Type</span>
+                                    <span className="text-black font-bold">Fashion Item</span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-sm">
+                                    <span className="text-black/60 font-semibold">Availability</span>
+                                    <span className="text-green-600 font-bold">In Stock</span>
+                                  </div>
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="space-y-2 pt-3">
+                                  {item.product_url && (
+                                    <button
+                                      onClick={() => window.open(item.product_url!, '_blank')}
+                                      className="w-full py-3.5 bg-black text-white font-black text-sm tracking-widest hover:bg-neutral-800 transition-colors rounded-xl"
+                                      style={{ fontFamily: 'Bebas Neue' }}
+                                    >
+                                      BUY NOW
+                                    </button>
+                                  )}
                                   <button
-                                    onClick={() => window.open(item.product_url!, '_blank')}
-                                    className="w-full py-4 bg-black text-white font-black text-sm tracking-widest hover:bg-neutral-800 transition-colors rounded-xl"
+                                    onClick={() => setExpandedItem(null)}
+                                    className="w-full py-3 bg-black/5 text-black font-black text-xs tracking-widest hover:bg-black/10 transition-colors rounded-xl"
                                     style={{ fontFamily: 'Bebas Neue' }}
                                   >
-                                    BUY NOW
+                                    BACK TO ALL ITEMS
                                   </button>
-                                )}
-                                <button
-                                  onClick={() => setExpandedItem(null)}
-                                  className="w-full py-4 bg-white/50 text-black font-black text-sm tracking-widest hover:bg-white/70 transition-colors rounded-xl border-2 border-black/10"
-                                  style={{ fontFamily: 'Bebas Neue' }}
-                                >
-                                  BACK TO ITEMS
-                                </button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -677,6 +699,15 @@ export default function FeedPage() {
           currentUserId={currentUserId}
         />
       )}
+
+      {/* Hide bottom nav when comments open */}
+      <style jsx global>{`
+        ${showCommentsModal ? `
+          .mobile-bottom-nav {
+            display: none !important;
+          }
+        ` : ''}
+      `}</style>
     </>
   );
 }

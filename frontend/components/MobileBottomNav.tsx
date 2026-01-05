@@ -86,7 +86,7 @@ export default function MobileBottomNav() {
   };
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 pointer-events-none mobile-bottom-nav">
       <style jsx>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;600&display=swap');
       `}</style>
