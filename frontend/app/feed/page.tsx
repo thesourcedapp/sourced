@@ -282,12 +282,21 @@ export default function FeedPage() {
           to { opacity: 1; }
         }
 
+        @keyframes scrollText {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+
         .slide-up {
           animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .fade-in {
           animation: fadeIn 0.3s ease-out;
+        }
+
+        .scroll-text {
+          animation: scrollText 15s linear infinite;
         }
 
         .scrollbar-hide {
@@ -323,10 +332,20 @@ export default function FeedPage() {
         {/* FEED Header - TikTok/IG Style */}
         <div className="absolute top-0 left-0 right-0 z-30 pt-4 pb-2">
           <div className="flex items-center justify-between px-4">
-            <div className="w-10"></div>
-            <h1 className="text-white text-base font-bold tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>
-              Feed
-            </h1>
+            <button
+              onClick={() => router.push('/messages')}
+              className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
+            >
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </button>
+            <div className="flex flex-col items-center">
+              <h1 className="text-white text-base font-bold tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>
+                Feed
+              </h1>
+              <div className="w-12 h-0.5 bg-white mt-1 rounded-full"></div>
+            </div>
             <button
               onClick={() => router.push('/create/post/setup')}
               className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
@@ -345,7 +364,7 @@ export default function FeedPage() {
           <div
             className="relative w-full max-w-md rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 border border-white/10 cursor-pointer mb-4"
             style={{
-              height: '90vh',
+              height: '70vh',
               transform: isDragging ? `translateY(${-dragOffset * 0.5}px) scale(${1 - Math.abs(dragOffset) * 0.0002})` : 'none',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
@@ -442,7 +461,13 @@ export default function FeedPage() {
               onClick={() => toggleLike(currentPost.id, currentPost.is_liked)}
               className="flex items-center gap-2 text-white hover:scale-110 transition-transform"
             >
-              <svg className="w-7 h-7" fill={currentPost.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg
+                className="w-7 h-7"
+                fill={currentPost.is_liked ? '#ef4444' : 'none'}
+                viewBox="0 0 24 24"
+                stroke={currentPost.is_liked ? '#ef4444' : 'currentColor'}
+                strokeWidth={2}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
               </svg>
               <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{currentPost.like_count}</span>
@@ -501,7 +526,7 @@ export default function FeedPage() {
 
         {/* Swipe Indicator - MUCH LOWER */}
         {currentIndex === 0 && (
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/40 text-center z-20 fade-in">
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 text-white/40 text-center z-20 fade-in">
             <svg className="w-8 h-8 mx-auto mb-2 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
             </svg>
@@ -510,6 +535,18 @@ export default function FeedPage() {
             </p>
           </div>
         )}
+
+        {/* Scrolling Brand Footer */}
+        <div className="absolute bottom-0 left-0 right-0 h-12 overflow-hidden z-20 pointer-events-none">
+          <div className="flex items-center h-full whitespace-nowrap scroll-text">
+            <span className="text-white/20 font-black text-2xl tracking-[0.3em] mx-8" style={{ fontFamily: 'Bebas Neue' }}>
+              SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED
+            </span>
+            <span className="text-white/20 font-black text-2xl tracking-[0.3em] mx-8" style={{ fontFamily: 'Bebas Neue' }}>
+              SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED • SOURCED
+            </span>
+          </div>
+        </div>
       </div>
     </>
   );
