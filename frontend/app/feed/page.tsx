@@ -27,6 +27,8 @@ type FeedPost = {
     product_url: string | null;
     price: string | null;
     seller: string | null;
+    like_count: number;
+    is_liked: boolean;
   }>;
 };
 
@@ -135,7 +137,7 @@ export default function FeedPage() {
       const postIds = postsData.map(p => p.id);
       const { data: itemsData } = await supabase
         .from('feed_post_items')
-        .select('*')
+        .select('id, feed_post_id, title, image_url, product_url, price, seller, like_count')
         .in('feed_post_id', postIds);
 
       // Get liked items for current user
@@ -161,6 +163,7 @@ export default function FeedPage() {
           }
           itemsByPost.get(item.feed_post_id)!.push({
             ...item,
+            like_count: item.like_count || 0,
             is_liked: likedItemIds.has(item.id)
           });
         });
