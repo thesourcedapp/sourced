@@ -48,6 +48,8 @@ export default function FeedPage() {
   const [isMuted, setIsMuted] = useState(false);
   const [failedAudioPosts, setFailedAudioPosts] = useState<Set<string>>(new Set());
   const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
 
   useEffect(() => {
     loadCurrentUser();
@@ -55,30 +57,35 @@ export default function FeedPage() {
   }, []);
 
   useEffect(() => {
-    if (currentUserId && posts.length > 0) {
-      refreshLikeStates();
+    if (currentUserId && posts.length > 0 && posts[currentIndex]) {
+      // Refresh likes for current post when it changes
+      refreshCurrentPostLikes();
     }
   }, [currentUserId, currentIndex]);
 
-  async function refreshLikeStates() {
-    if (!currentUserId || posts.length === 0) return;
+  async function refreshCurrentPostLikes() {
+    if (!currentUserId || posts.length === 0 || !posts[currentIndex]) return;
 
     try {
+      const currentPostId = posts[currentIndex].id;
+
+      // Check if current post is liked
       const { data: likedData } = await supabase
         .from('liked_feed_posts')
         .select('feed_post_id')
-        .eq('user_id', currentUserId);
+        .eq('user_id', currentUserId)
+        .eq('feed_post_id', currentPostId)
+        .single();
 
-      if (likedData) {
-        const likedPostIds = new Set(likedData.map(like => like.feed_post_id));
-
-        setPosts(prev => prev.map(post => ({
-          ...post,
-          is_liked: likedPostIds.has(post.id)
-        })));
-      }
+      // Update only the current post
+      setPosts(prev => prev.map(post =>
+        post.id === currentPostId
+          ? { ...post, is_liked: !!likedData }
+          : post
+      ));
     } catch (error) {
-      console.error('Error refreshing like states:', error);
+      // If no data found, post is not liked - that's fine
+      console.log('Post not liked');
     }
   }
 
@@ -87,8 +94,23 @@ export default function FeedPage() {
       if (e.key === 'ArrowDown') nextPost();
       if (e.key === 'ArrowUp') prevPost();
     };
+
+    const handleWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) > 50) {
+        if (e.deltaY > 0) {
+          nextPost();
+        } else {
+          prevPost();
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('wheel', handleWheel, { passive: true });
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('wheel', handleWheel);
+    };
   }, [currentIndex, posts.length]);
 
   async function loadCurrentUser() {
@@ -215,6 +237,35 @@ export default function FeedPage() {
     // Just for potential future use
   }
 
+  function handleTouchStart(e: React.TouchEvent) {
+    setTouchStart(e.targetTouches[0].clientY);
+    setTouchEnd(e.targetTouches[0].clientY); // Reset end position
+  }
+
+  function handleTouchMove(e: React.TouchEvent) {
+    setTouchEnd(e.targetTouches[0].clientY);
+  }
+
+  function handleTouchEnd() {
+    const swipeDistance = touchStart - touchEnd;
+    const minSwipeDistance = 100; // Minimum distance for a swipe (prevents taps from triggering)
+
+    // Only trigger if it's actually a swipe, not just a tap
+    if (Math.abs(swipeDistance) > minSwipeDistance) {
+      if (swipeDistance > 0) {
+        // Swiped up
+        nextPost();
+      } else {
+        // Swiped down
+        prevPost();
+      }
+    }
+
+    // Reset
+    setTouchStart(0);
+    setTouchEnd(0);
+  }
+
   async function toggleLike(postId: string, currentlyLiked: boolean) {
     if (!currentUserId || !isOnboarded) {
       setToastMessage('Please log in to like posts');
@@ -243,6 +294,9 @@ export default function FeedPage() {
             ? { ...post, is_liked: false, like_count: Math.max(0, post.like_count - 1) }
             : post
         ));
+
+        // Refresh current post from database
+        setTimeout(() => refreshCurrentPostLikes(), 100);
       } else {
         // LIKE: Add to liked_feed_posts
         const { error } = await supabase
@@ -264,6 +318,9 @@ export default function FeedPage() {
             ? { ...post, is_liked: true, like_count: post.like_count + 1 }
             : post
         ));
+
+        // Refresh current post from database
+        setTimeout(() => refreshCurrentPostLikes(), 100);
       }
     } catch (error: any) {
       console.error('Toggle like failed:', error);
@@ -428,7 +485,9 @@ export default function FeedPage() {
 
       <div
         className="fixed inset-0 bg-black overflow-hidden"
-        style={{ touchAction: 'pan-y' }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         {/* Background */}
         <div className="absolute inset-0 overflow-hidden">
@@ -443,29 +502,29 @@ export default function FeedPage() {
           <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
         </div>
 
-        {/* FEED Header - No blur, cleaner */}
-        <div className="absolute top-0 left-0 right-0 z-30 pt-4 pb-2">
+        {/* FEED Header - Raised and bolder */}
+        <div className="absolute top-0 left-0 right-0 z-30 pt-6 pb-3">
           <div className="flex items-center justify-between px-4">
             <div className="w-10"></div>
             <div className="flex flex-col items-center">
-              <h1 className="text-white text-lg font-semibold mb-1" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>
+              <h1 className="text-white text-xl font-bold mb-1.5 tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', letterSpacing: '-0.02em' }}>
                 Feed
               </h1>
-              <div className="w-12 h-0.5 bg-white rounded-full"></div>
+              <div className="w-10 h-0.5 bg-white rounded-full"></div>
             </div>
             <button
               onClick={() => router.push('/create/post/setup')}
               className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
             >
-              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
             </button>
           </div>
         </div>
 
-        {/* Main Content - Moved down more */}
-        <div className="relative h-full flex flex-col items-center justify-center px-3 pt-28 pb-24">
+        {/* Main Content - Adjusted for raised header */}
+        <div className="relative h-full flex flex-col items-center justify-center px-3 pt-32 pb-24">
 
           {/* Image Card - No drag, smooth */}
           <div
@@ -554,46 +613,24 @@ export default function FeedPage() {
 
                             {/* Price */}
                             {item.price && (
-                              <p className="text-base font-black text-white mb-2" style={{ fontFamily: 'Archivo Black' }}>
+                              <p className="text-base font-black text-white mb-3" style={{ fontFamily: 'Archivo Black' }}>
                                 ${item.price}
                               </p>
                             )}
 
-                            {/* Like Count */}
-                            <div className="flex items-center gap-1 text-[10px] tracking-wider text-white/60 mb-2">
-                              <span>♥</span>
-                              <span>{item.like_count || 0}</span>
-                            </div>
-
-                            {/* Buttons */}
-                            <div className="flex gap-2">
+                            {/* View Button */}
+                            {item.product_url && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  toggleItemLike(item.id, item.is_liked);
+                                  window.open(item.product_url!, '_blank');
                                 }}
-                                className={`flex-1 py-1.5 border transition-all text-[10px] font-black flex items-center justify-center gap-1 ${
-                                  item.is_liked
-                                    ? 'border-white bg-white text-black hover:bg-white/90'
-                                    : 'border-white/40 text-white hover:bg-white/10'
-                                }`}
+                                className="w-full py-2 border border-white/40 hover:bg-white hover:text-black transition-all text-xs font-black text-white"
                                 style={{ fontFamily: 'Bebas Neue' }}
                               >
-                                {item.is_liked ? '♥' : '♡'}
+                                VIEW PRODUCT
                               </button>
-                              {item.product_url && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    window.open(item.product_url!, '_blank');
-                                  }}
-                                  className="flex-1 py-1.5 border border-white/40 hover:bg-white hover:text-black transition-all text-[10px] font-black text-white"
-                                  style={{ fontFamily: 'Bebas Neue' }}
-                                >
-                                  VIEW
-                                </button>
-                              )}
-                            </div>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -622,7 +659,7 @@ export default function FeedPage() {
                   {currentPost.owner.username}
                 </span>
                 {currentPost.owner.is_verified && (
-                  <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-blue-500 fill-current" viewBox="0 0 24 24">
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 )}
