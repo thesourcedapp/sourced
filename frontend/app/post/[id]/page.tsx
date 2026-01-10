@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Head from "next/head";
@@ -32,88 +32,21 @@ type FeedPost = {
   }>;
 };
 
-export default function FeedPage() {
+export default function PostPage({ params }: { params: { id: string } }) {
   const router = useRouter();
-  const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [post, setPost] = useState<FeedPost | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
-
-  const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
-  const [isAnimating, setIsAnimating] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [viewMode, setViewMode] = useState<'discover' | 'shop'>('discover');
-  const [isMuted, setIsMuted] = useState(false);
-  const [failedAudioPosts, setFailedAudioPosts] = useState<Set<string>>(new Set());
   const [showCommentsModal, setShowCommentsModal] = useState(false);
-  const [touchStart, setTouchStart] = useState(0);
-  const [touchEnd, setTouchEnd] = useState(0);
 
   useEffect(() => {
     loadCurrentUser();
-    loadFeedPosts();
-  }, []);
-
-  useEffect(() => {
-    if (currentUserId && posts.length > 0 && posts[currentIndex]) {
-      // Refresh likes for current post when it changes
-      refreshCurrentPostLikes();
-    }
-  }, [currentUserId, currentIndex]);
-
-  async function refreshCurrentPostLikes() {
-    if (!currentUserId || posts.length === 0 || !posts[currentIndex]) return;
-
-    try {
-      const currentPostId = posts[currentIndex].id;
-
-      // Check if current post is liked
-      const { data: likedData } = await supabase
-        .from('liked_feed_posts')
-        .select('feed_post_id')
-        .eq('user_id', currentUserId)
-        .eq('feed_post_id', currentPostId)
-        .single();
-
-      // Update only the current post
-      setPosts(prev => prev.map(post =>
-        post.id === currentPostId
-          ? { ...post, is_liked: !!likedData }
-          : post
-      ));
-    } catch (error) {
-      // If no data found, post is not liked - that's fine
-      console.log('Post not liked');
-    }
-  }
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isAnimating) return;
-      if (e.key === 'ArrowDown') nextPost();
-      if (e.key === 'ArrowUp') prevPost();
-    };
-
-    const handleWheel = (e: WheelEvent) => {
-      if (isAnimating) return;
-      if (Math.abs(e.deltaY) > 50) {
-        if (e.deltaY > 0) {
-          nextPost();
-        } else {
-          prevPost();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('wheel', handleWheel, { passive: true });
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('wheel', handleWheel);
-    };
-  }, [currentIndex, posts.length, isAnimating]);
+    loadPost();
+  }, [params.id]);
 
   async function loadCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -128,41 +61,39 @@ export default function FeedPage() {
     }
   }
 
-  async function loadFeedPosts() {
+  async function loadPost() {
     try {
-      const { data: postsData } = await supabase
+      const { data: postData } = await supabase
         .from('feed_posts')
         .select(`
           id, image_url, caption, like_count, comment_count, music_preview_url, owner_id,
           profiles!feed_posts_owner_id_fkey(id, username, avatar_url, is_verified)
         `)
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .eq('id', params.id)
+        .single();
 
-      if (!postsData) {
-        setPosts([]);
+      if (!postData) {
         setLoading(false);
         return;
       }
 
-      // Get liked posts for current user
-      let likedPostIds: Set<string> = new Set();
+      // Check if current user liked this post
+      let isLiked = false;
       if (currentUserId) {
         const { data: likedData } = await supabase
           .from('liked_feed_posts')
           .select('feed_post_id')
-          .eq('user_id', currentUserId);
-
-        if (likedData) {
-          likedPostIds = new Set(likedData.map(like => like.feed_post_id));
-        }
+          .eq('user_id', currentUserId)
+          .eq('feed_post_id', params.id)
+          .single();
+        isLiked = !!likedData;
       }
 
-      const postIds = postsData.map(p => p.id);
+      // Get items for this post
       const { data: itemsData } = await supabase
         .from('feed_post_items')
-        .select('id, feed_post_id, title, image_url, product_url, price, seller, like_count')
-        .in('feed_post_id', postIds);
+        .select('id, title, image_url, product_url, price, seller, like_count')
+        .eq('feed_post_id', params.id);
 
       // Get liked items for current user
       let likedItemIds: Set<string> = new Set();
@@ -179,106 +110,39 @@ export default function FeedPage() {
         }
       }
 
-      const itemsByPost = new Map<string, any[]>();
-      if (itemsData) {
-        itemsData.forEach((item: any) => {
-          if (!itemsByPost.has(item.feed_post_id)) {
-            itemsByPost.set(item.feed_post_id, []);
-          }
-          itemsByPost.get(item.feed_post_id)!.push({
-            ...item,
-            like_count: item.like_count || 0,
-            is_liked: likedItemIds.has(item.id)
-          });
-        });
-      }
+      const items = itemsData?.map(item => ({
+        ...item,
+        like_count: item.like_count || 0,
+        is_liked: likedItemIds.has(item.id)
+      })) || [];
 
-      const feedPosts: FeedPost[] = postsData.map((post: any) => {
-        const owner = Array.isArray(post.profiles) ? post.profiles[0] : post.profiles;
-        return {
-          id: post.id,
-          image_url: post.image_url,
-          caption: post.caption,
-          music_preview_url: post.music_preview_url,
-          like_count: post.like_count,
-          is_liked: likedPostIds.has(post.id), // Check if current user liked it
-          comment_count: post.comment_count || 0,
-          owner: {
-            id: owner.id,
-            username: owner.username,
-            avatar_url: owner.avatar_url,
-            is_verified: owner.is_verified || false
-          },
-          items: itemsByPost.get(post.id) || []
-        };
+      const owner = Array.isArray(postData.profiles) ? postData.profiles[0] : postData.profiles;
+
+      setPost({
+        id: postData.id,
+        image_url: postData.image_url,
+        caption: postData.caption,
+        music_preview_url: postData.music_preview_url,
+        like_count: postData.like_count,
+        is_liked: isLiked,
+        comment_count: postData.comment_count || 0,
+        owner: {
+          id: owner.id,
+          username: owner.username,
+          avatar_url: owner.avatar_url,
+          is_verified: owner.is_verified || false
+        },
+        items
       });
-
-      setPosts(feedPosts);
     } catch (error) {
-      console.error('Error loading feed:', error);
+      console.error('Error loading post:', error);
     } finally {
       setLoading(false);
     }
   }
 
-  function nextPost() {
-    if (currentIndex < posts.length - 1 && !isAnimating) {
-      setIsAnimating(true);
-      setSwipeDirection('up');
-      setViewMode('discover');
-
-      setTimeout(() => {
-        setCurrentIndex(prev => prev + 1);
-        setSwipeDirection(null);
-        setTimeout(() => setIsAnimating(false), 100);
-      }, 500);
-    }
-  }
-
-  function prevPost() {
-    if (currentIndex > 0 && !isAnimating) {
-      setIsAnimating(true);
-      setSwipeDirection('down');
-      setViewMode('discover');
-
-      setTimeout(() => {
-        setCurrentIndex(prev => prev - 1);
-        setSwipeDirection(null);
-        setTimeout(() => setIsAnimating(false), 100);
-      }, 500);
-    }
-  }
-
-  function handleTouchStart(e: React.TouchEvent) {
-    if (isAnimating) return;
-    setTouchStart(e.targetTouches[0].clientY);
-    setTouchEnd(e.targetTouches[0].clientY);
-  }
-
-  function handleTouchMove(e: React.TouchEvent) {
-    if (isAnimating) return;
-    setTouchEnd(e.targetTouches[0].clientY);
-  }
-
-  function handleTouchEnd() {
-    if (isAnimating) return;
-    const swipeDistance = touchStart - touchEnd;
-    const minSwipeDistance = 100;
-
-    if (Math.abs(swipeDistance) > minSwipeDistance) {
-      if (swipeDistance > 0) {
-        nextPost();
-      } else {
-        prevPost();
-      }
-    }
-
-    setTouchStart(0);
-    setTouchEnd(0);
-  }
-
-  async function toggleLike(postId: string, currentlyLiked: boolean) {
-    if (!currentUserId || !isOnboarded) {
+  async function toggleLike() {
+    if (!post || !currentUserId || !isOnboarded) {
       setToastMessage('Please log in to like posts');
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
@@ -286,47 +150,25 @@ export default function FeedPage() {
     }
 
     try {
-      if (currentlyLiked) {
-        const { error } = await supabase
+      if (post.is_liked) {
+        await supabase
           .from('liked_feed_posts')
           .delete()
           .eq('user_id', currentUserId)
-          .eq('feed_post_id', postId);
+          .eq('feed_post_id', post.id);
 
-        if (error) {
-          console.error('Unlike error:', error);
-          return;
-        }
-
-        setPosts(prev => prev.map(post =>
-          post.id === postId
-            ? { ...post, is_liked: false, like_count: Math.max(0, post.like_count - 1) }
-            : post
-        ));
-
-        setTimeout(() => refreshCurrentPostLikes(), 100);
+        setPost(prev => prev ? { ...prev, is_liked: false, like_count: Math.max(0, prev.like_count - 1) } : null);
       } else {
-        const { error } = await supabase
+        await supabase
           .from('liked_feed_posts')
           .insert({
             user_id: currentUserId,
-            feed_post_id: postId
+            feed_post_id: post.id
           });
 
-        if (error && !error.message.includes('duplicate')) {
-          console.error('Like error:', error);
-          return;
-        }
-
-        setPosts(prev => prev.map(post =>
-          post.id === postId
-            ? { ...post, is_liked: true, like_count: post.like_count + 1 }
-            : post
-        ));
-
-        setTimeout(() => refreshCurrentPostLikes(), 100);
+        setPost(prev => prev ? { ...prev, is_liked: true, like_count: prev.like_count + 1 } : null);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Toggle like failed:', error);
     }
   }
@@ -338,63 +180,7 @@ export default function FeedPage() {
       setTimeout(() => setShowToast(false), 3000);
       return;
     }
-
     setShowCommentsModal(true);
-  }
-
-  async function toggleItemLike(itemId: string, currentlyLiked: boolean) {
-    if (!currentUserId || !isOnboarded) {
-      setToastMessage('Please log in to like items');
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 3000);
-      return;
-    }
-
-    try {
-      if (currentlyLiked) {
-        const { error } = await supabase
-          .from('liked_items')
-          .delete()
-          .eq('user_id', currentUserId)
-          .eq('item_id', itemId);
-
-        if (error) {
-          console.error('Unlike item error:', error);
-          return;
-        }
-      } else {
-        const { error } = await supabase
-          .from('liked_items')
-          .insert({
-            user_id: currentUserId,
-            item_id: itemId
-          });
-
-        if (error && !error.message.includes('duplicate')) {
-          console.error('Like item error:', error);
-          return;
-        }
-      }
-
-      setPosts(prev => prev.map(post =>
-        post.id === currentPost.id
-          ? {
-              ...post,
-              items: post.items.map(item =>
-                item.id === itemId
-                  ? {
-                      ...item,
-                      is_liked: !currentlyLiked,
-                      like_count: currentlyLiked ? (item.like_count || 0) - 1 : (item.like_count || 0) + 1
-                    }
-                  : item
-              )
-            }
-          : post
-      ));
-    } catch (error) {
-      console.error('Toggle item like failed:', error);
-    }
   }
 
   if (loading) {
@@ -407,36 +193,27 @@ export default function FeedPage() {
     );
   }
 
-  if (posts.length === 0) {
+  if (!post) {
     return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-4xl font-black text-white mb-4" style={{ fontFamily: 'Archivo Black' }}>NO POSTS YET</h1>
+          <h1 className="text-4xl font-black text-white mb-4" style={{ fontFamily: 'Archivo Black' }}>POST NOT FOUND</h1>
           <button
-            onClick={() => router.push('/create/post')}
+            onClick={() => router.push('/feed')}
             className="px-8 py-3 bg-white text-black hover:bg-black hover:text-white border-2 border-white transition-all font-black tracking-wider"
             style={{ fontFamily: 'Bebas Neue' }}
           >
-            CREATE FIRST POST
+            GO TO FEED
           </button>
         </div>
       </div>
     );
   }
 
-  const currentPost = posts[currentIndex];
-
-  // Get animation class based on swipe direction
-  const getAnimationClass = () => {
-    if (swipeDirection === 'up') return 'swipe-up-exit';
-    if (swipeDirection === 'down') return 'swipe-down-exit';
-    return '';
-  };
-
   return (
     <>
       <Head>
-        <title>Feed | Sourced</title>
+        <title>{`@${post.owner.username}'s Post | Sourced`}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
       </Head>
 
@@ -463,51 +240,12 @@ export default function FeedPage() {
           to { opacity: 1; }
         }
 
-        @keyframes scroll {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-
-        @keyframes swipeUp {
-          0% {
-            transform: translateY(0) scale(1) rotateX(0deg);
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(-120vh) scale(0.7) rotateX(15deg);
-            opacity: 0;
-          }
-        }
-
-        @keyframes swipeDown {
-          0% {
-            transform: translateY(0) scale(1) rotateX(0deg);
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(120vh) scale(0.7) rotateX(-15deg);
-            opacity: 0;
-          }
-        }
-
         .slide-up {
           animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .fade-in {
           animation: fadeIn 0.3s ease-out;
-        }
-
-        .animate-scroll {
-          animation: scroll 20s linear infinite;
-        }
-
-        .swipe-up-exit {
-          animation: swipeUp 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
-        }
-
-        .swipe-down-exit {
-          animation: swipeDown 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
         }
 
         .scrollbar-hide {
@@ -520,18 +258,13 @@ export default function FeedPage() {
         }
       `}</style>
 
-      <div
-        className="fixed inset-0 bg-black overflow-hidden"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
+      <div className="fixed inset-0 bg-black overflow-hidden">
         {/* Background */}
         <div className="absolute inset-0 overflow-hidden">
           <div
             className="absolute inset-0 scale-110 blur-3xl opacity-10 transition-all duration-1000"
             style={{
-              backgroundImage: `url(${currentPost.image_url})`,
+              backgroundImage: `url(${post.image_url})`,
               backgroundSize: 'cover',
               backgroundPosition: 'center'
             }}
@@ -539,43 +272,40 @@ export default function FeedPage() {
           <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
         </div>
 
-        {/* FEED Header */}
+        {/* Header */}
         <div className="absolute top-0 left-0 right-0 z-30 pt-3 pb-3">
           <div className="flex items-center justify-between px-4">
-            <div className="w-10"></div>
+            <button
+              onClick={() => router.push('/feed')}
+              className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
             <div className="flex flex-col items-center">
               <h1 className="text-white text-xl font-bold mb-1.5 tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', letterSpacing: '-0.02em' }}>
-                Feed
+                Post
               </h1>
               <div className="w-10 h-0.5 bg-white rounded-full"></div>
             </div>
-            <button
-              onClick={() => router.push('/create/post/setup')}
-              className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
-            >
-              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
+            <div className="w-10"></div>
           </div>
         </div>
 
-        {/* Main Content with Animation */}
-        <div className={`relative h-full flex flex-col items-center justify-center px-3 pt-32 pb-24 ${getAnimationClass()}`}>
-
+        {/* Main Content */}
+        <div className="relative h-full flex flex-col items-center justify-center px-3 pt-32 pb-24">
           {/* Image Card */}
           <div
             className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-3"
             style={{
               minHeight: '64vh',
               maxHeight: '66vh',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
-              touchAction: 'pan-y'
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
           >
-            {/* Main Image */}
             <img
-              src={currentPost.image_url}
+              src={post.image_url}
               alt=""
               className="w-full h-full object-cover"
             />
@@ -586,7 +316,7 @@ export default function FeedPage() {
                 <div
                   className="absolute inset-0 bg-cover bg-center"
                   style={{
-                    backgroundImage: `url(${currentPost.image_url})`,
+                    backgroundImage: `url(${post.image_url})`,
                     filter: 'blur(50px) brightness(0.4)',
                     transform: 'scale(1.2)'
                   }}
@@ -599,10 +329,7 @@ export default function FeedPage() {
                       SHOP THE LOOK
                     </h2>
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setViewMode('discover');
-                      }}
+                      onClick={() => setViewMode('discover')}
                       className="w-10 h-10 flex items-center justify-center text-white bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-colors"
                     >
                       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -613,7 +340,7 @@ export default function FeedPage() {
 
                   <div className="flex-1 overflow-y-auto px-4 pb-6 scrollbar-hide">
                     <div className="grid grid-cols-2 gap-4 mt-2">
-                      {currentPost.items.map((item, idx) => (
+                      {post.items.map((item, idx) => (
                         <div
                           key={item.id}
                           className="bg-black border border-white/20 rounded-xl overflow-hidden shadow-xl slide-up hover:border-white/40 transition-all"
@@ -621,8 +348,7 @@ export default function FeedPage() {
                         >
                           <div
                             className="aspect-square bg-neutral-900 overflow-hidden cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={() => {
                               if (item.product_url) window.open(item.product_url, '_blank');
                             }}
                           >
@@ -635,23 +361,17 @@ export default function FeedPage() {
                                 {item.seller}
                               </p>
                             )}
-
                             <h3 className="text-xs font-black tracking-wide uppercase leading-tight text-white mb-2 line-clamp-2" style={{ fontFamily: 'Bebas Neue' }}>
                               {item.title}
                             </h3>
-
                             {item.price && (
                               <p className="text-base font-black text-white mb-3" style={{ fontFamily: 'Archivo Black' }}>
                                 ${item.price}
                               </p>
                             )}
-
                             {item.product_url && (
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  window.open(item.product_url!, '_blank');
-                                }}
+                                onClick={() => window.open(item.product_url!, '_blank')}
                                 className="w-full py-2 border border-white/40 hover:bg-white hover:text-black transition-all text-xs font-black text-white"
                                 style={{ fontFamily: 'Bebas Neue' }}
                               >
@@ -671,21 +391,21 @@ export default function FeedPage() {
           {/* Profile + Shop Button */}
           <div className="w-full max-w-lg flex items-center justify-between mb-2">
             <div
-              onClick={() => router.push(`/${currentPost.owner.username}`)}
+              onClick={() => router.push(`/${post.owner.username}`)}
               className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity flex-1"
             >
               <div className="w-11 h-11 rounded-full border-2 border-white overflow-hidden bg-neutral-800">
-                {currentPost.owner.avatar_url ? (
-                  <img src={currentPost.owner.avatar_url} alt="" className="w-full h-full object-cover" />
+                {post.owner.avatar_url ? (
+                  <img src={post.owner.avatar_url} alt="" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-white text-sm">👤</div>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-white font-black text-lg tracking-wide" style={{ fontFamily: 'Bebas Neue' }}>
-                  {currentPost.owner.username}
+                  {post.owner.username}
                 </span>
-                {currentPost.owner.is_verified && (
+                {post.owner.is_verified && (
                   <svg className="w-4 h-4 text-blue-500 fill-current" viewBox="0 0 24 24">
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
@@ -693,9 +413,9 @@ export default function FeedPage() {
               </div>
             </div>
 
-            {currentPost.items.length > 0 && (
+            {post.items.length > 0 && (
               <button
-                onClick={(e) => { e.stopPropagation(); setViewMode(viewMode === 'shop' ? 'discover' : 'shop'); }}
+                onClick={() => setViewMode(viewMode === 'shop' ? 'discover' : 'shop')}
                 className="px-3 py-2 bg-white/90 backdrop-blur-sm text-black font-black text-[10px] tracking-widest rounded-full hover:bg-white transition-all"
                 style={{ fontFamily: 'Bebas Neue' }}
               >
@@ -707,28 +427,28 @@ export default function FeedPage() {
           {/* Actions */}
           <div className="w-full max-w-lg flex items-center gap-5 mb-2">
             <button
-              onClick={() => toggleLike(currentPost.id, currentPost.is_liked)}
+              onClick={toggleLike}
               className="flex items-center gap-2 text-white hover:scale-110 transition-transform"
             >
-              <svg className="w-7 h-7" fill={currentPost.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-7 h-7" fill={post.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
               </svg>
-              <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{currentPost.like_count}</span>
+              <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.like_count}</span>
             </button>
 
             <button onClick={handleComment} className="flex items-center gap-2 text-white hover:scale-110 transition-transform">
               <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
-              <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{currentPost.comment_count}</span>
+              <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.comment_count}</span>
             </button>
 
             <button
               onClick={() => {
-                const shareUrl = `${window.location.origin}/post/${currentPost.id}`;
+                const shareUrl = `${window.location.origin}/post/${post.id}`;
                 if (navigator.share) {
                   navigator.share({
-                    title: `@${currentPost.owner.username} on Sourced`,
+                    title: `@${post.owner.username} on Sourced`,
                     url: shareUrl
                   });
                 } else {
@@ -747,10 +467,10 @@ export default function FeedPage() {
           </div>
 
           {/* Caption */}
-          {currentPost.caption && (
+          {post.caption && (
             <div className="w-full max-w-lg mb-2">
               <p className="text-white/90 text-sm leading-relaxed">
-                {currentPost.caption}
+                {post.caption}
               </p>
             </div>
           )}
@@ -766,29 +486,17 @@ export default function FeedPage() {
             </div>
           </div>
         )}
-
-        {/* Swipe Indicator */}
-        {currentIndex === 0 && (
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/40 text-center z-20 fade-in">
-            <svg className="w-8 h-8 mx-auto mb-2 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-            <p className="text-xs tracking-widest font-black" style={{ fontFamily: 'Bebas Neue' }}>
-              SWIPE TO DISCOVER
-            </p>
-          </div>
-        )}
       </div>
 
       {/* Comments Modal */}
       {currentUserId && (
         <CommentsModal
-          postId={currentPost.id}
-          postOwnerId={currentPost.owner.id}
+          postId={post.id}
+          postOwnerId={post.owner.id}
           isOpen={showCommentsModal}
           onClose={() => {
             setShowCommentsModal(false);
-            loadFeedPosts();
+            loadPost();
           }}
           currentUserId={currentUserId}
         />
