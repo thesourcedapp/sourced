@@ -32,7 +32,7 @@ type FeedPost = {
   }>;
 };
 
-export default function PostPage({ params }: { params: { id: string } }) {
+export default function PostPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const [post, setPost] = useState<FeedPost | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,11 +42,21 @@ export default function PostPage({ params }: { params: { id: string } }) {
   const [toastMessage, setToastMessage] = useState('');
   const [viewMode, setViewMode] = useState<'discover' | 'shop'>('discover');
   const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [postId, setPostId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadCurrentUser();
-    loadPost();
-  }, [params.id]);
+    // Unwrap params Promise
+    params.then(({ id }) => {
+      setPostId(id);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (postId) {
+      loadCurrentUser();
+      loadPost();
+    }
+  }, [postId]);
 
   async function loadCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -62,6 +72,8 @@ export default function PostPage({ params }: { params: { id: string } }) {
   }
 
   async function loadPost() {
+    if (!postId) return;
+
     try {
       const { data: postData } = await supabase
         .from('feed_posts')
@@ -69,7 +81,7 @@ export default function PostPage({ params }: { params: { id: string } }) {
           id, image_url, caption, like_count, comment_count, music_preview_url, owner_id,
           profiles!feed_posts_owner_id_fkey(id, username, avatar_url, is_verified)
         `)
-        .eq('id', params.id)
+        .eq('id', postId)
         .single();
 
       if (!postData) {
@@ -84,7 +96,7 @@ export default function PostPage({ params }: { params: { id: string } }) {
           .from('liked_feed_posts')
           .select('feed_post_id')
           .eq('user_id', currentUserId)
-          .eq('feed_post_id', params.id)
+          .eq('feed_post_id', postId)
           .single();
         isLiked = !!likedData;
       }
@@ -93,7 +105,7 @@ export default function PostPage({ params }: { params: { id: string } }) {
       const { data: itemsData } = await supabase
         .from('feed_post_items')
         .select('id, title, image_url, product_url, price, seller, like_count')
-        .eq('feed_post_id', params.id);
+        .eq('feed_post_id', postId);
 
       // Get liked items for current user
       let likedItemIds: Set<string> = new Set();

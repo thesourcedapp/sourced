@@ -231,7 +231,7 @@ export default function FeedPage() {
         setCurrentIndex(prev => prev + 1);
         setSwipeDirection(null);
         setTimeout(() => setIsAnimating(false), 100);
-      }, 500);
+      }, 400);
     }
   }
 
@@ -245,7 +245,7 @@ export default function FeedPage() {
         setCurrentIndex(prev => prev - 1);
         setSwipeDirection(null);
         setTimeout(() => setIsAnimating(false), 100);
-      }, 500);
+      }, 400);
     }
   }
 
@@ -433,6 +433,17 @@ export default function FeedPage() {
     return '';
   };
 
+  // Safety check
+  if (!currentPost) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center">
+        <div className="text-white text-2xl font-black tracking-widest animate-pulse" style={{ fontFamily: 'Bebas Neue' }}>
+          SOURCED
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Head>
@@ -474,7 +485,7 @@ export default function FeedPage() {
             opacity: 1;
           }
           100% {
-            transform: translateY(-120vh) scale(0.7) rotateX(15deg);
+            transform: translateY(-100vh) scale(0.85) rotateX(8deg);
             opacity: 0;
           }
         }
@@ -485,7 +496,7 @@ export default function FeedPage() {
             opacity: 1;
           }
           100% {
-            transform: translateY(120vh) scale(0.7) rotateX(-15deg);
+            transform: translateY(100vh) scale(0.85) rotateX(-8deg);
             opacity: 0;
           }
         }
@@ -503,11 +514,11 @@ export default function FeedPage() {
         }
 
         .swipe-up-exit {
-          animation: swipeUp 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+          animation: swipeUp 0.4s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
         }
 
         .swipe-down-exit {
-          animation: swipeDown 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+          animation: swipeDown 0.4s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
         }
 
         .scrollbar-hide {
