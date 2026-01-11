@@ -400,7 +400,6 @@ export default function CreatePostPage() {
         body {
           font-family: 'Bebas Neue', sans-serif;
           background: #000;
-          overflow: hidden;
         }
 
         .no-select {
@@ -420,9 +419,9 @@ export default function CreatePostPage() {
         }
       `}</style>
 
-      <div className="fixed inset-0 bg-black overflow-hidden">
-        {/* Background */}
-        <div className="absolute inset-0 overflow-hidden">
+      <div className="min-h-screen bg-black overflow-y-auto scrollbar-hide">
+        {/* Background - Fixed */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
           {imagePreview && (
             <>
               <div
@@ -438,8 +437,8 @@ export default function CreatePostPage() {
           )}
         </div>
 
-        {/* Header */}
-        <div className="absolute top-0 left-0 right-0 z-30 pt-3 pb-3">
+        {/* Header - Sticky */}
+        <div className="sticky top-0 left-0 right-0 z-30 pt-3 pb-3 bg-black/80 backdrop-blur-sm">
           <div className="flex items-center justify-between px-4">
             <button
               onClick={() => router.push('/feed')}
@@ -466,15 +465,15 @@ export default function CreatePostPage() {
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="relative h-full flex flex-col items-center justify-center px-3 pt-20 pb-6">
+        {/* Main Content - Scrollable */}
+        <div className="relative flex flex-col items-center px-3 py-6 pb-20">
 
           {/* Image Card */}
           <div
             className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-3"
             style={{
-              minHeight: '64vh',
-              maxHeight: '66vh',
+              aspectRatio: '9/16',
+              maxHeight: '55vh',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
           >
