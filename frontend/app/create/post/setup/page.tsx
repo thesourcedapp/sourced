@@ -4,32 +4,25 @@ import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Head from "next/head";
-import { searchDeezerTracks } from "@/lib/deezer-api";
 
 export default function CreatePostPage() {
   const router = useRouter();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUsername, setCurrentUsername] = useState<string | null>(null);
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null);
+  const [isVerified, setIsVerified] = useState(false);
 
   // Image state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
 
   // Post data
   const [caption, setCaption] = useState("");
   const [items, setItems] = useState<any[]>([]);
 
-  // Music state
-  const [showMusicSearch, setShowMusicSearch] = useState(false);
-  const [musicQuery, setMusicQuery] = useState("");
-  const [musicResults, setMusicResults] = useState<any[]>([]);
-  const [selectedTrack, setSelectedTrack] = useState<any | null>(null);
-  const [searchingMusic, setSearchingMusic] = useState(false);
-
-  // Item adding state - exactly like catalog
+  // Item adding state
   const [showItemForm, setShowItemForm] = useState(false);
   const [itemTitle, setItemTitle] = useState("");
   const [itemImageUrl, setItemImageUrl] = useState("");
@@ -46,10 +39,10 @@ export default function CreatePostPage() {
   // UI state
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [showShopPreview, setShowShopPreview] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   // Drag state for panning
   const [isDragging, setIsDragging] = useState(false);
@@ -65,10 +58,12 @@ export default function CreatePostPage() {
       setCurrentUserId(user.id);
       const { data: profile } = await supabase
         .from('profiles')
-        .select('username')
+        .select('username, avatar_url, is_verified')
         .eq('id', user.id)
         .single();
       setCurrentUsername(profile?.username || null);
+      setCurrentUserAvatar(profile?.avatar_url || null);
+      setIsVerified(profile?.is_verified || false);
     }
   }
 
@@ -86,31 +81,22 @@ export default function CreatePostPage() {
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        setImageDimensions({ width: img.width, height: img.height });
-        setImagePreview(e.target?.result as string);
-        // Reset crop/zoom when new image loaded
-        setCrop({ x: 0, y: 0 });
-        setZoom(1);
-      };
-      img.src = e.target?.result as string;
+      setImagePreview(e.target?.result as string);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
     };
     reader.readAsDataURL(file);
   }
 
   function handleMouseDown(e: React.MouseEvent) {
+    if (!imagePreview) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX - crop.x, y: e.clientY - crop.y });
   }
 
   function handleMouseMove(e: React.MouseEvent) {
     if (!isDragging) return;
-
-    const newX = e.clientX - dragStart.x;
-    const newY = e.clientY - dragStart.y;
-
-    setCrop({ x: newX, y: newY });
+    setCrop({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
   }
 
   function handleMouseUp() {
@@ -118,6 +104,7 @@ export default function CreatePostPage() {
   }
 
   function handleTouchStart(e: React.TouchEvent) {
+    if (!imagePreview) return;
     const touch = e.touches[0];
     setIsDragging(true);
     setDragStart({ x: touch.clientX - crop.x, y: touch.clientY - crop.y });
@@ -125,12 +112,8 @@ export default function CreatePostPage() {
 
   function handleTouchMove(e: React.TouchEvent) {
     if (!isDragging) return;
-
     const touch = e.touches[0];
-    const newX = touch.clientX - dragStart.x;
-    const newY = touch.clientY - dragStart.y;
-
-    setCrop({ x: newX, y: newY });
+    setCrop({ x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y });
   }
 
   function handleTouchEnd() {
@@ -157,14 +140,7 @@ export default function CreatePostPage() {
   function handleItemImageUrlChange(url: string) {
     setItemImageUrl(url);
     setItemError('');
-
-    if (!url.trim()) {
-      setItemPreviewUrl(null);
-      return;
-    }
-
-    // Just set preview, don't validate URL format yet
-    setItemPreviewUrl(url);
+    setItemPreviewUrl(url.trim() ? url : null);
   }
 
   function handleItemProductUrlChange(url: string) {
@@ -232,7 +208,7 @@ export default function CreatePostPage() {
 
         finalImageUrl = uploadResult.url;
       }
-      // Handle external URL - download and save to our bucket
+      // Handle external URL
       else if (itemUploadMethod === 'url' && itemImageUrl) {
         setItemCreatingStatus('Saving image to storage...');
         try {
@@ -272,7 +248,7 @@ export default function CreatePostPage() {
 
       setItemCreatingStatus('Adding item...');
 
-      // Add to items array directly (no AI categorization needed for now)
+      // Add to items array
       setItems([...items, {
         temp_id: Date.now(),
         title: itemTitle.trim(),
@@ -292,20 +268,6 @@ export default function CreatePostPage() {
     } finally {
       setGeneratingItem(false);
       setItemCreatingStatus('');
-    }
-  }
-
-  async function searchMusic() {
-    if (!musicQuery.trim()) return;
-
-    setSearchingMusic(true);
-    try {
-      const results = await searchDeezerTracks(musicQuery, 20);
-      setMusicResults(results);
-    } catch (error) {
-      console.error('Music search error:', error);
-    } finally {
-      setSearchingMusic(false);
     }
   }
 
@@ -375,28 +337,25 @@ export default function CreatePostPage() {
     setError('');
 
     try {
-      // Upload image to Supabase storage
       const imageUrl = await uploadImageToStorage(selectedFile);
 
-      // Create post
       const { data: postData, error: postError } = await supabase
         .from('feed_posts')
         .insert({
           owner_id: currentUserId,
           image_url: imageUrl,
           caption: caption.trim() || null,
-          music_track_id: selectedTrack?.trackId || null,
-          music_preview_url: selectedTrack?.previewUrl || null,
-          music_track_name: selectedTrack?.trackName || null,
-          music_artist: selectedTrack?.artist || null,
-          music_album_art: selectedTrack?.albumArt || null
+          music_track_id: null,
+          music_preview_url: null,
+          music_track_name: null,
+          music_artist: null,
+          music_album_art: null
         })
         .select()
         .single();
 
       if (postError) throw postError;
 
-      // Create items
       if (items.length > 0) {
         const itemsToInsert = items.map((item, idx) => ({
           feed_post_id: postData.id,
@@ -404,6 +363,7 @@ export default function CreatePostPage() {
           image_url: item.image_url,
           product_url: item.product_url,
           price: item.price,
+          seller: item.seller,
           category: item.category,
           position_index: idx
         }));
@@ -415,8 +375,7 @@ export default function CreatePostPage() {
         if (itemsError) throw itemsError;
       }
 
-      // Redirect to my posts
-      router.push('/create/post');
+      router.push('/feed');
 
     } catch (error: any) {
       console.error('Error creating post:', error);
@@ -433,7 +392,16 @@ export default function CreatePostPage() {
       <Head><title>Create Post | Sourced</title></Head>
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');
-        body { font-family: 'Bebas Neue', sans-serif; background: #000; color: #FFF; }
+
+        * {
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+          font-family: 'Bebas Neue', sans-serif;
+          background: #000;
+          overflow: hidden;
+        }
 
         .no-select {
           -webkit-user-select: none;
@@ -441,111 +409,222 @@ export default function CreatePostPage() {
           -ms-user-select: none;
           user-select: none;
         }
+
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
       `}</style>
 
-      <div className="min-h-screen bg-black py-12 px-4">
-        <div className="max-w-4xl mx-auto">
+      <div className="fixed inset-0 bg-black overflow-hidden">
+        {/* Background */}
+        <div className="absolute inset-0 overflow-hidden">
+          {imagePreview && (
+            <>
+              <div
+                className="absolute inset-0 scale-110 blur-3xl opacity-10 transition-all duration-1000"
+                style={{
+                  backgroundImage: `url(${imagePreview})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center'
+                }}
+              ></div>
+              <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
+            </>
+          )}
+        </div>
 
-          {/* Header */}
-          <div className="mb-8 flex items-center justify-between">
-            <div>
-              <h1 className="text-5xl md:text-7xl font-black text-white" style={{ fontFamily: 'Archivo Black' }}>
-                CREATE POST
+        {/* Header */}
+        <div className="absolute top-0 left-0 right-0 z-30 pt-3 pb-3">
+          <div className="flex items-center justify-between px-4">
+            <button
+              onClick={() => router.push('/feed')}
+              className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div className="flex flex-col items-center">
+              <h1 className="text-white text-xl font-bold mb-1.5 tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', letterSpacing: '-0.02em' }}>
+                New Post
               </h1>
-              <p className="text-white/60 text-lg mt-2" style={{ fontFamily: 'Bebas Neue' }}>
-                Share your style with the community
-              </p>
+              <div className="w-10 h-0.5 bg-white rounded-full"></div>
             </div>
             <button
-              onClick={() => router.push('/create/post')}
-              className="text-white/60 hover:text-white text-sm tracking-wider"
+              onClick={createPost}
+              disabled={!canPost || creating}
+              className="px-4 py-2 bg-white text-black font-black text-sm tracking-wider rounded-full hover:bg-white/90 transition-all disabled:opacity-30"
               style={{ fontFamily: 'Bebas Neue' }}
             >
-              ← BACK
+              {creating ? 'POSTING...' : 'POST'}
             </button>
           </div>
+        </div>
 
-          {/* Post Card Preview - Feed Style */}
-          <div className="bg-neutral-900 rounded-3xl p-6 mb-8">
+        {/* Main Content */}
+        <div className="relative h-full flex flex-col items-center justify-center px-3 pt-20 pb-6">
 
-            {/* Username at top */}
-            <div className="mb-4">
-              <h2 className="text-2xl md:text-3xl text-white" style={{ fontFamily: "'Brush Script MT', cursive" }}>
-                @{currentUsername || 'username'}
-              </h2>
-            </div>
+          {/* Image Card */}
+          <div
+            className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-3"
+            style={{
+              minHeight: '64vh',
+              maxHeight: '66vh',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
+            }}
+          >
+            {!imagePreview ? (
+              <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer bg-neutral-900 hover:bg-neutral-800 transition-all">
+                <svg className="w-20 h-20 text-white/40 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="text-white/60 text-lg font-black mb-2" style={{ fontFamily: 'Bebas Neue' }}>
+                  TAP TO ADD PHOTO
+                </span>
+                <span className="text-white/40 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>
+                  REQUIRED
+                </span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+              </label>
+            ) : (
+              <div
+                className="relative w-full h-full cursor-move no-select"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
+                <img
+                  ref={imageRef}
+                  src={imagePreview}
+                  alt="Preview"
+                  className="absolute pointer-events-none"
+                  style={{
+                    transform: `translate(${crop.x}px, ${crop.y}px) scale(${zoom})`,
+                    transformOrigin: 'center center',
+                    objectFit: 'contain',
+                    maxWidth: 'none',
+                    height: '100%'
+                  }}
+                />
 
-            {/* Image Upload Area with Dynamic Crop */}
-            <div
-              ref={containerRef}
-              className="mb-6 relative bg-black rounded-xl overflow-hidden cursor-move no-select"
-              style={{ aspectRatio: '9/16', maxHeight: '70vh' }}
-              onMouseDown={imagePreview ? handleMouseDown : undefined}
-              onMouseMove={imagePreview ? handleMouseMove : undefined}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              onTouchStart={imagePreview ? handleTouchStart : undefined}
-              onTouchMove={imagePreview ? handleTouchMove : undefined}
-              onTouchEnd={handleTouchEnd}
-            >
-              {!imagePreview ? (
-                <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-white/5 transition-all">
-                  <svg className="w-16 h-16 text-white/40 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <span className="text-white/60 text-sm font-black" style={{ fontFamily: 'Bebas Neue' }}>
-                    Click to Upload Photo
-                  </span>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                </label>
-              ) : (
-                <div className="relative w-full h-full">
-                  <img
-                    ref={imageRef}
-                    src={imagePreview}
-                    alt="Preview"
-                    className="absolute pointer-events-none"
-                    style={{
-                      transform: `translate(${crop.x}px, ${crop.y}px) scale(${zoom})`,
-                      transformOrigin: 'center center',
-                      objectFit: 'contain',
-                      maxWidth: 'none',
-                      height: '100%'
-                    }}
-                  />
-                </div>
-              )}
+                {/* Shop Preview Overlay */}
+                {showShopPreview && items.length > 0 && (
+                  <div className="absolute inset-0 z-30 flex flex-col">
+                    <div
+                      className="absolute inset-0 bg-cover bg-center"
+                      style={{
+                        backgroundImage: `url(${imagePreview})`,
+                        filter: 'blur(50px) brightness(0.4)',
+                        transform: 'scale(1.2)'
+                      }}
+                    ></div>
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/70 to-black/80"></div>
 
-              {/* Music indicator overlay */}
-              {selectedTrack && imagePreview && (
-                <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full">
-                  {selectedTrack.albumArt && (
-                    <div className="w-8 h-8 rounded-full overflow-hidden animate-spin-slow">
-                      <img src={selectedTrack.albumArt} alt="" className="w-full h-full object-cover" />
+                    <div className="relative flex flex-col h-full">
+                      <div className="flex items-center justify-between px-6 py-5">
+                        <h2 className="text-white text-2xl font-black tracking-wider" style={{ fontFamily: 'Bebas Neue' }}>
+                          SHOP THE LOOK
+                        </h2>
+                        <button
+                          onClick={() => setShowShopPreview(false)}
+                          className="w-10 h-10 flex items-center justify-center text-white bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-colors"
+                        >
+                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto px-4 pb-6 scrollbar-hide">
+                        <div className="grid grid-cols-2 gap-4 mt-2">
+                          {items.map((item, idx) => (
+                            <div
+                              key={item.temp_id}
+                              className="bg-black border border-white/20 rounded-xl overflow-hidden shadow-xl"
+                            >
+                              <div className="aspect-square bg-neutral-900 overflow-hidden">
+                                <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                              </div>
+                              <div className="p-3 bg-black border-t border-white/20">
+                                {item.seller && (
+                                  <p className="text-[9px] text-white/50 uppercase tracking-wider font-bold mb-1.5">
+                                    {item.seller}
+                                  </p>
+                                )}
+                                <h3 className="text-xs font-black tracking-wide uppercase leading-tight text-white mb-2 line-clamp-2" style={{ fontFamily: 'Bebas Neue' }}>
+                                  {item.title}
+                                </h3>
+                                {item.price && (
+                                  <p className="text-base font-black text-white" style={{ fontFamily: 'Archivo Black' }}>
+                                    ${item.price}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                  <div>
-                    <p className="text-white text-xs font-black leading-tight" style={{ fontFamily: 'Bebas Neue' }}>
-                      {selectedTrack.trackName}
-                    </p>
-                    <p className="text-white/60 text-[10px] font-black leading-tight" style={{ fontFamily: 'Bebas Neue' }}>
-                      {selectedTrack.artist}
-                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Controls - Only show when image is uploaded */}
+          {imagePreview && (
+            <div className="w-full max-w-lg space-y-3">
+              {/* Profile + Shop Preview Button */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-full border-2 border-white overflow-hidden bg-neutral-800">
+                    {currentUserAvatar ? (
+                      <img src={currentUserAvatar} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white text-sm">👤</div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-black text-lg tracking-wide" style={{ fontFamily: 'Bebas Neue' }}>
+                      {currentUsername || 'username'}
+                    </span>
+                    {isVerified && (
+                      <svg className="w-4 h-4 text-blue-500 fill-current" viewBox="0 0 24 24">
+                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
 
-            {/* Zoom/Position Controls */}
-            {imagePreview && (
-              <div className="mb-6 space-y-3">
-                <div className="flex items-center gap-4">
+                {items.length > 0 && (
+                  <button
+                    onClick={() => setShowShopPreview(!showShopPreview)}
+                    className="px-3 py-2 bg-white/90 backdrop-blur-sm text-black font-black text-[10px] tracking-widest rounded-full hover:bg-white transition-all"
+                    style={{ fontFamily: 'Bebas Neue' }}
+                  >
+                    {showShopPreview ? 'BACK' : 'PREVIEW ITEMS'}
+                  </button>
+                )}
+              </div>
+
+              {/* Image Controls */}
+              <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                <div className="flex items-center gap-4 mb-3">
                   <span className="text-white/60 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>ZOOM</span>
                   <input
                     type="range"
@@ -561,322 +640,176 @@ export default function CreatePostPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2 border-2 border-white/20 text-white hover:border-white transition-all text-xs font-black"
+                    className="flex-1 py-2 border border-white/40 text-white hover:bg-white hover:text-black transition-all text-xs font-black rounded-lg"
                     style={{ fontFamily: 'Bebas Neue' }}
                   >
                     CHANGE PHOTO
                   </button>
                   <button
                     onClick={() => { setCrop({ x: 0, y: 0 }); setZoom(1); }}
-                    className="px-4 py-2 border-2 border-white/20 text-white hover:border-white transition-all text-xs font-black"
+                    className="flex-1 py-2 border border-white/40 text-white hover:bg-white hover:text-black transition-all text-xs font-black rounded-lg"
                     style={{ fontFamily: 'Bebas Neue' }}
                   >
                     RESET
                   </button>
                 </div>
               </div>
-            )}
 
-            {/* Caption Input - In the card */}
-            <div className="mb-6">
-              <label className="block text-white/60 text-xs mb-2 font-black" style={{ fontFamily: 'Bebas Neue' }}>
-                CAPTION
-              </label>
-              <textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                placeholder="Write a caption..."
-                rows={3}
-                className="w-full bg-black text-white border-2 border-white/20 rounded-xl px-4 py-3 focus:outline-none focus:border-white resize-none"
-                style={{ fontFamily: 'Bebas Neue', fontSize: '14px' }}
-              />
-              <p className="text-white/40 text-xs mt-1">{caption.length} characters</p>
-            </div>
-
-            {/* Music Section */}
-            <div className="mb-6">
-              <label className="block text-white/60 text-xs mb-2 font-black" style={{ fontFamily: 'Bebas Neue' }}>
-                ADD MUSIC
-              </label>
-
-              {!selectedTrack ? (
-                <button
-                  onClick={() => setShowMusicSearch(!showMusicSearch)}
-                  className="w-full px-4 py-3 border-2 border-white/20 text-white hover:border-white rounded-xl flex items-center justify-center gap-2 font-black transition-all"
+              {/* Caption */}
+              <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                <textarea
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  placeholder="Write a caption..."
+                  rows={2}
+                  className="w-full bg-transparent text-white placeholder-white/40 focus:outline-none resize-none text-sm"
                   style={{ fontFamily: 'Bebas Neue' }}
-                >
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                  </svg>
-                  {showMusicSearch ? 'CANCEL' : 'ADD MUSIC'}
-                </button>
-              ) : (
-                <div className="flex items-center gap-3 p-3 bg-black border-2 border-white/20 rounded-xl">
-                  {selectedTrack.albumArt && <img src={selectedTrack.albumArt} className="w-12 h-12 rounded" />}
-                  <div className="flex-1">
-                    <p className="text-white text-sm font-black truncate" style={{ fontFamily: 'Bebas Neue' }}>{selectedTrack.trackName}</p>
-                    <p className="text-white/60 text-xs truncate" style={{ fontFamily: 'Bebas Neue' }}>{selectedTrack.artist}</p>
-                  </div>
-                  <button onClick={() => setSelectedTrack(null)} className="text-white/60 hover:text-white">✕</button>
-                </div>
-              )}
-
-              {showMusicSearch && !selectedTrack && (
-                <div className="mt-3 p-4 bg-black border-2 border-white/20 rounded-xl">
-                  <div className="flex gap-2 mb-3">
-                    <input
-                      value={musicQuery}
-                      onChange={(e) => setMusicQuery(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && searchMusic()}
-                      placeholder="Search music..."
-                      className="flex-1 bg-neutral-900 text-white border-2 border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white"
-                      style={{ fontFamily: 'Bebas Neue', fontSize: '14px' }}
-                    />
-                    <button
-                      onClick={searchMusic}
-                      disabled={searchingMusic}
-                      className="px-4 py-2 bg-white text-black font-black hover:bg-black hover:text-white hover:border-2 hover:border-white transition-all rounded-lg disabled:opacity-50"
-                      style={{ fontFamily: 'Bebas Neue' }}
-                    >
-                      {searchingMusic ? '...' : 'SEARCH'}
-                    </button>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto space-y-2">
-                    {musicResults.map(track => (
-                      <button
-                        key={track.trackId}
-                        onClick={() => { setSelectedTrack(track); setShowMusicSearch(false); }}
-                        className="w-full flex items-center gap-3 p-2 hover:bg-white/10 rounded-lg text-left transition-all"
-                      >
-                        {track.albumArt && <img src={track.albumArt} className="w-10 h-10 rounded" />}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white text-sm font-black truncate" style={{ fontFamily: 'Bebas Neue' }}>{track.trackName}</p>
-                          <p className="text-white/60 text-xs truncate" style={{ fontFamily: 'Bebas Neue' }}>{track.artist}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Tagged Items Section - Exactly like catalog */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <label className="text-white/60 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>
-                  TAG ITEMS ({items.length})
-                </label>
-                <button
-                  onClick={() => setShowItemForm(!showItemForm)}
-                  className="px-3 py-1 border-2 border-white/20 text-white hover:border-white transition-all rounded-lg text-xs font-black"
-                  style={{ fontFamily: 'Bebas Neue' }}
-                >
-                  + ADD ITEM
-                </button>
+                />
               </div>
 
-              {showItemForm && (
-                <div className="mb-4 p-4 bg-black border-2 border-white/20 rounded-xl">
-                  <form onSubmit={handleAddItem} className="space-y-3">
-                    {/* Title */}
-                    <div className="space-y-1">
-                      <label className="block text-white/60 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>TITLE *</label>
+              {/* Tagged Items */}
+              <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-white text-sm font-black" style={{ fontFamily: 'Bebas Neue' }}>
+                    TAGGED ITEMS ({items.length})
+                  </span>
+                  <button
+                    onClick={() => setShowItemForm(!showItemForm)}
+                    className="px-3 py-1.5 bg-white text-black hover:bg-white/90 transition-all text-xs font-black rounded-full"
+                    style={{ fontFamily: 'Bebas Neue' }}
+                  >
+                    {showItemForm ? 'CANCEL' : '+ ADD'}
+                  </button>
+                </div>
+
+                {/* Item Form */}
+                {showItemForm && (
+                  <form onSubmit={handleAddItem} className="space-y-3 mb-4 p-3 bg-black/60 rounded-xl border border-white/20">
+                    <input
+                      type="text"
+                      value={itemTitle}
+                      onChange={(e) => setItemTitle(e.target.value)}
+                      placeholder="Item title"
+                      className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                      style={{ fontFamily: 'Bebas Neue' }}
+                      required
+                    />
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setItemUploadMethod('file'); setItemImageUrl(''); setItemPreviewUrl(null); }}
+                        className={`flex-1 px-3 py-2 text-xs font-black transition-all rounded-lg ${itemUploadMethod === 'file' ? 'bg-white text-black' : 'border border-white/40 text-white'}`}
+                        style={{ fontFamily: 'Bebas Neue' }}
+                      >
+                        FILE
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setItemUploadMethod('url'); setSelectedItemFile(null); setItemPreviewUrl(null); }}
+                        className={`flex-1 px-3 py-2 text-xs font-black transition-all rounded-lg ${itemUploadMethod === 'url' ? 'bg-white text-black' : 'border border-white/40 text-white'}`}
+                        style={{ fontFamily: 'Bebas Neue' }}
+                      >
+                        URL
+                      </button>
+                    </div>
+
+                    {itemUploadMethod === 'file' ? (
                       <input
-                        type="text"
-                        value={itemTitle}
-                        onChange={(e) => setItemTitle(e.target.value)}
-                        placeholder="Item name"
-                        className="w-full bg-neutral-900 text-white border-2 border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white"
-                        style={{ fontFamily: 'Bebas Neue', fontSize: '14px' }}
-                        required
+                        type="file"
+                        accept="image/*"
+                        onChange={handleItemFileSelect}
+                        className="w-full text-white text-xs file:mr-3 file:py-2 file:px-3 file:border-0 file:bg-white file:text-black file:text-xs file:font-black file:rounded-lg"
                       />
-                    </div>
-
-                    {/* Image Upload Method */}
-                    <div className="space-y-2">
-                      <label className="block text-white/60 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>IMAGE *</label>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => { setItemUploadMethod('file'); setItemImageUrl(''); setItemPreviewUrl(null); }}
-                          className={`px-3 py-1.5 text-[10px] tracking-wider font-black transition-all ${itemUploadMethod === 'file' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'}`}
-                          style={{ fontFamily: 'Bebas Neue' }}
-                        >
-                          UPLOAD FILE
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setItemUploadMethod('url'); setSelectedItemFile(null); setItemPreviewUrl(null); }}
-                          className={`px-3 py-1.5 text-[10px] tracking-wider font-black transition-all ${itemUploadMethod === 'url' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'}`}
-                          style={{ fontFamily: 'Bebas Neue' }}
-                        >
-                          IMAGE URL
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* File Upload */}
-                    {itemUploadMethod === 'file' && (
-                      <div className="space-y-2">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleItemFileSelect}
-                          className="w-full text-white text-xs file:mr-4 file:py-1 file:px-2 file:border-0 file:bg-white file:text-black file:text-[10px] file:tracking-wider file:font-black file:rounded"
-                        />
-                        <p className="text-white/40 text-[9px]">Max 5MB</p>
-                      </div>
-                    )}
-
-                    {/* URL Input */}
-                    {itemUploadMethod === 'url' && (
-                      <div>
-                        <input
-                          type="url"
-                          value={itemImageUrl}
-                          onChange={(e) => handleItemImageUrlChange(e.target.value)}
-                          placeholder="https://example.com/image.jpg"
-                          className="w-full bg-neutral-900 text-white border-2 border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white"
-                          style={{ fontFamily: 'Bebas Neue', fontSize: '14px' }}
-                        />
-                      </div>
-                    )}
-
-                    {/* Image Preview */}
-                    {((itemUploadMethod === 'url' && itemImageUrl && !itemError) || (itemUploadMethod === 'file' && itemPreviewUrl)) && (
-                      <div className="flex items-center gap-3 p-2 border border-white/20 rounded">
-                        <img
-                          src={itemUploadMethod === 'url' ? itemImageUrl : itemPreviewUrl!}
-                          alt="Preview"
-                          className="w-12 h-12 border border-white object-cover rounded"
-                        />
-                        <span className="text-white/60 text-[10px]">Preview</span>
-                      </div>
-                    )}
-
-                    {/* Product URL */}
-                    <div className="space-y-1">
-                      <label className="block text-white/60 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>PRODUCT URL *</label>
+                    ) : (
                       <input
                         type="url"
-                        value={itemProductUrl}
-                        onChange={(e) => handleItemProductUrlChange(e.target.value)}
-                        placeholder="https://..."
-                        className="w-full bg-neutral-900 text-white border-2 border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white"
-                        style={{ fontFamily: 'Bebas Neue', fontSize: '14px' }}
-                        required
+                        value={itemImageUrl}
+                        onChange={(e) => handleItemImageUrlChange(e.target.value)}
+                        placeholder="https://example.com/image.jpg"
+                        className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                        style={{ fontFamily: 'Bebas Neue' }}
                       />
-                    </div>
+                    )}
 
-                    {/* Seller (Auto-filled) */}
-                    <div className="space-y-1">
-                      <label className="block text-white/60 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>SELLER (AUTO-FILLED)</label>
+                    {itemPreviewUrl && (
+                      <div className="w-16 h-16 rounded-lg overflow-hidden border border-white/20">
+                        <img src={itemPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+
+                    <input
+                      type="url"
+                      value={itemProductUrl}
+                      onChange={(e) => handleItemProductUrlChange(e.target.value)}
+                      placeholder="Product URL"
+                      className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                      style={{ fontFamily: 'Bebas Neue' }}
+                      required
+                    />
+
+                    <div className="grid grid-cols-2 gap-2">
                       <input
                         type="text"
                         value={itemSeller}
                         onChange={(e) => setItemSeller(e.target.value)}
-                        placeholder="Store name"
-                        className="w-full bg-neutral-900 text-white border-2 border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white"
-                        style={{ fontFamily: 'Bebas Neue', fontSize: '14px' }}
+                        placeholder="Seller"
+                        className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                        style={{ fontFamily: 'Bebas Neue' }}
                       />
-                    </div>
-
-                    {/* Price */}
-                    <div className="space-y-1">
-                      <label className="block text-white/60 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>PRICE (OPTIONAL)</label>
                       <input
                         type="text"
                         value={itemPrice}
                         onChange={(e) => setItemPrice(e.target.value)}
-                        placeholder="$99"
-                        className="w-full bg-neutral-900 text-white border-2 border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white"
-                        style={{ fontFamily: 'Bebas Neue', fontSize: '14px' }}
+                        placeholder="Price"
+                        className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                        style={{ fontFamily: 'Bebas Neue' }}
                       />
                     </div>
 
-                    {/* Errors & Status */}
                     {itemError && <p className="text-red-400 text-xs">{itemError}</p>}
                     {itemCreatingStatus && <p className="text-white/60 text-xs">{itemCreatingStatus}</p>}
 
-                    {/* Buttons */}
-                    <div className="flex gap-2 pt-2">
-                      <button
-                        type="submit"
-                        disabled={generatingItem || !itemTitle.trim() || !itemProductUrl.trim() || (itemUploadMethod === 'file' ? !selectedItemFile : !itemImageUrl.trim())}
-                        className="flex-1 px-4 py-2 bg-white text-black font-black hover:bg-black hover:text-white hover:border-2 hover:border-white transition-all rounded-lg disabled:opacity-50"
-                        style={{ fontFamily: 'Bebas Neue' }}
-                      >
-                        {generatingItem ? (itemCreatingStatus || 'ADDING...') : 'ADD ITEM'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setShowItemForm(false); resetItemForm(); }}
-                        className="px-4 py-2 border-2 border-white/20 text-white hover:border-white transition-all rounded-lg font-black"
-                        style={{ fontFamily: 'Bebas Neue' }}
-                      >
-                        CANCEL
-                      </button>
-                    </div>
+                    <button
+                      type="submit"
+                      disabled={generatingItem || !itemTitle.trim() || !itemProductUrl.trim() || (itemUploadMethod === 'file' ? !selectedItemFile : !itemImageUrl.trim())}
+                      className="w-full py-2 bg-white text-black hover:bg-white/90 transition-all text-sm font-black rounded-lg disabled:opacity-50"
+                      style={{ fontFamily: 'Bebas Neue' }}
+                    >
+                      {generatingItem ? (itemCreatingStatus || 'ADDING...') : 'ADD ITEM'}
+                    </button>
                   </form>
-                </div>
-              )}
+                )}
 
-              {items.length > 0 && (
-                <div className="grid grid-cols-2 gap-2">
-                  {items.map((item, idx) => (
-                    <div key={item.temp_id} className="relative bg-black border-2 border-white/20 rounded-lg p-2">
-                      <button
-                        onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                        className="absolute -top-2 -right-2 w-6 h-6 bg-white rounded-full flex items-center justify-center hover:bg-black hover:text-white hover:border-2 hover:border-white transition-all z-10"
-                      >
-                        ✕
-                      </button>
-                      <img src={item.image_url} className="w-full aspect-square object-cover rounded mb-2" />
-                      <p className="text-white text-xs font-black truncate" style={{ fontFamily: 'Bebas Neue' }}>{item.title}</p>
-                      {item.price && <p className="text-white/60 text-xs">${item.price}</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Post Button */}
-          {error && (
-            <div className="mb-4 p-4 bg-red-500/20 border-2 border-red-500 rounded-xl">
-              <p className="text-red-400 text-sm">{error}</p>
+                {/* Items Grid */}
+                {items.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {items.map((item, idx) => (
+                      <div key={item.temp_id} className="relative">
+                        <button
+                          onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                          className="absolute -top-1 -right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center hover:bg-red-500 transition-all z-10 text-xs"
+                        >
+                          ✕
+                        </button>
+                        <div className="aspect-square rounded-lg overflow-hidden border border-white/20">
+                          <img src={item.image_url} className="w-full h-full object-cover" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          <div className="flex gap-3">
-            <button
-              onClick={() => router.push('/create/post')}
-              className="flex-1 px-6 py-4 border-2 border-white text-white hover:bg-white hover:text-black transition-all text-lg font-black rounded-xl"
-              style={{ fontFamily: 'Bebas Neue' }}
-            >
-              CANCEL
-            </button>
-            <button
-              onClick={createPost}
-              disabled={!canPost || creating}
-              className="flex-1 px-6 py-4 bg-white text-black hover:bg-black hover:text-white hover:border-2 hover:border-white transition-all text-lg font-black rounded-xl disabled:opacity-30 disabled:cursor-not-allowed"
-              style={{ fontFamily: 'Bebas Neue' }}
-            >
-              {creating ? 'POSTING...' : 'POST'}
-            </button>
-          </div>
+          {error && (
+            <div className="w-full max-w-lg mt-3 p-3 bg-red-500/20 border border-red-500 rounded-xl">
+              <p className="text-red-400 text-sm text-center">{error}</p>
+            </div>
+          )}
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .animate-spin-slow {
-          animation: spin-slow 3s linear infinite;
-        }
-      `}</style>
     </>
   );
 }
