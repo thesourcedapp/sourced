@@ -367,7 +367,7 @@ export default function MyPostsPage() {
             <div className="flex items-center justify-between mb-2">
               <h1 className="text-4xl md:text-5xl font-black text-white" style={{ fontFamily: 'Archivo Black' }}>MY POSTS</h1>
               <button
-                onClick={() => router.push('/create/post')}
+                onClick={() => router.push('/create')}
                 className="text-white/60 hover:text-white text-sm font-black"
                 style={{ fontFamily: 'Bebas Neue' }}
               >
