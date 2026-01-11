@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
@@ -33,6 +33,21 @@ export default function MyPostsPage() {
   const [deleteCount, setDeleteCount] = useState(0);
   const [editMode, setEditMode] = useState(false);
   const [editingItemsPostId, setEditingItemsPostId] = useState<string | null>(null);
+  const [showEditItemsModal, setShowEditItemsModal] = useState(false);
+  const [currentEditingPost, setCurrentEditingPost] = useState<FeedPost | null>(null);
+
+  // Item form state
+  const [showItemForm, setShowItemForm] = useState(false);
+  const [itemTitle, setItemTitle] = useState("");
+  const [itemImageUrl, setItemImageUrl] = useState("");
+  const [selectedItemFile, setSelectedItemFile] = useState<File | null>(null);
+  const [itemPreviewUrl, setItemPreviewUrl] = useState<string | null>(null);
+  const [itemUploadMethod, setItemUploadMethod] = useState<'url' | 'file'>('file');
+  const [itemProductUrl, setItemProductUrl] = useState("");
+  const [itemSeller, setItemSeller] = useState("");
+  const [itemPrice, setItemPrice] = useState("");
+  const [addingItem, setAddingItem] = useState(false);
+  const [itemError, setItemError] = useState("");
 
   useEffect(() => {
     loadUser();
@@ -100,6 +115,214 @@ export default function MyPostsPage() {
   function handlePostClick(postId: string) {
     // Navigate to individual post page
     router.push(`/post/${postId}`);
+  }
+
+  function openEditItemsModal(post: FeedPost) {
+    setCurrentEditingPost(post);
+    setShowEditItemsModal(true);
+    setShowItemForm(false);
+  }
+
+  function resetItemForm() {
+    setItemTitle('');
+    setItemImageUrl('');
+    setSelectedItemFile(null);
+    setItemPreviewUrl(null);
+    setItemProductUrl('');
+    setItemSeller('');
+    setItemPrice('');
+    setItemError('');
+    setItemUploadMethod('file');
+  }
+
+  function handleItemFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setItemError('Please select an image file');
+      return;
+    }
+
+    setSelectedItemFile(file);
+    setItemError('');
+
+    const reader = new FileReader();
+    reader.onload = (e) => setItemPreviewUrl(e.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  function handleItemImageUrlChange(url: string) {
+    setItemImageUrl(url);
+    setItemError('');
+    setItemPreviewUrl(url.trim() ? url : null);
+  }
+
+  function handleItemProductUrlChange(url: string) {
+    setItemProductUrl(url);
+    setItemError('');
+    if (url.trim()) {
+      const extractedSeller = extractSellerFromUrl(url);
+      if (extractedSeller) setItemSeller(extractedSeller);
+    }
+  }
+
+  function extractSellerFromUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      let domain = urlObj.hostname.replace(/^www\./i, '');
+      const parts = domain.split('.');
+      let seller = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+      return seller.charAt(0).toUpperCase() + seller.slice(1);
+    } catch {
+      return '';
+    }
+  }
+
+  async function uploadItemImageToStorage(file: File): Promise<{ url: string | null; error?: string }> {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `item-${currentUserId}-${Date.now()}.${fileExt}`;
+
+      const { data, error } = await supabase.storage
+        .from('post-items')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) return { url: null, error: error.message };
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('post-items')
+        .getPublicUrl(fileName);
+
+      return { url: publicUrl };
+    } catch (error: any) {
+      return { url: null, error: error.message };
+    }
+  }
+
+  async function handleAddItem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentEditingPost || !currentUserId) return;
+
+    setAddingItem(true);
+    setItemError('');
+
+    try {
+      if (!itemProductUrl.trim()) {
+        setItemError('Product URL is required');
+        setAddingItem(false);
+        return;
+      }
+
+      try {
+        new URL(itemProductUrl);
+      } catch {
+        setItemError('Please enter a valid URL');
+        setAddingItem(false);
+        return;
+      }
+
+      let finalImageUrl = itemImageUrl;
+
+      if (itemUploadMethod === 'file' && selectedItemFile) {
+        const uploadResult = await uploadItemImageToStorage(selectedItemFile);
+        if (!uploadResult.url) {
+          setItemError(uploadResult.error || "Failed to upload image");
+          setAddingItem(false);
+          return;
+        }
+        finalImageUrl = uploadResult.url;
+      } else if (itemUploadMethod === 'url' && itemImageUrl) {
+        try {
+          const response = await fetch(itemImageUrl);
+          if (!response.ok) throw new Error('Failed to fetch image');
+          const blob = await response.blob();
+          const file = new File([blob], `item-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+          const uploadResult = await uploadItemImageToStorage(file);
+          if (!uploadResult.url) {
+            setItemError(uploadResult.error || "Failed to save image");
+            setAddingItem(false);
+            return;
+          }
+          finalImageUrl = uploadResult.url;
+        } catch (err: any) {
+          setItemError("Failed to save image from URL");
+          setAddingItem(false);
+          return;
+        }
+      }
+
+      if (!finalImageUrl) {
+        setItemError('Image is required');
+        setAddingItem(false);
+        return;
+      }
+
+      // Add to database
+      const { data: newItem, error } = await supabase
+        .from('feed_post_items')
+        .insert({
+          feed_post_id: currentEditingPost.id,
+          title: itemTitle.trim(),
+          image_url: finalImageUrl,
+          product_url: itemProductUrl.trim(),
+          price: itemPrice.trim() || null,
+          seller: itemSeller.trim() || null,
+          position_index: currentEditingPost.items.length
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update local state
+      setCurrentEditingPost(prev => prev ? {
+        ...prev,
+        items: [...prev.items, { ...newItem, like_count: 0, is_liked: false }]
+      } : null);
+
+      setPosts(prev => prev.map(p =>
+        p.id === currentEditingPost.id
+          ? { ...p, items: [...p.items, { ...newItem, like_count: 0, is_liked: false }] }
+          : p
+      ));
+
+      resetItemForm();
+      setShowItemForm(false);
+    } catch (error: any) {
+      console.error('Error adding item:', error);
+      setItemError(error.message || 'Failed to add item');
+    } finally {
+      setAddingItem(false);
+    }
+  }
+
+  async function handleDeleteItem(itemId: string) {
+    if (!currentEditingPost) return;
+
+    try {
+      await supabase
+        .from('feed_post_items')
+        .delete()
+        .eq('id', itemId);
+
+      // Update local state
+      setCurrentEditingPost(prev => prev ? {
+        ...prev,
+        items: prev.items.filter(item => item.id !== itemId)
+      } : null);
+
+      setPosts(prev => prev.map(p =>
+        p.id === currentEditingPost.id
+          ? { ...p, items: p.items.filter(item => item.id !== itemId) }
+          : p
+      ));
+    } catch (error) {
+      console.error('Error deleting item:', error);
+    }
   }
 
   if (loading) {
@@ -241,7 +464,7 @@ export default function MyPostsPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setEditingItemsPostId(post.id);
+                          openEditItemsModal(post);
                         }}
                         className="px-3 py-1.5 bg-white text-black hover:bg-white/90 transition-all text-xs font-black rounded-lg"
                         style={{ fontFamily: 'Bebas Neue' }}
@@ -322,6 +545,174 @@ export default function MyPostsPage() {
                 DELETE
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Items Modal */}
+      {showEditItemsModal && currentEditingPost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 overflow-y-auto">
+          <div className="w-full max-w-2xl bg-black border-2 border-white rounded-2xl p-6 my-8">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-3xl font-black text-white" style={{ fontFamily: 'Archivo Black' }}>EDIT ITEMS</h2>
+              <button
+                onClick={() => {
+                  setShowEditItemsModal(false);
+                  setCurrentEditingPost(null);
+                  resetItemForm();
+                }}
+                className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Items Grid */}
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              {currentEditingPost.items.map((item) => (
+                <div key={item.id} className="relative bg-neutral-900 border border-white/20 rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => handleDeleteItem(item.id)}
+                    className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all z-10 text-xs font-black"
+                  >
+                    ✕
+                  </button>
+                  <div className="aspect-square">
+                    <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="p-2">
+                    <p className="text-xs text-white font-black truncate" style={{ fontFamily: 'Bebas Neue' }}>{item.title}</p>
+                    {item.price && <p className="text-xs text-white/60">${item.price}</p>}
+                  </div>
+                </div>
+              ))}
+
+              {/* Add Item Button */}
+              <button
+                onClick={() => setShowItemForm(true)}
+                className="aspect-square border-2 border-dashed border-white/40 rounded-xl flex items-center justify-center hover:border-white hover:bg-white/5 transition-all"
+              >
+                <div className="text-center">
+                  <svg className="w-12 h-12 text-white/40 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  <p className="text-xs text-white/60 font-black" style={{ fontFamily: 'Bebas Neue' }}>ADD ITEM</p>
+                </div>
+              </button>
+            </div>
+
+            {/* Add Item Form */}
+            {showItemForm && (
+              <form onSubmit={handleAddItem} className="space-y-4 p-4 bg-neutral-900 border border-white/20 rounded-xl">
+                <h3 className="text-lg font-black text-white mb-4" style={{ fontFamily: 'Bebas Neue' }}>NEW ITEM</h3>
+
+                <input
+                  type="text"
+                  value={itemTitle}
+                  onChange={(e) => setItemTitle(e.target.value)}
+                  placeholder="Item title"
+                  className="w-full bg-black text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                  style={{ fontFamily: 'Bebas Neue' }}
+                  required
+                />
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setItemUploadMethod('file'); setItemImageUrl(''); setItemPreviewUrl(null); }}
+                    className={`flex-1 px-3 py-2 text-xs font-black transition-all rounded-lg ${itemUploadMethod === 'file' ? 'bg-white text-black' : 'border border-white/40 text-white'}`}
+                    style={{ fontFamily: 'Bebas Neue' }}
+                  >
+                    FILE
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setItemUploadMethod('url'); setSelectedItemFile(null); setItemPreviewUrl(null); }}
+                    className={`flex-1 px-3 py-2 text-xs font-black transition-all rounded-lg ${itemUploadMethod === 'url' ? 'bg-white text-black' : 'border border-white/40 text-white'}`}
+                    style={{ fontFamily: 'Bebas Neue' }}
+                  >
+                    URL
+                  </button>
+                </div>
+
+                {itemUploadMethod === 'file' ? (
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleItemFileSelect}
+                    className="w-full text-white text-xs file:mr-3 file:py-2 file:px-3 file:border-0 file:bg-white file:text-black file:text-xs file:font-black file:rounded-lg"
+                  />
+                ) : (
+                  <input
+                    type="url"
+                    value={itemImageUrl}
+                    onChange={(e) => handleItemImageUrlChange(e.target.value)}
+                    placeholder="https://example.com/image.jpg"
+                    className="w-full bg-black text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                    style={{ fontFamily: 'Bebas Neue' }}
+                  />
+                )}
+
+                {itemPreviewUrl && (
+                  <div className="w-20 h-20 rounded-lg overflow-hidden border border-white/20">
+                    <img src={itemPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+
+                <input
+                  type="url"
+                  value={itemProductUrl}
+                  onChange={(e) => handleItemProductUrlChange(e.target.value)}
+                  placeholder="Product URL"
+                  className="w-full bg-black text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                  style={{ fontFamily: 'Bebas Neue' }}
+                  required
+                />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={itemSeller}
+                    onChange={(e) => setItemSeller(e.target.value)}
+                    placeholder="Seller"
+                    className="w-full bg-black text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                    style={{ fontFamily: 'Bebas Neue' }}
+                  />
+                  <input
+                    type="text"
+                    value={itemPrice}
+                    onChange={(e) => setItemPrice(e.target.value)}
+                    placeholder="Price"
+                    className="w-full bg-black text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                    style={{ fontFamily: 'Bebas Neue' }}
+                  />
+                </div>
+
+                {itemError && <p className="text-red-400 text-xs">{itemError}</p>}
+
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={addingItem || !itemTitle.trim() || !itemProductUrl.trim() || (itemUploadMethod === 'file' ? !selectedItemFile : !itemImageUrl.trim())}
+                    className="flex-1 py-2 bg-white text-black hover:bg-white/90 transition-all text-sm font-black rounded-lg disabled:opacity-50"
+                    style={{ fontFamily: 'Bebas Neue' }}
+                  >
+                    {addingItem ? 'ADDING...' : 'ADD ITEM'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowItemForm(false); resetItemForm(); }}
+                    className="px-6 py-2 border-2 border-white text-white hover:bg-white/10 transition-all text-sm font-black rounded-lg"
+                    style={{ fontFamily: 'Bebas Neue' }}
+                  >
+                    CANCEL
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
