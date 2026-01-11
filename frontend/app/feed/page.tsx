@@ -13,6 +13,7 @@ type FeedPost = {
   music_preview_url: string | null;
   like_count: number;
   is_liked: boolean;
+  is_saved: boolean;
   comment_count: number;
   owner: {
     id: string;
@@ -147,6 +148,7 @@ export default function FeedPage() {
 
       // Get liked posts for current user
       let likedPostIds: Set<string> = new Set();
+      let savedPostIds: Set<string> = new Set();
       if (currentUserId) {
         const { data: likedData } = await supabase
           .from('liked_feed_posts')
@@ -155,6 +157,16 @@ export default function FeedPage() {
 
         if (likedData) {
           likedPostIds = new Set(likedData.map(like => like.feed_post_id));
+        }
+
+        // Get saved posts
+        const { data: savedData } = await supabase
+          .from('saved_feed_posts')
+          .select('feed_post_id')
+          .eq('user_id', currentUserId);
+
+        if (savedData) {
+          savedPostIds = new Set(savedData.map(save => save.feed_post_id));
         }
       }
 
@@ -201,7 +213,8 @@ export default function FeedPage() {
           caption: post.caption,
           music_preview_url: post.music_preview_url,
           like_count: post.like_count,
-          is_liked: likedPostIds.has(post.id), // Check if current user liked it
+          is_liked: likedPostIds.has(post.id),
+          is_saved: savedPostIds.has(post.id),
           comment_count: post.comment_count || 0,
           owner: {
             id: owner.id,
@@ -394,6 +407,60 @@ export default function FeedPage() {
       ));
     } catch (error) {
       console.error('Toggle item like failed:', error);
+    }
+  }
+
+  async function toggleSave(postId: string, currentlySaved: boolean) {
+    if (!currentUserId || !isOnboarded) {
+      setToastMessage('Please log in to save posts');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+      return;
+    }
+
+    try {
+      if (currentlySaved) {
+        const { error } = await supabase
+          .from('saved_feed_posts')
+          .delete()
+          .eq('user_id', currentUserId)
+          .eq('feed_post_id', postId);
+
+        if (error) {
+          console.error('Unsave error:', error);
+          return;
+        }
+
+        setPosts(prev => prev.map(post =>
+          post.id === postId ? { ...post, is_saved: false } : post
+        ));
+
+        setToastMessage('Post removed from saved');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2000);
+      } else {
+        const { error } = await supabase
+          .from('saved_feed_posts')
+          .insert({
+            user_id: currentUserId,
+            feed_post_id: postId
+          });
+
+        if (error && !error.message.includes('duplicate')) {
+          console.error('Save error:', error);
+          return;
+        }
+
+        setPosts(prev => prev.map(post =>
+          post.id === postId ? { ...post, is_saved: true } : post
+        ));
+
+        setToastMessage('Post saved!');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2000);
+      }
+    } catch (error: any) {
+      console.error('Toggle save failed:', error);
     }
   }
 
@@ -753,6 +820,16 @@ export default function FeedPage() {
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4m0 0L8 6m4-4v13" />
+              </svg>
+            </button>
+
+            {/* Save/Bookmark Button */}
+            <button
+              onClick={() => toggleSave(currentPost.id, currentPost.is_saved)}
+              className="ml-auto flex items-center gap-2 text-white hover:scale-110 transition-transform"
+            >
+              <svg className="w-6 h-6" fill={currentPost.is_saved ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
               </svg>
             </button>
           </div>
