@@ -12,6 +12,9 @@ export default function CreatePostPage() {
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null);
   const [isVerified, setIsVerified] = useState(false);
 
+  // Step management
+  const [step, setStep] = useState<'upload' | 'details'>('upload');
+
   // Image state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -402,6 +405,7 @@ export default function CreatePostPage() {
         body {
           font-family: 'Bebas Neue', sans-serif;
           background: #000;
+          overflow: hidden;
         }
 
         .no-select {
@@ -421,178 +425,294 @@ export default function CreatePostPage() {
         }
       `}</style>
 
-      <div className="min-h-screen bg-black">
-        {/* Background - Fixed */}
-        <div className="fixed inset-0 overflow-hidden pointer-events-none">
-          {imagePreview && (
-            <>
-              <div
-                className="absolute inset-0 scale-110 blur-3xl opacity-10 transition-all duration-1000"
-                style={{
-                  backgroundImage: `url(${imagePreview})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center'
-                }}
-              ></div>
-              <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
-            </>
-          )}
-        </div>
-
-        {/* Header - Sticky */}
-        <div className="sticky top-0 left-0 right-0 z-30 bg-black">
-          <div className="flex items-center justify-between px-4 pt-3 pb-3">
-            <button
-              onClick={() => router.push('/feed')}
-              className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
-            >
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            <div className="flex flex-col items-center">
-              <h1 className="text-white text-xl font-bold mb-1.5 tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', letterSpacing: '-0.02em' }}>
-                New Post
-              </h1>
-              <div className="w-10 h-0.5 bg-white rounded-full"></div>
-            </div>
-            <button
-              onClick={createPost}
-              disabled={!canPost || creating}
-              className="px-4 py-2 bg-white text-black font-black text-sm tracking-wider rounded-full hover:bg-white/90 transition-all disabled:opacity-30"
-              style={{ fontFamily: 'Bebas Neue' }}
-            >
-              {creating ? 'POSTING...' : 'POST'}
-            </button>
-          </div>
-        </div>
-
-        {/* Main Content - Scrollable */}
-        <div className="relative flex flex-col items-center px-3 py-6 pb-20 overflow-y-auto scrollbar-hide" style={{ maxHeight: 'calc(100vh - 70px)' }}>
-
-          {/* Image Card */}
-          <div
-            className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-3 touch-none"
-            style={{
-              minHeight: '64vh',
-              maxHeight: '66vh',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
-            }}
-          >
-            {!imagePreview ? (
-              <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer bg-neutral-900 hover:bg-neutral-800 transition-all">
-                <svg className="w-20 h-20 text-white/40 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span className="text-white/60 text-lg font-black mb-2" style={{ fontFamily: 'Bebas Neue' }}>
-                  TAP TO ADD PHOTO
-                </span>
-                <span className="text-white/40 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>
-                  REQUIRED
-                </span>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-              </label>
-            ) : (
-              <div
-                className="relative w-full h-full cursor-move no-select"
-                style={{ touchAction: 'none' }}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              >
-                <img
-                  ref={imageRef}
-                  src={imagePreview}
-                  alt="Preview"
-                  className="absolute pointer-events-none"
+      {/* STEP 1: UPLOAD & ADJUST IMAGE */}
+      {step === 'upload' && (
+        <div className="fixed inset-0 bg-black flex flex-col">
+          {/* Background */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            {imagePreview && (
+              <>
+                <div
+                  className="absolute inset-0 scale-110 blur-3xl opacity-10 transition-all duration-1000"
                   style={{
-                    transform: `translate(${crop.x}px, ${crop.y}px) scale(${zoom})`,
-                    transformOrigin: 'center center',
-                    objectFit: 'contain',
-                    maxWidth: 'none',
-                    height: '100%'
+                    backgroundImage: `url(${imagePreview})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center'
                   }}
-                />
-
-                {/* Shop Preview Overlay */}
-                {showShopPreview && items.length > 0 && (
-                  <div className="absolute inset-0 z-30 flex flex-col">
-                    <div
-                      className="absolute inset-0 bg-cover bg-center"
-                      style={{
-                        backgroundImage: `url(${imagePreview})`,
-                        filter: 'blur(50px) brightness(0.4)',
-                        transform: 'scale(1.2)'
-                      }}
-                    ></div>
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/70 to-black/80"></div>
-
-                    <div className="relative flex flex-col h-full">
-                      <div className="flex items-center justify-between px-6 py-5">
-                        <h2 className="text-white text-2xl font-black tracking-wider" style={{ fontFamily: 'Bebas Neue' }}>
-                          SHOP THE LOOK
-                        </h2>
-                        <button
-                          onClick={() => setShowShopPreview(false)}
-                          className="w-10 h-10 flex items-center justify-center text-white bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-colors"
-                        >
-                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      <div className="flex-1 overflow-y-auto px-4 pb-6 scrollbar-hide">
-                        <div className="grid grid-cols-2 gap-4 mt-2">
-                          {items.map((item, idx) => (
-                            <div
-                              key={item.temp_id}
-                              className="bg-black border border-white/20 rounded-xl overflow-hidden shadow-xl"
-                            >
-                              <div className="aspect-square bg-neutral-900 overflow-hidden">
-                                <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                              </div>
-                              <div className="p-3 bg-black border-t border-white/20">
-                                {item.seller && (
-                                  <p className="text-[9px] text-white/50 uppercase tracking-wider font-bold mb-1.5">
-                                    {item.seller}
-                                  </p>
-                                )}
-                                <h3 className="text-xs font-black tracking-wide uppercase leading-tight text-white mb-2 line-clamp-2" style={{ fontFamily: 'Bebas Neue' }}>
-                                  {item.title}
-                                </h3>
-                                {item.price && (
-                                  <p className="text-base font-black text-white" style={{ fontFamily: 'Archivo Black' }}>
-                                    ${item.price}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+                ></div>
+                <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
+              </>
             )}
           </div>
 
-          {/* Controls - Only show when image is uploaded */}
-          {imagePreview && (
-            <div className="w-full max-w-lg space-y-3">
+          {/* Header */}
+          <div className="relative z-30 bg-black">
+            <div className="flex items-center justify-between px-4 pt-3 pb-3">
+              <button
+                onClick={() => router.push('/feed')}
+                className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <div className="flex flex-col items-center">
+                <h1 className="text-white text-xl font-bold mb-1.5 tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', letterSpacing: '-0.02em' }}>
+                  New Post
+                </h1>
+                <div className="w-10 h-0.5 bg-white rounded-full"></div>
+              </div>
+              <button
+                onClick={() => {
+                  if (imagePreview) {
+                    setStep('details');
+                  }
+                }}
+                disabled={!imagePreview}
+                className="px-4 py-2 bg-white text-black font-black text-sm tracking-wider rounded-full hover:bg-white/90 transition-all disabled:opacity-30"
+                style={{ fontFamily: 'Bebas Neue' }}
+              >
+                NEXT
+              </button>
+            </div>
+          </div>
+
+          {/* Main Content - Centered */}
+          <div className="relative flex-1 flex flex-col items-center justify-center px-3">
+
+            {/* Image Card */}
+            <div
+              className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-4 touch-none"
+              style={{
+                minHeight: '64vh',
+                maxHeight: '66vh',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
+              }}
+            >
+              {!imagePreview ? (
+                <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer bg-neutral-900 hover:bg-neutral-800 transition-all">
+                  <svg className="w-20 h-20 text-white/40 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-white/60 text-lg font-black mb-2" style={{ fontFamily: 'Bebas Neue' }}>
+                    TAP TO ADD PHOTO
+                  </span>
+                  <span className="text-white/40 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>
+                    REQUIRED
+                  </span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                </label>
+              ) : (
+                <div
+                  className="relative w-full h-full cursor-move no-select"
+                  style={{ touchAction: 'none' }}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                >
+                  <img
+                    ref={imageRef}
+                    src={imagePreview}
+                    alt="Preview"
+                    className="absolute pointer-events-none"
+                    style={{
+                      transform: `translate(${crop.x}px, ${crop.y}px) scale(${zoom})`,
+                      transformOrigin: 'center center',
+                      objectFit: 'contain',
+                      maxWidth: 'none',
+                      height: '100%'
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Image Controls - Only show when image uploaded */}
+            {imagePreview && (
+              <div className="w-full max-w-lg">
+                <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                  <div className="flex items-center gap-4 mb-3">
+                    <span className="text-white/60 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>ZOOM</span>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="3"
+                      step="0.1"
+                      value={zoom}
+                      onChange={(e) => setZoom(parseFloat(e.target.value))}
+                      className="flex-1"
+                    />
+                    <span className="text-white text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>{zoom.toFixed(1)}x</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex-1 py-2 border border-white/40 text-white hover:bg-white hover:text-black transition-all text-xs font-black rounded-lg"
+                      style={{ fontFamily: 'Bebas Neue' }}
+                    >
+                      CHANGE PHOTO
+                    </button>
+                    <button
+                      onClick={() => { setCrop({ x: 0, y: 0 }); setZoom(1); }}
+                      className="flex-1 py-2 border border-white/40 text-white hover:bg-white hover:text-black transition-all text-xs font-black rounded-lg"
+                      style={{ fontFamily: 'Bebas Neue' }}
+                    >
+                      RESET
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: DETAILS & POST */}
+      {step === 'details' && imagePreview && (
+        <div className="fixed inset-0 bg-black flex flex-col">
+          {/* Background */}
+          <div className="fixed inset-0 overflow-hidden pointer-events-none">
+            <div
+              className="absolute inset-0 scale-110 blur-3xl opacity-10 transition-all duration-1000"
+              style={{
+                backgroundImage: `url(${imagePreview})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+              }}
+            ></div>
+            <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
+          </div>
+
+          {/* Header - Fixed */}
+          <div className="relative z-30 bg-black">
+            <div className="flex items-center justify-between px-4 pt-3 pb-3">
+              <button
+                onClick={() => setStep('upload')}
+                className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div className="flex flex-col items-center">
+                <h1 className="text-white text-xl font-bold mb-1.5 tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', letterSpacing: '-0.02em' }}>
+                  New Post
+                </h1>
+                <div className="w-10 h-0.5 bg-white rounded-full"></div>
+              </div>
+              <button
+                onClick={createPost}
+                disabled={!canPost || creating}
+                className="px-4 py-2 bg-white text-black font-black text-sm tracking-wider rounded-full hover:bg-white/90 transition-all disabled:opacity-30"
+                style={{ fontFamily: 'Bebas Neue' }}
+              >
+                {creating ? 'POSTING...' : 'POST'}
+              </button>
+            </div>
+          </div>
+
+          {/* Scrollable Content */}
+          <div className="relative flex-1 overflow-y-auto scrollbar-hide">
+            <div className="flex flex-col items-center px-3 py-6 pb-20">
+
+              {/* Image Preview (non-editable) */}
+              <div
+                className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-3"
+                style={{
+                  minHeight: '64vh',
+                  maxHeight: '66vh',
+                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
+                }}
+              >
+                <div className="relative w-full h-full">
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    className="absolute"
+                    style={{
+                      transform: `translate(${crop.x}px, ${crop.y}px) scale(${zoom})`,
+                      transformOrigin: 'center center',
+                      objectFit: 'contain',
+                      maxWidth: 'none',
+                      height: '100%'
+                    }}
+                  />
+
+                  {/* Shop Preview Overlay */}
+                  {showShopPreview && items.length > 0 && (
+                    <div className="absolute inset-0 z-30 flex flex-col">
+                      <div
+                        className="absolute inset-0 bg-cover bg-center"
+                        style={{
+                          backgroundImage: `url(${imagePreview})`,
+                          filter: 'blur(50px) brightness(0.4)',
+                          transform: 'scale(1.2)'
+                        }}
+                      ></div>
+                      <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/70 to-black/80"></div>
+
+                      <div className="relative flex flex-col h-full">
+                        <div className="flex items-center justify-between px-6 py-5">
+                          <h2 className="text-white text-2xl font-black tracking-wider" style={{ fontFamily: 'Bebas Neue' }}>
+                            SHOP THE LOOK
+                          </h2>
+                          <button
+                            onClick={() => setShowShopPreview(false)}
+                            className="w-10 h-10 flex items-center justify-center text-white bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-colors"
+                          >
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto px-4 pb-6 scrollbar-hide">
+                          <div className="grid grid-cols-2 gap-4 mt-2">
+                            {items.map((item) => (
+                              <div
+                                key={item.temp_id}
+                                className="bg-black border border-white/20 rounded-xl overflow-hidden shadow-xl"
+                              >
+                                <div className="aspect-square bg-neutral-900 overflow-hidden">
+                                  <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                                </div>
+                                <div className="p-3 bg-black border-t border-white/20">
+                                  {item.seller && (
+                                    <p className="text-[9px] text-white/50 uppercase tracking-wider font-bold mb-1.5">
+                                      {item.seller}
+                                    </p>
+                                  )}
+                                  <h3 className="text-xs font-black tracking-wide uppercase leading-tight text-white mb-2 line-clamp-2" style={{ fontFamily: 'Bebas Neue' }}>
+                                    {item.title}
+                                  </h3>
+                                  {item.price && (
+                                    <p className="text-base font-black text-white" style={{ fontFamily: 'Archivo Black' }}>
+                                      ${item.price}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Profile + Shop Preview Button */}
-              <div className="flex items-center justify-between">
+              <div className="w-full max-w-lg flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-full border-2 border-white overflow-hidden bg-neutral-800">
                     {currentUserAvatar ? (
@@ -624,194 +744,165 @@ export default function CreatePostPage() {
                 )}
               </div>
 
-              {/* Image Controls */}
-              <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
-                <div className="flex items-center gap-4 mb-3">
-                  <span className="text-white/60 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>ZOOM</span>
-                  <input
-                    type="range"
-                    min="0.5"
-                    max="3"
-                    step="0.1"
-                    value={zoom}
-                    onChange={(e) => setZoom(parseFloat(e.target.value))}
-                    className="flex-1"
-                  />
-                  <span className="text-white text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>{zoom.toFixed(1)}x</span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex-1 py-2 border border-white/40 text-white hover:bg-white hover:text-black transition-all text-xs font-black rounded-lg"
-                    style={{ fontFamily: 'Bebas Neue' }}
-                  >
-                    CHANGE PHOTO
-                  </button>
-                  <button
-                    onClick={() => { setCrop({ x: 0, y: 0 }); setZoom(1); }}
-                    className="flex-1 py-2 border border-white/40 text-white hover:bg-white hover:text-black transition-all text-xs font-black rounded-lg"
-                    style={{ fontFamily: 'Bebas Neue' }}
-                  >
-                    RESET
-                  </button>
-                </div>
-              </div>
-
               {/* Caption */}
-              <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
-                <textarea
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  placeholder="Write a caption..."
-                  rows={2}
-                  className="w-full bg-transparent text-white placeholder-white/40 focus:outline-none resize-none text-sm"
-                  style={{ fontFamily: 'Bebas Neue' }}
-                />
+              <div className="w-full max-w-lg mb-3">
+                <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                  <textarea
+                    value={caption}
+                    onChange={(e) => setCaption(e.target.value)}
+                    placeholder="Write a caption..."
+                    rows={2}
+                    className="w-full bg-transparent text-white placeholder-white/40 focus:outline-none resize-none text-sm"
+                    style={{ fontFamily: 'Bebas Neue' }}
+                  />
+                </div>
               </div>
 
               {/* Tagged Items */}
-              <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-white text-sm font-black" style={{ fontFamily: 'Bebas Neue' }}>
-                    TAGGED ITEMS ({items.length})
-                  </span>
-                  <button
-                    onClick={() => setShowItemForm(!showItemForm)}
-                    className="px-3 py-1.5 bg-white text-black hover:bg-white/90 transition-all text-xs font-black rounded-full"
-                    style={{ fontFamily: 'Bebas Neue' }}
-                  >
-                    {showItemForm ? 'CANCEL' : '+ ADD'}
-                  </button>
-                </div>
-
-                {/* Item Form */}
-                {showItemForm && (
-                  <form onSubmit={handleAddItem} className="space-y-3 mb-4 p-3 bg-black/60 rounded-xl border border-white/20">
-                    <input
-                      type="text"
-                      value={itemTitle}
-                      onChange={(e) => setItemTitle(e.target.value)}
-                      placeholder="Item title"
-                      className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
-                      style={{ fontFamily: 'Bebas Neue' }}
-                      required
-                    />
-
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => { setItemUploadMethod('file'); setItemImageUrl(''); setItemPreviewUrl(null); }}
-                        className={`flex-1 px-3 py-2 text-xs font-black transition-all rounded-lg ${itemUploadMethod === 'file' ? 'bg-white text-black' : 'border border-white/40 text-white'}`}
-                        style={{ fontFamily: 'Bebas Neue' }}
-                      >
-                        FILE
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setItemUploadMethod('url'); setSelectedItemFile(null); setItemPreviewUrl(null); }}
-                        className={`flex-1 px-3 py-2 text-xs font-black transition-all rounded-lg ${itemUploadMethod === 'url' ? 'bg-white text-black' : 'border border-white/40 text-white'}`}
-                        style={{ fontFamily: 'Bebas Neue' }}
-                      >
-                        URL
-                      </button>
-                    </div>
-
-                    {itemUploadMethod === 'file' ? (
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleItemFileSelect}
-                        className="w-full text-white text-xs file:mr-3 file:py-2 file:px-3 file:border-0 file:bg-white file:text-black file:text-xs file:font-black file:rounded-lg"
-                      />
-                    ) : (
-                      <input
-                        type="url"
-                        value={itemImageUrl}
-                        onChange={(e) => handleItemImageUrlChange(e.target.value)}
-                        placeholder="https://example.com/image.jpg"
-                        className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
-                        style={{ fontFamily: 'Bebas Neue' }}
-                      />
-                    )}
-
-                    {itemPreviewUrl && (
-                      <div className="w-16 h-16 rounded-lg overflow-hidden border border-white/20">
-                        <img src={itemPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
-                      </div>
-                    )}
-
-                    <input
-                      type="url"
-                      value={itemProductUrl}
-                      onChange={(e) => handleItemProductUrlChange(e.target.value)}
-                      placeholder="Product URL"
-                      className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
-                      style={{ fontFamily: 'Bebas Neue' }}
-                      required
-                    />
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="text"
-                        value={itemSeller}
-                        onChange={(e) => setItemSeller(e.target.value)}
-                        placeholder="Seller"
-                        className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
-                        style={{ fontFamily: 'Bebas Neue' }}
-                      />
-                      <input
-                        type="text"
-                        value={itemPrice}
-                        onChange={(e) => setItemPrice(e.target.value)}
-                        placeholder="Price"
-                        className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
-                        style={{ fontFamily: 'Bebas Neue' }}
-                      />
-                    </div>
-
-                    {itemError && <p className="text-red-400 text-xs">{itemError}</p>}
-                    {itemCreatingStatus && <p className="text-white/60 text-xs">{itemCreatingStatus}</p>}
-
+              <div className="w-full max-w-lg">
+                <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-white text-sm font-black" style={{ fontFamily: 'Bebas Neue' }}>
+                      TAGGED ITEMS ({items.length})
+                    </span>
                     <button
-                      type="submit"
-                      disabled={generatingItem || !itemTitle.trim() || !itemProductUrl.trim() || (itemUploadMethod === 'file' ? !selectedItemFile : !itemImageUrl.trim())}
-                      className="w-full py-2 bg-white text-black hover:bg-white/90 transition-all text-sm font-black rounded-lg disabled:opacity-50"
+                      onClick={() => setShowItemForm(!showItemForm)}
+                      className="px-3 py-1.5 bg-white text-black hover:bg-white/90 transition-all text-xs font-black rounded-full"
                       style={{ fontFamily: 'Bebas Neue' }}
                     >
-                      {generatingItem ? (itemCreatingStatus || 'ADDING...') : 'ADD ITEM'}
+                      {showItemForm ? 'CANCEL' : '+ ADD'}
                     </button>
-                  </form>
-                )}
-
-                {/* Items Grid */}
-                {items.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2">
-                    {items.map((item, idx) => (
-                      <div key={item.temp_id} className="relative">
-                        <button
-                          onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                          className="absolute -top-1 -right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center hover:bg-red-500 transition-all z-10 text-xs"
-                        >
-                          ✕
-                        </button>
-                        <div className="aspect-square rounded-lg overflow-hidden border border-white/20">
-                          <img src={item.image_url} className="w-full h-full object-cover" />
-                        </div>
-                      </div>
-                    ))}
                   </div>
-                )}
-              </div>
-            </div>
-          )}
 
-          {error && (
-            <div className="w-full max-w-lg mt-3 p-3 bg-red-500/20 border border-red-500 rounded-xl">
-              <p className="text-red-400 text-sm text-center">{error}</p>
+                  {/* Item Form */}
+                  {showItemForm && (
+                    <form onSubmit={handleAddItem} className="space-y-3 mb-4 p-3 bg-black/60 rounded-xl border border-white/20">
+                      <input
+                        type="text"
+                        value={itemTitle}
+                        onChange={(e) => setItemTitle(e.target.value)}
+                        placeholder="Item title"
+                        className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                        style={{ fontFamily: 'Bebas Neue' }}
+                        required
+                      />
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { setItemUploadMethod('file'); setItemImageUrl(''); setItemPreviewUrl(null); }}
+                          className={`flex-1 px-3 py-2 text-xs font-black transition-all rounded-lg ${itemUploadMethod === 'file' ? 'bg-white text-black' : 'border border-white/40 text-white'}`}
+                          style={{ fontFamily: 'Bebas Neue' }}
+                        >
+                          FILE
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setItemUploadMethod('url'); setSelectedItemFile(null); setItemPreviewUrl(null); }}
+                          className={`flex-1 px-3 py-2 text-xs font-black transition-all rounded-lg ${itemUploadMethod === 'url' ? 'bg-white text-black' : 'border border-white/40 text-white'}`}
+                          style={{ fontFamily: 'Bebas Neue' }}
+                        >
+                          URL
+                        </button>
+                      </div>
+
+                      {itemUploadMethod === 'file' ? (
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleItemFileSelect}
+                          className="w-full text-white text-xs file:mr-3 file:py-2 file:px-3 file:border-0 file:bg-white file:text-black file:text-xs file:font-black file:rounded-lg"
+                        />
+                      ) : (
+                        <input
+                          type="url"
+                          value={itemImageUrl}
+                          onChange={(e) => handleItemImageUrlChange(e.target.value)}
+                          placeholder="https://example.com/image.jpg"
+                          className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                          style={{ fontFamily: 'Bebas Neue' }}
+                        />
+                      )}
+
+                      {itemPreviewUrl && (
+                        <div className="w-16 h-16 rounded-lg overflow-hidden border border-white/20">
+                          <img src={itemPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
+                        </div>
+                      )}
+
+                      <input
+                        type="url"
+                        value={itemProductUrl}
+                        onChange={(e) => handleItemProductUrlChange(e.target.value)}
+                        placeholder="Product URL"
+                        className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                        style={{ fontFamily: 'Bebas Neue' }}
+                        required
+                      />
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={itemSeller}
+                          onChange={(e) => setItemSeller(e.target.value)}
+                          placeholder="Seller"
+                          className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                          style={{ fontFamily: 'Bebas Neue' }}
+                        />
+                        <input
+                          type="text"
+                          value={itemPrice}
+                          onChange={(e) => setItemPrice(e.target.value)}
+                          placeholder="Price"
+                          className="w-full bg-neutral-900 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-2 focus:outline-none focus:border-white text-sm"
+                          style={{ fontFamily: 'Bebas Neue' }}
+                        />
+                      </div>
+
+                      {itemError && <p className="text-red-400 text-xs">{itemError}</p>}
+                      {itemCreatingStatus && <p className="text-white/60 text-xs">{itemCreatingStatus}</p>}
+
+                      <button
+                        type="submit"
+                        disabled={generatingItem || !itemTitle.trim() || !itemProductUrl.trim() || (itemUploadMethod === 'file' ? !selectedItemFile : !itemImageUrl.trim())}
+                        className="w-full py-2 bg-white text-black hover:bg-white/90 transition-all text-sm font-black rounded-lg disabled:opacity-50"
+                        style={{ fontFamily: 'Bebas Neue' }}
+                      >
+                        {generatingItem ? (itemCreatingStatus || 'ADDING...') : 'ADD ITEM'}
+                      </button>
+                    </form>
+                  )}
+
+                  {/* Items Grid */}
+                  {items.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2">
+                      {items.map((item, idx) => (
+                        <div key={item.temp_id} className="relative">
+                          <button
+                            onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                            className="absolute -top-1 -right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center hover:bg-red-500 transition-all z-10 text-xs"
+                          >
+                            ✕
+                          </button>
+                          <div className="aspect-square rounded-lg overflow-hidden border border-white/20">
+                            <img src={item.image_url} className="w-full h-full object-cover" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {error && (
+                <div className="w-full max-w-lg mt-3 p-3 bg-red-500/20 border border-red-500 rounded-xl">
+                  <p className="text-red-400 text-sm text-center">{error}</p>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }
