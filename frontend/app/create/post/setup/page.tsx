@@ -105,6 +105,7 @@ export default function CreatePostPage() {
 
   function handleTouchStart(e: React.TouchEvent) {
     if (!imagePreview) return;
+    e.preventDefault(); // Prevent page scroll
     const touch = e.touches[0];
     setIsDragging(true);
     setDragStart({ x: touch.clientX - crop.x, y: touch.clientY - crop.y });
@@ -112,6 +113,7 @@ export default function CreatePostPage() {
 
   function handleTouchMove(e: React.TouchEvent) {
     if (!isDragging) return;
+    e.preventDefault(); // Prevent page scroll
     const touch = e.touches[0];
     setCrop({ x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y });
   }
@@ -419,7 +421,7 @@ export default function CreatePostPage() {
         }
       `}</style>
 
-      <div className="min-h-screen bg-black overflow-y-auto scrollbar-hide">
+      <div className="min-h-screen bg-black">
         {/* Background - Fixed */}
         <div className="fixed inset-0 overflow-hidden pointer-events-none">
           {imagePreview && (
@@ -438,8 +440,8 @@ export default function CreatePostPage() {
         </div>
 
         {/* Header - Sticky */}
-        <div className="sticky top-0 left-0 right-0 z-30 pt-3 pb-3 bg-black/80 backdrop-blur-sm">
-          <div className="flex items-center justify-between px-4">
+        <div className="sticky top-0 left-0 right-0 z-30 bg-black">
+          <div className="flex items-center justify-between px-4 pt-3 pb-3">
             <button
               onClick={() => router.push('/feed')}
               className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
@@ -466,14 +468,14 @@ export default function CreatePostPage() {
         </div>
 
         {/* Main Content - Scrollable */}
-        <div className="relative flex flex-col items-center px-3 py-6 pb-20">
+        <div className="relative flex flex-col items-center px-3 py-6 pb-20 overflow-y-auto scrollbar-hide" style={{ maxHeight: 'calc(100vh - 70px)' }}>
 
           {/* Image Card */}
           <div
-            className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-3"
+            className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-3 touch-none"
             style={{
-              aspectRatio: '9/16',
-              maxHeight: '55vh',
+              minHeight: '64vh',
+              maxHeight: '66vh',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
           >
@@ -499,6 +501,7 @@ export default function CreatePostPage() {
             ) : (
               <div
                 className="relative w-full h-full cursor-move no-select"
+                style={{ touchAction: 'none' }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
