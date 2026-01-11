@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Head from "next/head";
@@ -9,11 +9,6 @@ type FeedPost = {
   id: string;
   image_url: string;
   caption: string | null;
-  music_track_id: string | null;
-  music_preview_url: string | null;
-  music_track_name: string | null;
-  music_artist: string | null;
-  music_album_art: string | null;
   like_count: number;
   comment_count: number;
   created_at: string;
@@ -31,18 +26,11 @@ export default function MyPostsPage() {
   const router = useRouter();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUsername, setCurrentUsername] = useState<string | null>(null);
-  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null);
-  const [currentUserVerified, setCurrentUserVerified] = useState(false);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteCount, setDeleteCount] = useState(0);
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
-  const [expandedCaptions, setExpandedCaptions] = useState<Set<string>>(new Set());
-
-  // Audio refs for each post
-  const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   useEffect(() => {
     loadUser();
@@ -58,12 +46,10 @@ export default function MyPostsPage() {
       setCurrentUserId(user.id);
       const { data: profile } = await supabase
         .from('profiles')
-        .select('username, avatar_url, is_verified')
+        .select('username')
         .eq('id', user.id)
         .single();
       setCurrentUsername(profile?.username || null);
-      setCurrentUserAvatar(profile?.avatar_url || null);
-      setCurrentUserVerified(profile?.is_verified || false);
     }
     setLoading(false);
   }
@@ -78,7 +64,8 @@ export default function MyPostsPage() {
     if (data) setPosts(data.map(p => ({ ...p, items: p.feed_post_items || [] })));
   }
 
-  function togglePostSelection(postId: string) {
+  function togglePostSelection(postId: string, e: React.MouseEvent) {
+    e.stopPropagation();
     setSelectedPosts(prev => {
       const newSet = new Set(prev);
       if (newSet.has(postId)) newSet.delete(postId);
@@ -109,24 +96,17 @@ export default function MyPostsPage() {
     }
   }
 
-  function handlePostClick(post: FeedPost) {
-    // Play music if available
-    if (post.music_preview_url && audioRefs.current[post.id]) {
-      const audio = audioRefs.current[post.id];
-      if (audio.paused) {
-        // Pause all other audios
-        Object.values(audioRefs.current).forEach(a => a.pause());
-        audio.play();
-      } else {
-        audio.pause();
-      }
-    }
+  function handlePostClick(postId: string) {
+    // Navigate to individual post page
+    router.push(`/post/${postId}`);
   }
 
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+        <div className="text-white text-2xl font-black tracking-widest animate-pulse" style={{ fontFamily: 'Bebas Neue' }}>
+          SOURCED
+        </div>
       </div>
     );
   }
@@ -136,48 +116,64 @@ export default function MyPostsPage() {
       <Head><title>My Posts | Sourced</title></Head>
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');
-        body { font-family: 'Bebas Neue', sans-serif; background: #000; color: #FFF; }
 
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
+        * {
+          -webkit-tap-highlight-color: transparent;
         }
-        .animate-spin-slow {
-          animation: spin-slow 3s linear infinite;
+
+        body {
+          font-family: 'Bebas Neue', sans-serif;
+          background: #000;
+        }
+
+        .post-card-hover {
+          transition: all 0.2s ease;
+        }
+
+        .post-card-hover:hover {
+          transform: scale(1.02);
         }
       `}</style>
 
-      <div className="min-h-screen bg-black py-12 px-4">
-        <div className="max-w-7xl mx-auto">
+      <div className="min-h-screen bg-black py-6 px-4">
+        <div className="max-w-6xl mx-auto">
 
           {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-5xl md:text-7xl font-black mb-2 text-white" style={{ fontFamily: 'Archivo Black' }}>MY POSTS</h1>
-            <p className="text-white/60 text-lg" style={{ fontFamily: 'Bebas Neue' }}>{posts.length} Posts</p>
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <h1 className="text-4xl md:text-5xl font-black text-white" style={{ fontFamily: 'Archivo Black' }}>MY POSTS</h1>
+              <button
+                onClick={() => router.push('/feed')}
+                className="text-white/60 hover:text-white text-sm"
+              >
+                ← BACK TO FEED
+              </button>
+            </div>
+            <p className="text-white/60 text-sm" style={{ fontFamily: 'Bebas Neue' }}>{posts.length} Posts</p>
           </div>
 
           {/* Action Buttons */}
-          <div className="mb-6 flex gap-3">
+          <div className="mb-6 flex gap-3 flex-wrap">
             <button
               onClick={() => router.push('/create/post/setup')}
-              className="px-6 py-2 bg-white text-black hover:bg-black hover:text-white hover:border-2 hover:border-white transition-all text-xs tracking-[0.4em] font-black"
+              className="px-6 py-2 bg-white text-black hover:bg-black hover:text-white border-2 border-white transition-all text-xs tracking-wider font-black rounded-lg"
               style={{ fontFamily: 'Bebas Neue' }}
             >
-              CREATE POST
+              + CREATE POST
             </button>
 
             {selectedPosts.size > 0 && (
               <>
                 <button
                   onClick={selectAll}
-                  className="px-6 py-2 border-2 border-white hover:bg-white/10 transition-all text-xs tracking-[0.4em] font-black text-white"
+                  className="px-6 py-2 border-2 border-white text-white hover:bg-white/10 transition-all text-xs tracking-wider font-black rounded-lg"
                   style={{ fontFamily: 'Bebas Neue' }}
                 >
-                  {selectedPosts.size === posts.length ? 'DESELECT' : 'SELECT ALL'}
+                  {selectedPosts.size === posts.length ? 'DESELECT ALL' : 'SELECT ALL'}
                 </button>
                 <button
                   onClick={deleteSelectedPosts}
-                  className="px-6 py-2 bg-red-500 text-white hover:bg-red-600 transition-all text-xs tracking-[0.4em] font-black"
+                  className="px-6 py-2 bg-red-500 text-white hover:bg-red-600 transition-all text-xs tracking-wider font-black rounded-lg"
                   style={{ fontFamily: 'Bebas Neue' }}
                 >
                   DELETE ({selectedPosts.size})
@@ -186,274 +182,81 @@ export default function MyPostsPage() {
             )}
           </div>
 
-          {/* Posts Grid - EXACT Feed Card Style */}
+          {/* Posts Grid - Instagram Style */}
           {posts.length === 0 ? (
             <div className="text-center py-20">
-              <p className="text-lg tracking-wider opacity-40 text-white" style={{ fontFamily: 'Bebas Neue' }}>NO POSTS YET</p>
-              <p className="text-sm tracking-wide opacity-30 mt-2 text-white">Create your first post to get started</p>
+              <svg className="w-20 h-20 mx-auto mb-4 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <p className="text-lg tracking-wider text-white/40 mb-2" style={{ fontFamily: 'Bebas Neue' }}>NO POSTS YET</p>
+              <p className="text-sm tracking-wide text-white/30 mb-6">Create your first post to get started</p>
+              <button
+                onClick={() => router.push('/create/post/setup')}
+                className="px-8 py-3 bg-white text-black hover:bg-black hover:text-white border-2 border-white transition-all font-black tracking-wider rounded-lg"
+                style={{ fontFamily: 'Bebas Neue' }}
+              >
+                CREATE POST
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-1 md:gap-2">
               {posts.map(post => (
-                <div key={post.id} className="w-full bg-black relative">
-
+                <div
+                  key={post.id}
+                  className="relative aspect-square cursor-pointer post-card-hover group"
+                  onClick={() => handlePostClick(post.id)}
+                >
                   {/* Selection Checkbox - Top Left */}
-                  <div className="absolute top-6 left-6 z-30">
+                  <div className="absolute top-2 left-2 z-10">
                     <input
                       type="checkbox"
                       checked={selectedPosts.has(post.id)}
-                      onChange={() => togglePostSelection(post.id)}
-                      className="w-6 h-6 cursor-pointer"
+                      onChange={(e) => togglePostSelection(post.id, e)}
                       onClick={(e) => e.stopPropagation()}
+                      className="w-5 h-5 cursor-pointer"
                     />
                   </div>
 
-                  {/* Dark Grey Card Background - EXACT FEED STYLE */}
-                  <div className="w-full bg-neutral-900 rounded-3xl p-4 md:p-6">
+                  {/* Post Image */}
+                  <div className="w-full h-full bg-black overflow-hidden">
+                    <img
+                      src={post.image_url}
+                      alt=""
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
+                  </div>
 
-                    {/* Username Banner - EXACT FEED STYLE */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div
-                        onClick={() => router.push(`/@${currentUsername}`)}
-                        className="flex items-center gap-3 text-base md:text-xl bg-white text-black px-5 py-1 cursor-pointer hover:opacity-90 transition-opacity"
-                        style={{
-                          clipPath: 'polygon(0 0, calc(100% - 8px) 0%, calc(100% - 0px) 50%, calc(100% - 8px) 100%, 0 100%, 8px 50%)'
-                        }}
-                      >
-                        <div className="w-7 h-7 md:w-9 md:h-9 rounded-full overflow-hidden border-2 border-black">
-                          {currentUserAvatar ? (
-                            <img src={currentUserAvatar} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full bg-neutral-200 flex items-center justify-center text-sm text-black">👤</div>
-                          )}
-                        </div>
-                        <span className="font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>@{currentUsername}</span>
-                        {currentUserVerified && (
-                          <div className="flex items-center justify-center w-5 h-5 bg-blue-500 rounded-full">
-                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Hole Punch Circle - EXACT FEED STYLE */}
-                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-full border-4 border-neutral-700 bg-black"></div>
+                  {/* Hover Overlay - Instagram Style */}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6">
+                    <div className="flex items-center gap-2 text-white">
+                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                      </svg>
+                      <span className="text-lg font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.like_count}</span>
                     </div>
-
-                    {/* Hero Image - EXACT FEED STYLE */}
-                    <div className="mb-6 relative" onClick={() => handlePostClick(post)}>
-                      <img
-                        src={post.image_url}
-                        alt=""
-                        className="w-full h-auto object-cover cursor-pointer"
-                        style={{ maxHeight: '80vh' }}
-                      />
-
-                      {/* Music Label - EXACT FEED STYLE */}
-                      {post.music_preview_url && (
-                        <>
-                          <audio
-                            ref={(el) => { if (el) audioRefs.current[post.id] = el; }}
-                            src={post.music_preview_url}
-                            loop
-                          />
-                          <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full">
-                            {post.music_album_art && (
-                              <div className="w-8 h-8 rounded-full overflow-hidden animate-spin-slow">
-                                <img src={post.music_album_art} alt="" className="w-full h-full object-cover" />
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-white text-xs font-black leading-tight" style={{ fontFamily: 'Bebas Neue' }}>
-                                {post.music_track_name}
-                              </p>
-                              <p className="text-white/60 text-[10px] font-black leading-tight" style={{ fontFamily: 'Bebas Neue' }}>
-                                {post.music_artist}
-                              </p>
-                            </div>
-                            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                            </svg>
-                          </div>
-                        </>
-                      )}
-
-                      {/* Shop The Look Overlay - EXACT FEED STYLE */}
-                      {selectedPostId === post.id && post.items.length > 0 && (
-                        <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex flex-col p-6 overflow-y-auto">
-                          <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-2xl md:text-3xl font-black text-white" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
-                              SHOP THE LOOK
-                            </h2>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setSelectedPostId(null); }}
-                              className="w-10 h-10 flex items-center justify-center text-white hover:bg-white hover:text-black border-2 border-white transition-all"
-                            >
-                              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4">
-                            {post.items.map((item, itemIdx) => (
-                              <div
-                                key={item.id}
-                                onClick={(e) => { e.stopPropagation(); if (item.product_url) window.open(item.product_url, '_blank'); }}
-                                className="cursor-pointer border-2 border-white hover:bg-white hover:text-black transition-all p-3 group"
-                              >
-                                <div className="aspect-square overflow-hidden mb-2 border-2 border-white group-hover:border-black">
-                                  <img
-                                    src={item.image_url}
-                                    alt={item.title}
-                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                  />
-                                </div>
-                                <p className="text-xs tracking-[0.2em] mb-1 opacity-60 font-black text-white group-hover:text-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                                  {String(itemIdx + 1).padStart(2, '0')}
-                                </p>
-                                <h3 className="text-sm font-black mb-1 leading-tight line-clamp-2 text-white group-hover:text-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                                  {item.title}
-                                </h3>
-                                {item.price && (
-                                  <p className="text-lg font-black text-white group-hover:text-black" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
-                                    ${item.price}
-                                  </p>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Action Buttons - EXACT FEED STYLE */}
-                    <div className="flex items-center gap-5 mb-4 px-2">
-                      <div className="flex items-center gap-1.5 text-white">
-                        <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                        </svg>
-                        <span className="text-sm md:text-base font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{post.like_count}</span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 text-white">
-                        <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                        </svg>
-                        <span className="text-sm md:text-base font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{post.comment_count}</span>
-                      </div>
-
-                      {/* Share Arrow - EXACT FEED STYLE */}
-                      <button className="text-white hover:opacity-60 transition-opacity">
-                        <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4m0 0L8 6m4-4v13" />
-                        </svg>
-                      </button>
-
-                      {/* Barcode - EXACT FEED STYLE - Bottom Right */}
-                      {post.items.length > 0 && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedPostId(post.id === selectedPostId ? null : post.id); }}
-                          className="ml-auto text-white hover:opacity-60 transition-opacity"
-                        >
-                          <svg className="w-24 h-8 md:w-32 md:h-10" viewBox="0 0 160 40" fill="none">
-                            <rect x="2" y="4" width="2" height="32" fill="currentColor"/>
-                            <rect x="6" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="9" y="4" width="3" height="32" fill="currentColor"/>
-                            <rect x="14" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="17" y="4" width="2" height="32" fill="currentColor"/>
-                            <rect x="21" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="24" y="4" width="4" height="32" fill="currentColor"/>
-                            <rect x="30" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="33" y="4" width="2" height="32" fill="currentColor"/>
-                            <rect x="37" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="40" y="4" width="3" height="32" fill="currentColor"/>
-                            <rect x="45" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="48" y="4" width="2" height="32" fill="currentColor"/>
-                            <rect x="52" y="4" width="4" height="32" fill="currentColor"/>
-                            <rect x="58" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="61" y="4" width="2" height="32" fill="currentColor"/>
-                            <rect x="65" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="68" y="4" width="3" height="32" fill="currentColor"/>
-                            <rect x="73" y="4" width="2" height="32" fill="currentColor"/>
-                            <rect x="77" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="80" y="4" width="3" height="32" fill="currentColor"/>
-                            <rect x="85" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="88" y="4" width="2" height="32" fill="currentColor"/>
-                            <rect x="92" y="4" width="4" height="32" fill="currentColor"/>
-                            <rect x="98" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="101" y="4" width="3" height="32" fill="currentColor"/>
-                            <rect x="106" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="109" y="4" width="2" height="32" fill="currentColor"/>
-                            <rect x="113" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="116" y="4" width="4" height="32" fill="currentColor"/>
-                            <rect x="122" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="125" y="4" width="2" height="32" fill="currentColor"/>
-                            <rect x="129" y="4" width="3" height="32" fill="currentColor"/>
-                            <rect x="134" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="137" y="4" width="2" height="32" fill="currentColor"/>
-                            <rect x="141" y="4" width="4" height="32" fill="currentColor"/>
-                            <rect x="147" y="4" width="1" height="32" fill="currentColor"/>
-                            <rect x="150" y="4" width="3" height="32" fill="currentColor"/>
-                            <rect x="155" y="4" width="2" height="32" fill="currentColor"/>
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Caption - EXACT FEED STYLE */}
-                    {post.caption && (
-                      <div className="px-2 mb-4">
-                        <p className="text-sm text-white">
-                          {expandedCaptions.has(post.id) ? (
-                            <>
-                              {post.caption}{' '}
-                              <button
-                                onClick={() => {
-                                  const newSet = new Set(expandedCaptions);
-                                  newSet.delete(post.id);
-                                  setExpandedCaptions(newSet);
-                                }}
-                                className="text-white/60 font-black"
-                                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                              >
-                                ...less
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              {post.caption.length > 100 ? (
-                                <>
-                                  {post.caption.slice(0, 100)}...{' '}
-                                  <button
-                                    onClick={() => {
-                                      const newSet = new Set(expandedCaptions);
-                                      newSet.add(post.id);
-                                      setExpandedCaptions(newSet);
-                                    }}
-                                    className="text-white/60 font-black"
-                                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                                  >
-                                    more
-                                  </button>
-                                </>
-                              ) : (
-                                post.caption
-                              )}
-                            </>
-                          )}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Date */}
-                    <div className="px-2">
-                      <p className="text-white/40 text-xs" style={{ fontFamily: 'Bebas Neue' }}>
-                        {new Date(post.created_at).toLocaleDateString()}
-                      </p>
+                    <div className="flex items-center gap-2 text-white">
+                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+                      </svg>
+                      <span className="text-lg font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.comment_count}</span>
                     </div>
                   </div>
+
+                  {/* Tagged Items Indicator */}
+                  {post.items.length > 0 && (
+                    <div className="absolute top-2 right-2 bg-black/80 backdrop-blur-sm text-white px-2 py-1 rounded-full text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>
+                      {post.items.length} ITEM{post.items.length !== 1 ? 'S' : ''}
+                    </div>
+                  )}
+
+                  {/* Caption Preview (on hover, bottom) */}
+                  {post.caption && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <p className="text-white text-xs line-clamp-2">
+                        {post.caption}
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -464,12 +267,24 @@ export default function MyPostsPage() {
       {/* Delete Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90">
-          <div className="w-full max-w-md bg-white border-2 border-black p-8">
-            <h2 className="text-4xl font-black mb-2" style={{ fontFamily: 'Archivo Black' }}>DELETE POSTS?</h2>
-            <p className="text-sm opacity-60 mb-6">You're about to delete {deleteCount} post{deleteCount > 1 ? 's' : ''}. This action cannot be undone.</p>
+          <div className="w-full max-w-md bg-black border-2 border-white rounded-2xl p-8">
+            <h2 className="text-4xl font-black mb-2 text-white" style={{ fontFamily: 'Archivo Black' }}>DELETE POSTS?</h2>
+            <p className="text-sm text-white/60 mb-6">You're about to delete {deleteCount} post{deleteCount > 1 ? 's' : ''}. This action cannot be undone.</p>
             <div className="flex gap-3">
-              <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-3 border border-black/20 hover:bg-black/5 text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue' }}>CANCEL</button>
-              <button onClick={confirmDelete} className="flex-1 py-3 bg-red-500 text-white hover:bg-red-600 text-xs tracking-wider font-black" style={{ fontFamily: 'Bebas Neue' }}>DELETE</button>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 py-3 border-2 border-white text-white hover:bg-white hover:text-black transition-all text-xs tracking-wider font-black rounded-lg"
+                style={{ fontFamily: 'Bebas Neue' }}
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 py-3 bg-red-500 text-white hover:bg-red-600 transition-all text-xs tracking-wider font-black rounded-lg"
+                style={{ fontFamily: 'Bebas Neue' }}
+              >
+                DELETE
+              </button>
             </div>
           </div>
         </div>

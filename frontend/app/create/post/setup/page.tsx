@@ -19,7 +19,7 @@ export default function CreatePostPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(1.2);
 
   // Post data
   const [caption, setCaption] = useState("");
@@ -86,7 +86,7 @@ export default function CreatePostPage() {
     reader.onload = (e) => {
       setImagePreview(e.target?.result as string);
       setCrop({ x: 0, y: 0 });
-      setZoom(1);
+      setZoom(1.2);
     };
     reader.readAsDataURL(file);
   }
@@ -480,6 +480,15 @@ export default function CreatePostPage() {
           {/* Main Content - Centered */}
           <div className="relative flex-1 flex flex-col items-center justify-center px-3">
 
+            {/* Hidden file input for change photo */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+
             {/* Image Card */}
             <div
               className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-4 touch-none"
@@ -501,7 +510,6 @@ export default function CreatePostPage() {
                     REQUIRED
                   </span>
                   <input
-                    ref={fileInputRef}
                     type="file"
                     accept="image/*"
                     onChange={handleFileSelect}
@@ -563,7 +571,7 @@ export default function CreatePostPage() {
                       CHANGE PHOTO
                     </button>
                     <button
-                      onClick={() => { setCrop({ x: 0, y: 0 }); setZoom(1); }}
+                      onClick={() => { setCrop({ x: 0, y: 0 }); setZoom(1.2); }}
                       className="flex-1 py-2 border border-white/40 text-white hover:bg-white hover:text-black transition-all text-xs font-black rounded-lg"
                       style={{ fontFamily: 'Bebas Neue' }}
                     >
