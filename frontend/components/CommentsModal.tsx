@@ -7,6 +7,8 @@ type Comment = {
   id: string;
   comment_text: string;
   created_at: string;
+  like_count: number;
+  is_liked: boolean;
   user: {
     id: string;
     username: string;
@@ -47,6 +49,7 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
           id,
           comment_text,
           created_at,
+          like_count,
           user_id,
           profiles!feed_post_comments_user_id_fkey(id, username, avatar_url, is_verified)
         `)
@@ -58,12 +61,29 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
         throw error;
       }
 
+      // Get liked comments for current user
+      let likedCommentIds: Set<string> = new Set();
+      if (data && data.length > 0) {
+        const commentIds = data.map(c => c.id);
+        const { data: likedData } = await supabase
+          .from('comment_likes')
+          .select('comment_id')
+          .eq('user_id', currentUserId)
+          .in('comment_id', commentIds);
+
+        if (likedData) {
+          likedCommentIds = new Set(likedData.map(like => like.comment_id));
+        }
+      }
+
       const formattedComments: Comment[] = (data || []).map((comment: any) => {
         const profile = Array.isArray(comment.profiles) ? comment.profiles[0] : comment.profiles;
         return {
           id: comment.id,
           comment_text: comment.comment_text,
           created_at: comment.created_at,
+          like_count: comment.like_count || 0,
+          is_liked: likedCommentIds.has(comment.id),
           user: {
             id: profile.id,
             username: profile.username,
@@ -108,6 +128,49 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
       alert('Failed to post comment. Check console for details.');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function toggleCommentLike(commentId: string, currentlyLiked: boolean) {
+    try {
+      if (currentlyLiked) {
+        const { error } = await supabase
+          .from('comment_likes')
+          .delete()
+          .eq('user_id', currentUserId)
+          .eq('comment_id', commentId);
+
+        if (error) {
+          console.error('Unlike comment error:', error);
+          return;
+        }
+
+        setComments(prev => prev.map(comment =>
+          comment.id === commentId
+            ? { ...comment, is_liked: false, like_count: Math.max(0, comment.like_count - 1) }
+            : comment
+        ));
+      } else {
+        const { error } = await supabase
+          .from('comment_likes')
+          .insert({
+            user_id: currentUserId,
+            comment_id: commentId
+          });
+
+        if (error && !error.message.includes('duplicate')) {
+          console.error('Like comment error:', error);
+          return;
+        }
+
+        setComments(prev => prev.map(comment =>
+          comment.id === commentId
+            ? { ...comment, is_liked: true, like_count: comment.like_count + 1 }
+            : comment
+        ));
+      }
+    } catch (error) {
+      console.error('Toggle comment like failed:', error);
     }
   }
 
@@ -207,7 +270,8 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
                     <span className="text-white/40 text-xs">
                       {formatTimeAgo(comment.created_at)}
                     </span>
-                    {comment.user.id === currentUserId && (
+                    {/* Delete button - show for comment owner OR post owner */}
+                    {(comment.user.id === currentUserId || postOwnerId === currentUserId) && (
                       <button
                         onClick={() => deleteComment(comment.id)}
                         className="ml-auto text-red-400 hover:text-red-300 text-xs font-bold"
@@ -216,9 +280,30 @@ export default function CommentsModal({ postId, postOwnerId, isOpen, onClose, cu
                       </button>
                     )}
                   </div>
-                  <p className="text-white/90 text-sm leading-relaxed break-words">
+                  <p className="text-white/90 text-sm leading-relaxed break-words mb-2">
                     {comment.comment_text}
                   </p>
+
+                  {/* Like Button */}
+                  <button
+                    onClick={() => toggleCommentLike(comment.id, comment.is_liked)}
+                    className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill={comment.is_liked ? 'currentColor' : 'none'}
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                    {comment.like_count > 0 && (
+                      <span className="text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>
+                        {comment.like_count}
+                      </span>
+                    )}
+                  </button>
                 </div>
               </div>
             ))
