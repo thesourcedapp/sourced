@@ -64,8 +64,7 @@ export default function MyPostsPage() {
     if (data) setPosts(data.map(p => ({ ...p, items: p.feed_post_items || [] })));
   }
 
-  function togglePostSelection(postId: string, e: React.MouseEvent) {
-    e.stopPropagation();
+  function togglePostSelection(postId: string) {
     setSelectedPosts(prev => {
       const newSet = new Set(prev);
       if (newSet.has(postId)) newSet.delete(postId);
@@ -211,7 +210,7 @@ export default function MyPostsPage() {
                     <input
                       type="checkbox"
                       checked={selectedPosts.has(post.id)}
-                      onChange={(e) => togglePostSelection(post.id, e)}
+                      onChange={() => togglePostSelection(post.id)}
                       onClick={(e) => e.stopPropagation()}
                       className="w-5 h-5 cursor-pointer"
                     />
