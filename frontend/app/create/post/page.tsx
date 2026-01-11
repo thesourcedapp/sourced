@@ -1,4 +1,4 @@
-"use client";
+ "use client";
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
@@ -31,6 +31,8 @@ export default function MyPostsPage() {
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteCount, setDeleteCount] = useState(0);
+  const [editMode, setEditMode] = useState(false);
+  const [editingItemsPostId, setEditingItemsPostId] = useState<string | null>(null);
 
   useEffect(() => {
     loadUser();
@@ -142,10 +144,11 @@ export default function MyPostsPage() {
             <div className="flex items-center justify-between mb-2">
               <h1 className="text-4xl md:text-5xl font-black text-white" style={{ fontFamily: 'Archivo Black' }}>MY POSTS</h1>
               <button
-                onClick={() => router.push('/feed')}
-                className="text-white/60 hover:text-white text-sm"
+                onClick={() => router.push('/create/post')}
+                className="text-white/60 hover:text-white text-sm font-black"
+                style={{ fontFamily: 'Bebas Neue' }}
               >
-                ← BACK TO FEED
+                ← BACK
               </button>
             </div>
             <p className="text-white/60 text-sm" style={{ fontFamily: 'Bebas Neue' }}>{posts.length} Posts</p>
@@ -161,7 +164,20 @@ export default function MyPostsPage() {
               + CREATE POST
             </button>
 
-            {selectedPosts.size > 0 && (
+            <button
+              onClick={() => {
+                setEditMode(!editMode);
+                if (editMode) {
+                  setSelectedPosts(new Set());
+                }
+              }}
+              className={`px-6 py-2 ${editMode ? 'bg-white text-black' : 'border-2 border-white text-white'} hover:bg-white hover:text-black transition-all text-xs tracking-wider font-black rounded-lg`}
+              style={{ fontFamily: 'Bebas Neue' }}
+            >
+              {editMode ? 'DONE' : 'EDIT POSTS'}
+            </button>
+
+            {editMode && selectedPosts.size > 0 && (
               <>
                 <button
                   onClick={selectAll}
@@ -198,26 +214,45 @@ export default function MyPostsPage() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-1 md:gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {posts.map(post => (
                 <div
                   key={post.id}
-                  className="relative aspect-square cursor-pointer post-card-hover group"
-                  onClick={() => handlePostClick(post.id)}
+                  className="relative cursor-pointer post-card-hover group bg-black rounded-2xl overflow-hidden border border-white/10"
+                  style={{ aspectRatio: '3/4' }}
+                  onClick={() => !editMode && handlePostClick(post.id)}
                 >
-                  {/* Selection Checkbox - Top Left */}
-                  <div className="absolute top-2 left-2 z-10">
-                    <input
-                      type="checkbox"
-                      checked={selectedPosts.has(post.id)}
-                      onChange={() => togglePostSelection(post.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-5 h-5 cursor-pointer"
-                    />
-                  </div>
+                  {/* Selection Checkbox - Only show in edit mode */}
+                  {editMode && (
+                    <div className="absolute top-3 left-3 z-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedPosts.has(post.id)}
+                        onChange={() => togglePostSelection(post.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-6 h-6 cursor-pointer"
+                      />
+                    </div>
+                  )}
+
+                  {/* Edit Items Button - Only show in edit mode */}
+                  {editMode && post.items.length > 0 && (
+                    <div className="absolute top-3 right-3 z-10">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingItemsPostId(post.id);
+                        }}
+                        className="px-3 py-1.5 bg-white text-black hover:bg-white/90 transition-all text-xs font-black rounded-lg"
+                        style={{ fontFamily: 'Bebas Neue' }}
+                      >
+                        EDIT ITEMS
+                      </button>
+                    </div>
+                  )}
 
                   {/* Post Image */}
-                  <div className="w-full h-full bg-black overflow-hidden">
+                  <div className="w-full h-full overflow-hidden">
                     <img
                       src={post.image_url}
                       alt=""
@@ -225,32 +260,34 @@ export default function MyPostsPage() {
                     />
                   </div>
 
-                  {/* Hover Overlay - Instagram Style */}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6">
-                    <div className="flex items-center gap-2 text-white">
-                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                      </svg>
-                      <span className="text-lg font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.like_count}</span>
+                  {/* Hover Overlay */}
+                  {!editMode && (
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6">
+                      <div className="flex items-center gap-2 text-white">
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                        </svg>
+                        <span className="text-lg font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.like_count}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-white">
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+                        </svg>
+                        <span className="text-lg font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.comment_count}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-white">
-                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
-                      </svg>
-                      <span className="text-lg font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.comment_count}</span>
-                    </div>
-                  </div>
+                  )}
 
-                  {/* Tagged Items Indicator */}
-                  {post.items.length > 0 && (
-                    <div className="absolute top-2 right-2 bg-black/80 backdrop-blur-sm text-white px-2 py-1 rounded-full text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>
+                  {/* Tagged Items Indicator - Bottom right */}
+                  {post.items.length > 0 && !editMode && (
+                    <div className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-sm text-white px-2.5 py-1 rounded-full text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>
                       {post.items.length} ITEM{post.items.length !== 1 ? 'S' : ''}
                     </div>
                   )}
 
                   {/* Caption Preview (on hover, bottom) */}
-                  {post.caption && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {post.caption && !editMode && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-3 opacity-0 group-hover:opacity-100 transition-opacity">
                       <p className="text-white text-xs line-clamp-2">
                         {post.caption}
                       </p>

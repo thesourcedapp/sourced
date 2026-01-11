@@ -211,11 +211,11 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
         <div className="text-center">
           <h1 className="text-4xl font-black text-white mb-4" style={{ fontFamily: 'Archivo Black' }}>POST NOT FOUND</h1>
           <button
-            onClick={() => router.push('/feed')}
-            className="px-8 py-3 bg-white text-black hover:bg-black hover:text-white border-2 border-white transition-all font-black tracking-wider"
+            onClick={() => router.back()}
+            className="px-8 py-3 bg-white text-black hover:bg-black hover:text-white border-2 border-white transition-all font-black tracking-wider rounded-lg"
             style={{ fontFamily: 'Bebas Neue' }}
           >
-            GO TO FEED
+            GO BACK
           </button>
         </div>
       </div>
@@ -288,7 +288,7 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
         <div className="absolute top-0 left-0 right-0 z-30 pt-3 pb-3">
           <div className="flex items-center justify-between px-4">
             <button
-              onClick={() => router.push('/feed')}
+              onClick={() => router.back()}
               className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
