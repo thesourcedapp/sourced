@@ -181,7 +181,7 @@ export default function FeedPage() {
       if (currentUserId && itemsData) {
         const itemIds = itemsData.map(item => item.id);
         const { data: likedItemsData } = await supabase
-          .from('liked_items')
+          .from('liked_feed_post_items')
           .select('item_id')
           .eq('user_id', currentUserId)
           .in('item_id', itemIds);
@@ -366,7 +366,7 @@ export default function FeedPage() {
     try {
       if (currentlyLiked) {
         const { error } = await supabase
-          .from('liked_items')
+          .from('liked_feed_post_items')
           .delete()
           .eq('user_id', currentUserId)
           .eq('item_id', itemId);
@@ -377,7 +377,7 @@ export default function FeedPage() {
         }
       } else {
         const { error } = await supabase
-          .from('liked_items')
+          .from('liked_feed_post_items')
           .insert({
             user_id: currentUserId,
             item_id: itemId
