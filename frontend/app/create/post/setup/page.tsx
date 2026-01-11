@@ -634,18 +634,11 @@ export default function CreatePostPage() {
                   boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
                 }}
               >
-                <div className="relative w-full h-full">
+                <div className="relative w-full h-full bg-black">
                   <img
                     src={imagePreview}
                     alt="Preview"
-                    className="absolute"
-                    style={{
-                      transform: `translate(${crop.x}px, ${crop.y}px) scale(${zoom})`,
-                      transformOrigin: 'center center',
-                      objectFit: 'contain',
-                      maxWidth: 'none',
-                      height: '100%'
-                    }}
+                    className="w-full h-full object-cover"
                   />
 
                   {/* Shop Preview Overlay */}
@@ -873,24 +866,36 @@ export default function CreatePostPage() {
                     </form>
                   )}
 
-                  {/* Items Grid */}
-                  {items.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2">
-                      {items.map((item, idx) => (
-                        <div key={item.temp_id} className="relative">
-                          <button
-                            onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                            className="absolute -top-1 -right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center hover:bg-red-500 transition-all z-10 text-xs"
-                          >
-                            ✕
-                          </button>
-                          <div className="aspect-square rounded-lg overflow-hidden border border-white/20">
-                            <img src={item.image_url} className="w-full h-full object-cover" />
-                          </div>
+                  {/* Items Grid with Placeholders */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* First 6 slots - either filled items or empty placeholders */}
+                    {[...Array(6)].map((_, idx) => {
+                      const item = items[idx];
+                      return (
+                        <div key={idx} className="relative">
+                          {item ? (
+                            <>
+                              <button
+                                onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                                className="absolute -top-1 -right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center hover:bg-red-500 transition-all z-10 text-xs shadow-lg"
+                              >
+                                ✕
+                              </button>
+                              <div className="aspect-square rounded-lg overflow-hidden border-2 border-white/20 bg-neutral-900">
+                                <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                              </div>
+                            </>
+                          ) : (
+                            <div className="aspect-square rounded-lg border-2 border-dashed border-white/20 bg-neutral-900/50 flex items-center justify-center">
+                              <svg className="w-8 h-8 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                              </svg>
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
