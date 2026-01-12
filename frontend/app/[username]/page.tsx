@@ -5,7 +5,9 @@ import { supabase } from "@/lib/supabase/client";
 import { useRouter, useParams } from "next/navigation";
 import Head from "next/head";
 import Cropper from 'react-easy-crop';
-import { Point, Area } from 'react-easy-crop/types';
+
+type Point = { x: number; y: number };
+type Area = { x: number; y: number; width: number; height: number };
 
 type ProfileData = {
   id: string;
