@@ -425,17 +425,29 @@ function DiscoverContent() {
 
       if (error) throw error;
 
-      let likedItemIds: Set<string> = new Set();
-      if (currentUserId) {
-        const { data: likedData } = await supabase
-          .from('liked_items')
-          .select('item_id')
-          .eq('user_id', currentUserId);
+              // ✅ UPDATED: Include both catalog items and feed post items in likes
+        let likedItemIds: Set<string> = new Set();
+        if (currentUserId) {
+          // Get liked catalog items
+          const { data: catalogLikedData } = await supabase
+            .from('liked_items')
+            .select('item_id')
+            .eq('user_id', currentUserId);
 
-        if (likedData) {
-          likedItemIds = new Set(likedData.map(like => like.item_id));
+          // Get liked feed post items
+          const { data: feedLikedData } = await supabase
+            .from('liked_feed_post_items')
+            .select('item_id')
+            .eq('user_id', currentUserId);
+
+          // Combine both types of likes
+          if (catalogLikedData) {
+            catalogLikedData.forEach(like => likedItemIds.add(like.item_id));
+          }
+          if (feedLikedData) {
+            feedLikedData.forEach(like => likedItemIds.add(like.item_id));
+          }
         }
-      }
 
       let formattedItems = data.map((item: any) => ({
         ...item,
@@ -713,41 +725,52 @@ function DiscoverContent() {
     }
   }
 
-  async function toggleLike(itemId: string, currentlyLiked: boolean) {
-    if (!currentUserId || !isOnboarded) {
-      setShowLoginMessage(true);
-      return;
-    }
-
-    try {
-      if (currentlyLiked) {
-        await supabase.from('liked_items').delete()
-          .eq('user_id', currentUserId)
-          .eq('item_id', itemId);
-      } else {
-        await supabase.from('liked_items')
-          .insert({ user_id: currentUserId, item_id: itemId });
-      }
-
-      setItems(prevItems =>
-        prevItems.map(item =>
-          item.id === itemId
-            ? { ...item, is_liked: !currentlyLiked, like_count: item.like_count + (currentlyLiked ? -1 : 1) }
-            : item
-        )
-      );
-
-      if (expandedItem?.id === itemId) {
-        setExpandedItem(prev => prev ? {
-          ...prev,
-          is_liked: !currentlyLiked,
-          like_count: prev.like_count + (currentlyLiked ? -1 : 1)
-        } : null);
-      }
-    } catch (error) {
-      console.error('Error toggling like:', error);
-    }
+  // ✅ UPDATED: Handle liking for both catalog items and feed post items
+async function toggleLike(itemId: string, currentlyLiked: boolean) {
+  if (!currentUserId || !isOnboarded) {
+    setShowLoginMessage(true);
+    return;
   }
+
+  try {
+    // Check if this is a catalog item or feed post item
+    const { data: catalogItem } = await supabase
+      .from('catalog_items')
+      .select('id')
+      .eq('id', itemId)
+      .single();
+
+    const isCatalogItem = !!catalogItem;
+    const table = isCatalogItem ? 'liked_items' : 'liked_feed_post_items';
+
+    if (currentlyLiked) {
+      await supabase.from(table).delete()
+        .eq('user_id', currentUserId)
+        .eq('item_id', itemId);
+    } else {
+      await supabase.from(table)
+        .insert({ user_id: currentUserId, item_id: itemId });
+    }
+
+    setItems(prevItems =>
+      prevItems.map(item =>
+        item.id === itemId
+          ? { ...item, is_liked: !currentlyLiked, like_count: item.like_count + (currentlyLiked ? -1 : 1) }
+          : item
+      )
+    );
+
+    if (expandedItem?.id === itemId) {
+      setExpandedItem(prev => prev ? {
+        ...prev,
+        is_liked: !currentlyLiked,
+        like_count: prev.like_count + (currentlyLiked ? -1 : 1)
+      } : null);
+    }
+  } catch (error) {
+    console.error('Error toggling like:', error);
+  }
+}
 
   async function toggleBookmark(catalogId: string, currentlyBookmarked: boolean) {
     if (!currentUserId || !isOnboarded) {

@@ -535,75 +535,112 @@ export default function ProfilePage() {
     if (!profileId) return;
 
     try {
-      const { data, error } = await supabase
+      // Load liked catalog items
+      const { data: catalogLikes, error: catalogError } = await supabase
         .from('liked_items')
         .select('item_id, created_at')
         .eq('user_id', profileId);
 
-      if (error || !data) {
-        console.error('Error loading likes:', error);
+      // Load liked feed post items
+      const { data: feedPostLikes, error: feedError } = await supabase
+        .from('liked_feed_post_items')
+        .select('item_id, created_at')
+        .eq('user_id', profileId);
+
+      if (catalogError || feedError) {
+        console.error('Error loading likes:', catalogError || feedError);
         return;
       }
 
-      const itemIds = data.map(l => l.item_id);
+      // Combine both types of liked items
+      const catalogItemIds = catalogLikes?.map(l => l.item_id) || [];
+      const feedItemIds = feedPostLikes?.map(l => l.item_id) || [];
 
-      if (itemIds.length === 0) {
-        setLikedItems([]);
-        return;
+      const transformedItems: LikedItem[] = [];
+
+      // Process catalog items
+      if (catalogItemIds.length > 0) {
+        const { data: catalogItemsData, error: catalogItemsError } = await supabase
+          .from('catalog_items')
+          .select('id, title, image_url, product_url, price, seller, catalog_id, like_count')
+          .in('id', catalogItemIds);
+
+        if (!catalogItemsError && catalogItemsData) {
+          const catalogIds = [...new Set(catalogItemsData.map(i => i.catalog_id))];
+          const { data: catalogsData } = await supabase
+            .from('catalogs')
+            .select('id, name, owner_id, visibility, slug')
+            .in('id', catalogIds);
+
+          const catalogsMap = new Map(catalogsData?.map(c => [c.id, c]) || []);
+
+          const ownerIds = [...new Set(catalogsData?.map(c => c.owner_id) || [])];
+          const { data: ownersData } = await supabase
+            .from('profiles')
+            .select('id, username')
+            .in('id', ownerIds);
+
+          const ownersMap = new Map(ownersData?.map(o => [o.id, o]) || []);
+
+          catalogItemsData
+            .filter(item => {
+              const catalog = catalogsMap.get(item.catalog_id);
+              return catalog?.visibility === 'public';
+            })
+            .forEach(item => {
+              const catalog = catalogsMap.get(item.catalog_id);
+              const owner = catalog ? ownersMap.get(catalog.owner_id) : null;
+              const like = catalogLikes?.find(l => l.item_id === item.id);
+
+              transformedItems.push({
+                id: item.id,
+                title: item.title,
+                image_url: item.image_url,
+                product_url: item.product_url,
+                price: item.price,
+                seller: item.seller,
+                catalog_id: item.catalog_id,
+                catalog_name: catalog?.name || 'Unknown',
+                catalog_owner: owner?.username || 'unknown',
+                catalog_slug: catalog?.slug || '',
+                like_count: item.like_count || 0,
+                created_at: like?.created_at || '',
+              });
+            });
+        }
       }
 
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('catalog_items')
-        .select('id, title, image_url, product_url, price, seller, catalog_id, like_count')
-        .in('id', itemIds);
+      // Process feed post items
+      if (feedItemIds.length > 0) {
+        const { data: feedItemsData, error: feedItemsError } = await supabase
+          .from('feed_post_items')
+          .select('id, title, image_url, product_url, price, seller, feed_post_id, like_count')
+          .in('id', feedItemIds);
 
-      if (itemsError || !itemsData) {
-        console.error('Error loading item details:', itemsError);
-        return;
+        if (!feedItemsError && feedItemsData) {
+          feedItemsData.forEach(item => {
+            const like = feedPostLikes?.find(l => l.item_id === item.id);
+
+            transformedItems.push({
+              id: item.id,
+              title: item.title,
+              image_url: item.image_url,
+              product_url: item.product_url,
+              price: item.price,
+              seller: item.seller,
+              catalog_id: item.feed_post_id, // Using feed_post_id as catalog_id
+              catalog_name: 'Feed Post',
+              catalog_owner: 'feed',
+              catalog_slug: item.feed_post_id,
+              like_count: item.like_count || 0,
+              created_at: like?.created_at || '',
+            });
+          });
+        }
       }
 
-      const catalogIds = [...new Set(itemsData.map(i => i.catalog_id))];
-      const { data: catalogsData } = await supabase
-        .from('catalogs')
-        .select('id, name, owner_id, visibility, slug')
-        .in('id', catalogIds);
-
-      const catalogsMap = new Map(catalogsData?.map(c => [c.id, c]) || []);
-
-      const ownerIds = [...new Set(catalogsData?.map(c => c.owner_id) || [])];
-      const { data: ownersData } = await supabase
-        .from('profiles')
-        .select('id, username')
-        .in('id', ownerIds);
-
-      const ownersMap = new Map(ownersData?.map(o => [o.id, o]) || []);
-
-      const transformedItems: LikedItem[] = itemsData
-        .filter(item => {
-          const catalog = catalogsMap.get(item.catalog_id);
-          return catalog?.visibility === 'public';
-        })
-        .map(item => {
-          const catalog = catalogsMap.get(item.catalog_id);
-          const owner = catalog ? ownersMap.get(catalog.owner_id) : null;
-          const like = data.find(l => l.item_id === item.id);
-
-          return {
-            id: item.id,
-            title: item.title,
-            image_url: item.image_url,
-            product_url: item.product_url,
-            price: item.price,
-            seller: item.seller,
-            catalog_id: item.catalog_id,
-            catalog_name: catalog?.name || 'Unknown',
-            catalog_owner: owner?.username || 'unknown',
-            catalog_slug: catalog?.slug || '',
-            like_count: item.like_count || 0,
-            created_at: like?.created_at || '',
-          };
-        })
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      // Sort all items by created_at (most recent first)
+      transformedItems.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       setLikedItems(transformedItems);
     } catch (error) {
