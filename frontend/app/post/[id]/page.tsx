@@ -13,6 +13,7 @@ type FeedPost = {
   music_preview_url: string | null;
   like_count: number;
   is_liked: boolean;
+  is_saved: boolean;
   comment_count: number;
   owner: {
     id: string;
@@ -91,6 +92,7 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
 
       // Check if current user liked this post
       let isLiked = false;
+      let isSaved = false;
       if (currentUserId) {
         const { data: likedData } = await supabase
           .from('liked_feed_posts')
@@ -99,6 +101,14 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
           .eq('feed_post_id', postId)
           .single();
         isLiked = !!likedData;
+
+        const { data: savedData } = await supabase
+          .from('saved_feed_posts')
+          .select('feed_post_id')
+          .eq('user_id', currentUserId)
+          .eq('feed_post_id', postId)
+          .single();
+        isSaved = !!savedData;
       }
 
       // Get items for this post
@@ -112,7 +122,7 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
       if (currentUserId && itemsData) {
         const itemIds = itemsData.map(item => item.id);
         const { data: likedItemsData } = await supabase
-          .from('liked_items')
+          .from('liked_feed_post_items')
           .select('item_id')
           .eq('user_id', currentUserId)
           .in('item_id', itemIds);
@@ -137,6 +147,7 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
         music_preview_url: postData.music_preview_url,
         like_count: postData.like_count,
         is_liked: isLiked,
+        is_saved: isSaved,
         comment_count: postData.comment_count || 0,
         owner: {
           id: owner.id,
@@ -193,6 +204,85 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
       return;
     }
     setShowCommentsModal(true);
+  }
+
+  async function toggleSave() {
+    if (!post || !currentUserId || !isOnboarded) {
+      setToastMessage('Please log in to save posts');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+      return;
+    }
+
+    try {
+      if (post.is_saved) {
+        await supabase
+          .from('saved_feed_posts')
+          .delete()
+          .eq('user_id', currentUserId)
+          .eq('feed_post_id', post.id);
+
+        setPost(prev => prev ? { ...prev, is_saved: false } : null);
+        setToastMessage('Post removed from saved');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2000);
+      } else {
+        await supabase
+          .from('saved_feed_posts')
+          .insert({
+            user_id: currentUserId,
+            feed_post_id: post.id
+          });
+
+        setPost(prev => prev ? { ...prev, is_saved: true } : null);
+        setToastMessage('Post saved!');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2000);
+      }
+    } catch (error) {
+      console.error('Toggle save failed:', error);
+    }
+  }
+
+  async function toggleItemLike(itemId: string, currentlyLiked: boolean) {
+    if (!post || !currentUserId || !isOnboarded) {
+      setToastMessage('Please log in to like items');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+      return;
+    }
+
+    try {
+      if (currentlyLiked) {
+        await supabase
+          .from('liked_feed_post_items')
+          .delete()
+          .eq('user_id', currentUserId)
+          .eq('item_id', itemId);
+      } else {
+        await supabase
+          .from('liked_feed_post_items')
+          .insert({
+            user_id: currentUserId,
+            item_id: itemId
+          });
+      }
+
+      setPost(prev => prev ? {
+        ...prev,
+        items: prev.items.map(item =>
+          item.id === itemId
+            ? {
+                ...item,
+                is_liked: !currentlyLiked,
+                like_count: currentlyLiked ? Math.max(0, item.like_count - 1) : item.like_count + 1
+              }
+            : item
+        )
+      } : null);
+    } catch (error) {
+      console.error('Toggle item like failed:', error);
+    }
   }
 
   if (loading) {
@@ -359,12 +449,31 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
                           style={{ animationDelay: `${idx * 0.05}s` }}
                         >
                           <div
-                            className="aspect-square bg-neutral-900 overflow-hidden cursor-pointer"
+                            className="aspect-square bg-neutral-900 overflow-hidden cursor-pointer relative"
                             onClick={() => {
                               if (item.product_url) window.open(item.product_url, '_blank');
                             }}
                           >
                             <img src={item.image_url} alt={item.title} className="w-full h-full object-cover hover:scale-105 transition-transform" />
+
+                            {/* Like Button Overlay */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleItemLike(item.id, item.is_liked);
+                              }}
+                              className="absolute top-2 right-2 w-8 h-8 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
+                            >
+                              <svg
+                                className="w-4 h-4 text-white"
+                                fill={item.is_liked ? 'currentColor' : 'none'}
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                              </svg>
+                            </button>
                           </div>
 
                           <div className="p-3 bg-black border-t border-white/20">
@@ -376,14 +485,33 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
                             <h3 className="text-xs font-black tracking-wide uppercase leading-tight text-white mb-2 line-clamp-2" style={{ fontFamily: 'Bebas Neue' }}>
                               {item.title}
                             </h3>
-                            {item.price && (
-                              <p className="text-base font-black text-white mb-3" style={{ fontFamily: 'Archivo Black' }}>
-                                ${item.price}
-                              </p>
-                            )}
+
+                            <div className="flex items-center justify-between mb-3">
+                              {item.price && (
+                                <p className="text-base font-black text-white" style={{ fontFamily: 'Archivo Black' }}>
+                                  ${item.price}
+                                </p>
+                              )}
+
+                              {/* Like Count */}
+                              {item.like_count > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <svg className="w-3 h-3 text-white/60" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                                  </svg>
+                                  <span className="text-xs text-white/60 font-black" style={{ fontFamily: 'Bebas Neue' }}>
+                                    {item.like_count}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
                             {item.product_url && (
                               <button
-                                onClick={() => window.open(item.product_url!, '_blank')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(item.product_url!, '_blank');
+                                }}
                                 className="w-full py-2 border border-white/40 hover:bg-white hover:text-black transition-all text-xs font-black text-white"
                                 style={{ fontFamily: 'Bebas Neue' }}
                               >
@@ -450,6 +578,43 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
 
             <button onClick={handleComment} className="flex items-center gap-2 text-white hover:scale-110 transition-transform">
               <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.comment_count}</span>
+            </button>
+
+            <button
+              onClick={() => {
+                const shareUrl = `${window.location.origin}/post/${post.id}`;
+                if (navigator.share) {
+                  navigator.share({
+                    title: `@${post.owner.username} on Sourced`,
+                    url: shareUrl
+                  });
+                } else {
+                  navigator.clipboard.writeText(shareUrl);
+                  setToastMessage('Link copied!');
+                  setShowToast(true);
+                  setTimeout(() => setShowToast(false), 2000);
+                }
+              }}
+              className="flex items-center gap-2 text-white hover:scale-110 transition-transform"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4m0 0L8 6m4-4v13" />
+              </svg>
+            </button>
+
+            {/* Save/Bookmark Button */}
+            <button
+              onClick={toggleSave}
+              className="ml-auto flex items-center gap-2 text-white hover:scale-110 transition-transform"
+            >
+              <svg className="w-6 h-6" fill={post.is_saved ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+            </button>
+          </div>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
               <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.comment_count}</span>

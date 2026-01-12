@@ -43,6 +43,7 @@ export default function FeedPage() {
 
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [isFading, setIsFading] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [viewMode, setViewMode] = useState<'discover' | 'shop'>('discover');
@@ -237,28 +238,28 @@ export default function FeedPage() {
   function nextPost() {
     if (currentIndex < posts.length - 1 && !isAnimating) {
       setIsAnimating(true);
-      setSwipeDirection('up');
+      setIsFading(true);
 
       setTimeout(() => {
         setViewMode('discover');
         setCurrentIndex(prev => prev + 1);
-        setSwipeDirection(null);
+        setIsFading(false);
         setTimeout(() => setIsAnimating(false), 50);
-      }, 300);
+      }, 200);
     }
   }
 
   function prevPost() {
     if (currentIndex > 0 && !isAnimating) {
       setIsAnimating(true);
-      setSwipeDirection('down');
+      setIsFading(true);
 
       setTimeout(() => {
         setViewMode('discover');
         setCurrentIndex(prev => prev - 1);
-        setSwipeDirection(null);
+        setIsFading(false);
         setTimeout(() => setIsAnimating(false), 50);
-      }, 300);
+      }, 200);
     }
   }
 
@@ -493,11 +494,10 @@ export default function FeedPage() {
 
   const currentPost = posts[currentIndex];
 
-  // Get animation class based on swipe direction
+  // Get animation class based on fade state
   const getAnimationClass = () => {
-    if (swipeDirection === 'up') return 'swipe-up-exit';
-    if (swipeDirection === 'down') return 'swipe-down-exit';
-    return '';
+    if (isFading) return 'fade-out';
+    return 'fade-in-content';
   };
 
   // Safety check
@@ -541,31 +541,19 @@ export default function FeedPage() {
           to { opacity: 1; }
         }
 
+        @keyframes fadeOut {
+          from { opacity: 1; }
+          to { opacity: 0; }
+        }
+
+        @keyframes fadeInContent {
+          from { opacity: 0; transform: scale(0.98); }
+          to { opacity: 1; transform: scale(1); }
+        }
+
         @keyframes scroll {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
-        }
-
-        @keyframes swipeUp {
-          0% {
-            transform: translateY(0) scale(1) rotateX(0deg);
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(-100vh) scale(0.85) rotateX(8deg);
-            opacity: 0;
-          }
-        }
-
-        @keyframes swipeDown {
-          0% {
-            transform: translateY(0) scale(1) rotateX(0deg);
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(100vh) scale(0.85) rotateX(-8deg);
-            opacity: 0;
-          }
         }
 
         .slide-up {
@@ -576,16 +564,16 @@ export default function FeedPage() {
           animation: fadeIn 0.3s ease-out;
         }
 
+        .fade-out {
+          animation: fadeOut 0.2s ease-out forwards;
+        }
+
+        .fade-in-content {
+          animation: fadeInContent 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
         .animate-scroll {
           animation: scroll 20s linear infinite;
-        }
-
-        .swipe-up-exit {
-          animation: swipeUp 0.3s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
-        }
-
-        .swipe-down-exit {
-          animation: swipeDown 0.3s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
         }
 
         .scrollbar-hide {
