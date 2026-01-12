@@ -198,6 +198,7 @@ export default function ProfilePage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'catalogs' | 'bookmarks' | 'liked' | 'saved'>('posts');
   const [expandedItem, setExpandedItem] = useState<LikedItem | null>(null);
+  const [expandedLikedItem, setExpandedLikedItem] = useState<LikedItem | null>(null);
 
   // Edit Profile Modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -1590,7 +1591,7 @@ export default function ProfilePage() {
                       >
                         <div
                           className="aspect-square bg-white/5 overflow-hidden cursor-pointer"
-                          onClick={() => item.product_url && window.open(item.product_url, '_blank')}
+                          onClick={() => setExpandedLikedItem(item)}
                         >
                           <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                         </div>
@@ -1611,11 +1612,12 @@ export default function ProfilePage() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                router.push(`/${item.catalog_owner}/${item.catalog_slug}`);
+                                setExpandedLikedItem(item);
                               }}
-                              className="hover:opacity-100 transition-opacity"
+                              className="hover:opacity-100 transition-opacity uppercase tracking-wider font-black"
+                              style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                             >
-                              VIEW CATALOG →
+                              VIEW
                             </button>
                           </div>
                         </div>
@@ -1842,6 +1844,100 @@ export default function ProfilePage() {
 
         {/* Followers/Following Modal - Add back from original */}
         {/* Expanded Item Modal - Add back from original */}
+
+        {/* Expanded Liked Item Modal */}
+        {expandedLikedItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md" onClick={() => setExpandedLikedItem(null)}>
+            <div className="relative w-full max-w-sm md:max-w-3xl max-h-[85vh] md:max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={() => setExpandedLikedItem(null)}
+                className="absolute -top-8 md:-top-12 right-0 text-white text-xs tracking-[0.4em] hover:opacity-50"
+                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+              >
+                [ESC]
+              </button>
+
+              <div className="bg-white border-2 border-white overflow-hidden">
+                <div className="grid md:grid-cols-2 gap-0">
+                  {/* Image */}
+                  <div
+                    className="aspect-square bg-black/5 overflow-hidden cursor-pointer"
+                    onClick={() => {
+                      if (expandedLikedItem.product_url) window.open(expandedLikedItem.product_url, '_blank');
+                    }}
+                  >
+                    <img
+                      src={expandedLikedItem.image_url}
+                      alt={expandedLikedItem.title}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+
+                  {/* Details */}
+                  <div className="p-4 md:p-8 space-y-3 md:space-y-6">
+                    <h2 className="text-xl md:text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                      {expandedLikedItem.title}
+                    </h2>
+
+                    {expandedLikedItem.seller && (
+                      <p className="text-xs md:text-sm tracking-wider opacity-60">
+                        SELLER: {expandedLikedItem.seller}
+                      </p>
+                    )}
+
+                    {expandedLikedItem.price && (
+                      <p className="text-lg md:text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        ${expandedLikedItem.price}
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-2 text-xs tracking-wider opacity-60">
+                      <span>♥ {expandedLikedItem.like_count} likes</span>
+                    </div>
+
+                    <div className="space-y-2 md:space-y-3">
+                      {/* View Product Button */}
+                      {expandedLikedItem.product_url && (
+                        <button
+                          onClick={() => window.open(expandedLikedItem.product_url!, '_blank')}
+                          className="w-full py-2 md:py-3 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-[10px] md:text-xs tracking-[0.4em] font-black"
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                        >
+                          VIEW PRODUCT ↗
+                        </button>
+                      )}
+
+                      {/* Navigate to Source (Post or Catalog) */}
+                      {expandedLikedItem.catalog_name === 'Feed Post' ? (
+                        <button
+                          onClick={() => {
+                            setExpandedLikedItem(null);
+                            router.push(`/post/${expandedLikedItem.catalog_slug}`);
+                          }}
+                          className="w-full py-2 md:py-3 border-2 border-black hover:bg-black hover:text-white transition-all text-[10px] md:text-xs tracking-[0.4em] font-black"
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                        >
+                          VIEW POST →
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setExpandedLikedItem(null);
+                            router.push(`/${expandedLikedItem.catalog_owner}/${expandedLikedItem.catalog_slug}`);
+                          }}
+                          className="w-full py-2 md:py-3 border-2 border-black hover:bg-black hover:text-white transition-all text-[10px] md:text-xs tracking-[0.4em] font-black"
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                        >
+                          VIEW CATALOG: {expandedLikedItem.catalog_name}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
