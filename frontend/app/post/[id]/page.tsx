@@ -288,8 +288,15 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <div className="text-white text-2xl font-black tracking-widest animate-pulse" style={{ fontFamily: 'Bebas Neue' }}>
-          SOURCED
+        <div className="flex flex-col items-center gap-4">
+          <div className="text-white text-3xl font-black tracking-widest animate-pulse" style={{ fontFamily: 'Bebas Neue' }}>
+            SOURCED
+          </div>
+          <div className="flex gap-2">
+            <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
         </div>
       </div>
     );
@@ -407,9 +414,17 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
             }}
           >
             <img
+              key={post.id}
               src={post.image_url}
               alt=""
               className="w-full h-full object-cover"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%'
+              }}
             />
 
             {/* Shop Overlay */}
@@ -556,10 +571,10 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
             {post.items.length > 0 && (
               <button
                 onClick={() => setViewMode(viewMode === 'shop' ? 'discover' : 'shop')}
-                className="px-3 py-2 bg-white/90 backdrop-blur-sm text-black font-black text-[10px] tracking-widest rounded-full hover:bg-white transition-all"
+                className="px-4 py-2 bg-white/95 backdrop-blur-sm text-black font-black text-[11px] tracking-widest rounded-full hover:bg-white hover:scale-105 active:scale-95 transition-all shadow-lg"
                 style={{ fontFamily: 'Bebas Neue' }}
               >
-                SHOP THE LOOK
+                {viewMode === 'shop' ? 'CLOSE' : 'SHOP THE LOOK'}
               </button>
             )}
           </div>
@@ -568,15 +583,15 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
           <div className="w-full max-w-lg flex items-center gap-5 mb-2">
             <button
               onClick={toggleLike}
-              className="flex items-center gap-2 text-white hover:scale-110 transition-transform"
+              className="flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform"
             >
-              <svg className="w-7 h-7" fill={post.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-7 h-7 transition-all" fill={post.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
               </svg>
               <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.like_count}</span>
             </button>
 
-            <button onClick={handleComment} className="flex items-center gap-2 text-white hover:scale-110 transition-transform">
+            <button onClick={handleComment} className="flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform">
               <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
@@ -598,7 +613,7 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
                   setTimeout(() => setShowToast(false), 2000);
                 }
               }}
-              className="flex items-center gap-2 text-white hover:scale-110 transition-transform"
+              className="flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform"
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4m0 0L8 6m4-4v13" />
@@ -608,9 +623,9 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
             {/* Save/Bookmark Button */}
             <button
               onClick={toggleSave}
-              className="ml-auto flex items-center gap-2 text-white hover:scale-110 transition-transform"
+              className="ml-auto flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform"
             >
-              <svg className="w-6 h-6" fill={post.is_saved ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-6 h-6 transition-all" fill={post.is_saved ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
               </svg>
             </button>

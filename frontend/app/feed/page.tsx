@@ -35,91 +35,74 @@ type FeedPost = {
 
 export default function FeedPage() {
   const router = useRouter();
-  const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentPost, setCurrentPost] = useState<FeedPost | null>(null);
+  const [nextPostData, setNextPostData] = useState<FeedPost | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null | undefined>(undefined);
   const [isOnboarded, setIsOnboarded] = useState(false);
 
-  const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isFading, setIsFading] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [viewMode, setViewMode] = useState<'discover' | 'shop'>('discover');
-  const [isMuted, setIsMuted] = useState(false);
-  const [failedAudioPosts, setFailedAudioPosts] = useState<Set<string>>(new Set());
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
 
+  // Algorithm state
+  const [seenPostIds, setSeenPostIds] = useState<Set<string>>(new Set());
+  const [postHistory, setPostHistory] = useState<FeedPost[]>([]);
+  const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
+
+  // Track time spent on post
+  const postStartTime = useRef<number>(Date.now());
+  const hasInteracted = useRef<boolean>(false);
+
   useEffect(() => {
     loadCurrentUser();
-    loadFeedPosts();
   }, []);
 
   useEffect(() => {
-    if (currentUserId && posts.length > 0 && posts[currentIndex]) {
-      // Refresh likes for current post when it changes
-      refreshCurrentPostLikes();
+    console.log('🎯 currentUserId changed:', currentUserId);
+    // Load feed for both logged-in users AND guests
+    if (currentUserId !== undefined) {
+      console.log('✅ Loading initial post (user:', currentUserId || 'guest', ')');
+      loadInitialPost();
+    } else {
+      console.log('⏳ Auth not checked yet...');
     }
-  }, [currentUserId, currentIndex]);
+  }, [currentUserId]);
 
-  async function refreshCurrentPostLikes() {
-    if (!currentUserId || posts.length === 0 || !posts[currentIndex]) return;
-
-    try {
-      const currentPostId = posts[currentIndex].id;
-
-      // Check if current post is liked
-      const { data: likedData } = await supabase
-        .from('liked_feed_posts')
-        .select('feed_post_id')
-        .eq('user_id', currentUserId)
-        .eq('feed_post_id', currentPostId)
-        .single();
-
-      // Update only the current post
-      setPosts(prev => prev.map(post =>
-        post.id === currentPostId
-          ? { ...post, is_liked: !!likedData }
-          : post
-      ));
-    } catch (error) {
-      // If no data found, post is not liked - that's fine
-      console.log('Post not liked');
-    }
-  }
-
+  // Pre-load next post when current post loads
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isAnimating) return;
-      if (e.key === 'ArrowDown') nextPost();
-      if (e.key === 'ArrowUp') prevPost();
-    };
+    if (currentPost && !nextPostData && !isAnimating) {
+      preloadNextPost();
+    }
+  }, [currentPost, nextPostData, isAnimating]);
 
-    const handleWheel = (e: WheelEvent) => {
-      if (isAnimating) return;
-      if (Math.abs(e.deltaY) > 50) {
-        if (e.deltaY > 0) {
-          nextPost();
-        } else {
-          prevPost();
+  // Track post view time
+  useEffect(() => {
+    if (currentPost) {
+      postStartTime.current = Date.now();
+      hasInteracted.current = false;
+
+      return () => {
+        const timeSpent = Date.now() - postStartTime.current;
+        if (timeSpent > 1000) {
+          logPostInteraction(currentPost.id, timeSpent);
         }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('wheel', handleWheel, { passive: true });
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('wheel', handleWheel);
-    };
-  }, [currentIndex, posts.length, isAnimating]);
+      };
+    }
+  }, [currentPost?.id]);
 
   async function loadCurrentUser() {
+    console.log('🔐 Loading current user...');
     const { data: { user } } = await supabase.auth.getUser();
+    console.log('👤 User from Supabase:', user);
+
     if (user) {
+      console.log('✅ User authenticated:', user.id);
       setCurrentUserId(user.id);
       const { data: profile } = await supabase
         .from('profiles')
@@ -127,163 +110,224 @@ export default function FeedPage() {
         .eq('id', user.id)
         .single();
       setIsOnboarded(profile?.is_onboarded || false);
+      console.log('📋 Onboarded status:', profile?.is_onboarded);
+    } else {
+      console.log('❌ No user - guest mode');
+      setCurrentUserId(null);
+      setIsOnboarded(false);
     }
   }
 
-  async function loadFeedPosts() {
+  async function loadInitialPost() {
+    console.log('🔄 Loading initial post...');
+    setLoading(true);
+    const post = await fetchNextPost(true);
+    console.log('📦 Fetched post:', post);
+    if (post) {
+      setCurrentPost(post);
+      setPostHistory([post]);
+      setCurrentHistoryIndex(0);
+      setSeenPostIds(new Set([post.id]));
+      console.log('✅ Post loaded successfully');
+    } else {
+      console.log('❌ No post returned');
+    }
+    setLoading(false);
+  }
+
+  async function preloadNextPost() {
+    const post = await fetchNextPost(false);
+    if (post) {
+      setNextPostData(post);
+    }
+  }
+
+  async function fetchNextPost(isInitial: boolean = false): Promise<FeedPost | null> {
     try {
-      const { data: postsData } = await supabase
-        .from('feed_posts')
-        .select(`
-          id, image_url, caption, like_count, comment_count, music_preview_url, owner_id,
-          profiles!feed_posts_owner_id_fkey(id, username, avatar_url, is_verified)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(50);
+      // 🔥 BACKEND URL - Change before deploy! 🔥
+      // LOCAL: http://localhost:8000
+      // PRODUCTION: https://sourced-5ovn.onrender.com
+      const BACKEND_URL = "https://sourced-5ovn.onrender.com";
 
-      if (!postsData) {
-        setPosts([]);
-        setLoading(false);
-        return;
-      }
+      console.log('📡 Fetching from:', `${BACKEND_URL}/api/feed/next`);
+      console.log('📤 Request data:', { exclude_ids: Array.from(seenPostIds), is_initial: isInitial, user_id: currentUserId });
 
-      // Get liked posts for current user
-      let likedPostIds: Set<string> = new Set();
-      let savedPostIds: Set<string> = new Set();
-      if (currentUserId) {
-        const { data: likedData } = await supabase
-          .from('liked_feed_posts')
-          .select('feed_post_id')
-          .eq('user_id', currentUserId);
-
-        if (likedData) {
-          likedPostIds = new Set(likedData.map(like => like.feed_post_id));
-        }
-
-        // Get saved posts
-        const { data: savedData } = await supabase
-          .from('saved_feed_posts')
-          .select('feed_post_id')
-          .eq('user_id', currentUserId);
-
-        if (savedData) {
-          savedPostIds = new Set(savedData.map(save => save.feed_post_id));
-        }
-      }
-
-      const postIds = postsData.map(p => p.id);
-      const { data: itemsData } = await supabase
-        .from('feed_post_items')
-        .select('id, feed_post_id, title, image_url, product_url, price, seller, like_count')
-        .in('feed_post_id', postIds);
-
-      // Get liked items for current user
-      let likedItemIds: Set<string> = new Set();
-      if (currentUserId && itemsData) {
-        const itemIds = itemsData.map(item => item.id);
-        const { data: likedItemsData } = await supabase
-          .from('liked_feed_post_items')
-          .select('item_id')
-          .eq('user_id', currentUserId)
-          .in('item_id', itemIds);
-
-        if (likedItemsData) {
-          likedItemIds = new Set(likedItemsData.map(like => like.item_id));
-        }
-      }
-
-      const itemsByPost = new Map<string, any[]>();
-      if (itemsData) {
-        itemsData.forEach((item: any) => {
-          if (!itemsByPost.has(item.feed_post_id)) {
-            itemsByPost.set(item.feed_post_id, []);
-          }
-          itemsByPost.get(item.feed_post_id)!.push({
-            ...item,
-            like_count: item.like_count || 0,
-            is_liked: likedItemIds.has(item.id)
-          });
-        });
-      }
-
-      const feedPosts: FeedPost[] = postsData.map((post: any) => {
-        const owner = Array.isArray(post.profiles) ? post.profiles[0] : post.profiles;
-        return {
-          id: post.id,
-          image_url: post.image_url,
-          caption: post.caption,
-          music_preview_url: post.music_preview_url,
-          like_count: post.like_count,
-          is_liked: likedPostIds.has(post.id),
-          is_saved: savedPostIds.has(post.id),
-          comment_count: post.comment_count || 0,
-          owner: {
-            id: owner.id,
-            username: owner.username,
-            avatar_url: owner.avatar_url,
-            is_verified: owner.is_verified || false
-          },
-          items: itemsByPost.get(post.id) || []
-        };
+      const response = await fetch(`${BACKEND_URL}/api/feed/next`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          exclude_ids: Array.from(seenPostIds),
+          is_initial: isInitial,
+          user_id: currentUserId
+        })
       });
 
-      setPosts(feedPosts);
+      console.log('📥 Response status:', response.status);
+
+      if (!response.ok) {
+        console.error('❌ Failed to fetch post:', response.status);
+        return null;
+      }
+
+      const data = await response.json();
+      console.log('📦 Response data:', data);
+
+      if (!data.post) {
+        if (seenPostIds.size > 0 && !isInitial) {
+          console.log('🔄 Resetting feed - all content seen');
+          setSeenPostIds(new Set());
+          return fetchNextPost(isInitial);
+        }
+        return null;
+      }
+
+      return data.post as FeedPost;
     } catch (error) {
-      console.error('Error loading feed:', error);
-    } finally {
-      setLoading(false);
+      console.error('💥 Error fetching next post:', error);
+      return null;
     }
   }
 
-  function nextPost() {
-    if (currentIndex < posts.length - 1 && !isAnimating) {
+  async function logPostInteraction(postId: string, timeSpent: number) {
+    if (!currentUserId) return;
+
+    try {
+      // 🔥 BACKEND URL - Change before deploy! 🔥
+      const BACKEND_URL = "https://sourced-5ovn.onrender.com";
+
+      await fetch(`${BACKEND_URL}/api/feed/log-view`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          post_id: postId,
+          time_spent: timeSpent,
+          interacted: hasInteracted.current,
+          user_id: currentUserId
+        })
+      });
+    } catch (error) {
+      console.error('Error logging interaction:', error);
+    }
+  }
+
+  const goToNextPost = async () => {
+    if (isAnimating) return;
+
+    if (currentHistoryIndex < postHistory.length - 1) {
       setIsAnimating(true);
       setIsFading(true);
 
       setTimeout(() => {
+        const nextIndex = currentHistoryIndex + 1;
+        setCurrentPost(postHistory[nextIndex]);
+        setCurrentHistoryIndex(nextIndex);
         setViewMode('discover');
-        setCurrentIndex(prev => prev + 1);
         setIsFading(false);
         setTimeout(() => setIsAnimating(false), 50);
       }, 200);
-    }
-  }
+    } else {
+      if (!nextPostData) {
+        const post = await fetchNextPost(false);
+        if (!post) return;
 
-  function prevPost() {
-    if (currentIndex > 0 && !isAnimating) {
-      setIsAnimating(true);
-      setIsFading(true);
+        setIsAnimating(true);
+        setIsFading(true);
 
-      setTimeout(() => {
-        setViewMode('discover');
-        setCurrentIndex(prev => prev - 1);
-        setIsFading(false);
-        setTimeout(() => setIsAnimating(false), 50);
-      }, 200);
+        setTimeout(() => {
+          setCurrentPost(post);
+          setPostHistory(prev => [...prev, post]);
+          setCurrentHistoryIndex(prev => prev + 1);
+          setSeenPostIds(prev => new Set([...prev, post.id]));
+          setNextPostData(null);
+          setViewMode('discover');
+          setIsFading(false);
+          setTimeout(() => setIsAnimating(false), 50);
+        }, 200);
+      } else {
+        setIsAnimating(true);
+        setIsFading(true);
+
+        setTimeout(() => {
+          setCurrentPost(nextPostData);
+          setPostHistory(prev => [...prev, nextPostData]);
+          setCurrentHistoryIndex(prev => prev + 1);
+          setSeenPostIds(prev => new Set([...prev, nextPostData.id]));
+          setNextPostData(null);
+          setViewMode('discover');
+          setIsFading(false);
+          setTimeout(() => setIsAnimating(false), 50);
+        }, 200);
+      }
     }
-  }
+  };
+
+  const goToPrevPost = () => {
+    if (isAnimating || currentHistoryIndex <= 0) return;
+
+    setIsAnimating(true);
+    setIsFading(true);
+
+    setTimeout(() => {
+      const prevIndex = currentHistoryIndex - 1;
+      setCurrentPost(postHistory[prevIndex]);
+      setCurrentHistoryIndex(prevIndex);
+      setViewMode('discover');
+      setIsFading(false);
+      setTimeout(() => setIsAnimating(false), 50);
+    }, 200);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isAnimating) return;
+      if (showCommentsModal || viewMode === 'shop') return; // Don't interfere with modals/overlays
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        goToNextPost();
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        goToPrevPost();
+      }
+    };
+
+    // Remove wheel event - too sensitive and causes auto-scroll
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isAnimating, currentHistoryIndex, postHistory, showCommentsModal, viewMode]);
 
   function handleTouchStart(e: React.TouchEvent) {
     if (isAnimating) return;
+    if (viewMode === 'shop') return; // Don't interfere with shop overlay scrolling
     setTouchStart(e.targetTouches[0].clientY);
     setTouchEnd(e.targetTouches[0].clientY);
   }
 
   function handleTouchMove(e: React.TouchEvent) {
     if (isAnimating) return;
+    if (viewMode === 'shop') return;
     setTouchEnd(e.targetTouches[0].clientY);
   }
 
   function handleTouchEnd() {
     if (isAnimating) return;
+    if (viewMode === 'shop') return;
+
     const swipeDistance = touchStart - touchEnd;
-    const minSwipeDistance = 100;
+    const minSwipeDistance = 150; // Increased from 100 for more intentional swipes
 
     if (Math.abs(swipeDistance) > minSwipeDistance) {
       if (swipeDistance > 0) {
-        nextPost();
+        goToNextPost();
       } else {
-        prevPost();
+        goToPrevPost();
       }
     }
 
@@ -299,46 +343,38 @@ export default function FeedPage() {
       return;
     }
 
+    hasInteracted.current = true;
+
     try {
       if (currentlyLiked) {
-        const { error } = await supabase
+        await supabase
           .from('liked_feed_posts')
           .delete()
           .eq('user_id', currentUserId)
           .eq('feed_post_id', postId);
 
-        if (error) {
-          console.error('Unlike error:', error);
-          return;
+        if (currentPost && currentPost.id === postId) {
+          setCurrentPost({
+            ...currentPost,
+            is_liked: false,
+            like_count: Math.max(0, currentPost.like_count - 1)
+          });
         }
-
-        setPosts(prev => prev.map(post =>
-          post.id === postId
-            ? { ...post, is_liked: false, like_count: Math.max(0, post.like_count - 1) }
-            : post
-        ));
-
-        setTimeout(() => refreshCurrentPostLikes(), 100);
       } else {
-        const { error } = await supabase
+        await supabase
           .from('liked_feed_posts')
           .insert({
             user_id: currentUserId,
             feed_post_id: postId
           });
 
-        if (error && !error.message.includes('duplicate')) {
-          console.error('Like error:', error);
-          return;
+        if (currentPost && currentPost.id === postId) {
+          setCurrentPost({
+            ...currentPost,
+            is_liked: true,
+            like_count: currentPost.like_count + 1
+          });
         }
-
-        setPosts(prev => prev.map(post =>
-          post.id === postId
-            ? { ...post, is_liked: true, like_count: post.like_count + 1 }
-            : post
-        ));
-
-        setTimeout(() => refreshCurrentPostLikes(), 100);
       }
     } catch (error: any) {
       console.error('Toggle like failed:', error);
@@ -353,6 +389,7 @@ export default function FeedPage() {
       return;
     }
 
+    hasInteracted.current = true;
     setShowCommentsModal(true);
   }
 
@@ -364,48 +401,38 @@ export default function FeedPage() {
       return;
     }
 
+    hasInteracted.current = true;
+
     try {
       if (currentlyLiked) {
-        const { error } = await supabase
+        await supabase
           .from('liked_feed_post_items')
           .delete()
           .eq('user_id', currentUserId)
           .eq('item_id', itemId);
-
-        if (error) {
-          console.error('Unlike item error:', error);
-          return;
-        }
       } else {
-        const { error } = await supabase
+        await supabase
           .from('liked_feed_post_items')
           .insert({
             user_id: currentUserId,
             item_id: itemId
           });
-
-        if (error && !error.message.includes('duplicate')) {
-          console.error('Like item error:', error);
-          return;
-        }
       }
 
-      setPosts(prev => prev.map(post =>
-        post.id === currentPost.id
-          ? {
-              ...post,
-              items: post.items.map(item =>
-                item.id === itemId
-                  ? {
-                      ...item,
-                      is_liked: !currentlyLiked,
-                      like_count: currentlyLiked ? (item.like_count || 0) - 1 : (item.like_count || 0) + 1
-                    }
-                  : item
-              )
-            }
-          : post
-      ));
+      if (currentPost) {
+        setCurrentPost({
+          ...currentPost,
+          items: currentPost.items.map(item =>
+            item.id === itemId
+              ? {
+                  ...item,
+                  is_liked: !currentlyLiked,
+                  like_count: currentlyLiked ? Math.max(0, item.like_count - 1) : item.like_count + 1
+                }
+              : item
+          )
+        });
+      }
     } catch (error) {
       console.error('Toggle item like failed:', error);
     }
@@ -419,42 +446,34 @@ export default function FeedPage() {
       return;
     }
 
+    hasInteracted.current = true;
+
     try {
       if (currentlySaved) {
-        const { error } = await supabase
+        await supabase
           .from('saved_feed_posts')
           .delete()
           .eq('user_id', currentUserId)
           .eq('feed_post_id', postId);
 
-        if (error) {
-          console.error('Unsave error:', error);
-          return;
+        if (currentPost && currentPost.id === postId) {
+          setCurrentPost({ ...currentPost, is_saved: false });
         }
-
-        setPosts(prev => prev.map(post =>
-          post.id === postId ? { ...post, is_saved: false } : post
-        ));
 
         setToastMessage('Post removed from saved');
         setShowToast(true);
         setTimeout(() => setShowToast(false), 2000);
       } else {
-        const { error } = await supabase
+        await supabase
           .from('saved_feed_posts')
           .insert({
             user_id: currentUserId,
             feed_post_id: postId
           });
 
-        if (error && !error.message.includes('duplicate')) {
-          console.error('Save error:', error);
-          return;
+        if (currentPost && currentPost.id === postId) {
+          setCurrentPost({ ...currentPost, is_saved: true });
         }
-
-        setPosts(prev => prev.map(post =>
-          post.id === postId ? { ...post, is_saved: true } : post
-        ));
 
         setToastMessage('Post saved!');
         setShowToast(true);
@@ -468,14 +487,21 @@ export default function FeedPage() {
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <div className="text-white text-2xl font-black tracking-widest animate-pulse" style={{ fontFamily: 'Bebas Neue' }}>
-          SOURCED
+        <div className="flex flex-col items-center gap-4">
+          <div className="text-white text-3xl font-black tracking-widest animate-pulse" style={{ fontFamily: 'Bebas Neue' }}>
+            SOURCED
+          </div>
+          <div className="flex gap-2">
+            <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (posts.length === 0) {
+  if (!currentPost) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
         <div className="text-center">
@@ -487,25 +513,6 @@ export default function FeedPage() {
           >
             CREATE FIRST POST
           </button>
-        </div>
-      </div>
-    );
-  }
-
-  const currentPost = posts[currentIndex];
-
-  // Get animation class based on fade state
-  const getAnimationClass = () => {
-    if (isFading) return 'fade-out';
-    return 'fade-in-content';
-  };
-
-  // Safety check
-  if (!currentPost) {
-    return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <div className="text-white text-2xl font-black tracking-widest animate-pulse" style={{ fontFamily: 'Bebas Neue' }}>
-          SOURCED
         </div>
       </div>
     );
@@ -627,7 +634,7 @@ export default function FeedPage() {
         </div>
 
         {/* Main Content with Animation */}
-        <div className={`relative h-full flex flex-col items-center justify-center px-3 pt-32 pb-24 ${getAnimationClass()}`}>
+        <div className={`relative h-full flex flex-col items-center justify-center px-3 pt-32 pb-24 ${isFading ? 'fade-out' : 'fade-in-content'}`}>
 
           {/* Image Card */}
           <div
@@ -635,15 +642,22 @@ export default function FeedPage() {
             style={{
               minHeight: '64vh',
               maxHeight: '66vh',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
-              touchAction: 'pan-y'
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
           >
             {/* Main Image */}
             <img
+              key={currentPost.id}
               src={currentPost.image_url}
               alt=""
               className="w-full h-full object-cover"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%'
+              }}
             />
 
             {/* Shop Overlay */}
@@ -795,10 +809,10 @@ export default function FeedPage() {
             {currentPost.items.length > 0 && (
               <button
                 onClick={(e) => { e.stopPropagation(); setViewMode(viewMode === 'shop' ? 'discover' : 'shop'); }}
-                className="px-3 py-2 bg-white/90 backdrop-blur-sm text-black font-black text-[10px] tracking-widest rounded-full hover:bg-white transition-all"
+                className="px-4 py-2 bg-white/95 backdrop-blur-sm text-black font-black text-[11px] tracking-widest rounded-full hover:bg-white hover:scale-105 active:scale-95 transition-all shadow-lg"
                 style={{ fontFamily: 'Bebas Neue' }}
               >
-                SHOP THE LOOK
+                {viewMode === 'shop' ? 'CLOSE' : 'SHOP THE LOOK'}
               </button>
             )}
           </div>
@@ -807,15 +821,15 @@ export default function FeedPage() {
           <div className="w-full max-w-lg flex items-center gap-5 mb-2">
             <button
               onClick={() => toggleLike(currentPost.id, currentPost.is_liked)}
-              className="flex items-center gap-2 text-white hover:scale-110 transition-transform"
+              className="flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform"
             >
-              <svg className="w-7 h-7" fill={currentPost.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-7 h-7 transition-all" fill={currentPost.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
               </svg>
               <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{currentPost.like_count}</span>
             </button>
 
-            <button onClick={handleComment} className="flex items-center gap-2 text-white hover:scale-110 transition-transform">
+            <button onClick={handleComment} className="flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform">
               <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
@@ -837,7 +851,7 @@ export default function FeedPage() {
                   setTimeout(() => setShowToast(false), 2000);
                 }
               }}
-              className="flex items-center gap-2 text-white hover:scale-110 transition-transform"
+              className="flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform"
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4m0 0L8 6m4-4v13" />
@@ -847,9 +861,9 @@ export default function FeedPage() {
             {/* Save/Bookmark Button */}
             <button
               onClick={() => toggleSave(currentPost.id, currentPost.is_saved)}
-              className="ml-auto flex items-center gap-2 text-white hover:scale-110 transition-transform"
+              className="ml-auto flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform"
             >
-              <svg className="w-6 h-6" fill={currentPost.is_saved ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-6 h-6 transition-all" fill={currentPost.is_saved ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
               </svg>
             </button>
@@ -877,7 +891,7 @@ export default function FeedPage() {
         )}
 
         {/* Swipe Indicator */}
-        {currentIndex === 0 && (
+        {currentHistoryIndex === 0 && (
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/40 text-center z-20 fade-in">
             <svg className="w-8 h-8 mx-auto mb-2 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
@@ -897,7 +911,21 @@ export default function FeedPage() {
           isOpen={showCommentsModal}
           onClose={() => {
             setShowCommentsModal(false);
-            loadFeedPosts();
+            if (currentPost) {
+              supabase
+                .from('feed_posts')
+                .select('comment_count')
+                .eq('id', currentPost.id)
+                .single()
+                .then(({ data }) => {
+                  if (data) {
+                    setCurrentPost({
+                      ...currentPost,
+                      comment_count: data.comment_count || 0
+                    });
+                  }
+                });
+            }
           }}
           currentUserId={currentUserId}
         />
