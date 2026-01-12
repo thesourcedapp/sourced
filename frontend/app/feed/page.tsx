@@ -47,8 +47,12 @@ export default function FeedPage() {
   const [toastMessage, setToastMessage] = useState('');
   const [viewMode, setViewMode] = useState<'discover' | 'shop'>('discover');
   const [showCommentsModal, setShowCommentsModal] = useState(false);
-  const [touchStart, setTouchStart] = useState(0);
-  const [touchEnd, setTouchEnd] = useState(0);
+
+  // Improved swipe tracking with velocity
+  const [touchStartY, setTouchStartY] = useState(0);
+  const [touchStartTime, setTouchStartTime] = useState(0);
+  const swipeInProgress = useRef(false);
+  const lastSwipeTime = useRef(0);
 
   // Algorithm state
   const [seenPostIds, setSeenPostIds] = useState<Set<string>>(new Set());
@@ -147,7 +151,7 @@ export default function FeedPage() {
       // 🔥 BACKEND URL - Change before deploy! 🔥
       // LOCAL: http://localhost:8000
       // PRODUCTION: https://sourced-5ovn.onrender.com
-      const BACKEND_URL = "https://sourced-5ovn.onrender.com";
+      const BACKEND_URL = "http://localhost:8000";
 
       console.log('📡 Fetching from:', `${BACKEND_URL}/feed/next`);
       console.log('📤 Request data:', { exclude_ids: Array.from(seenPostIds), is_initial: isInitial, user_id: currentUserId });
@@ -195,7 +199,7 @@ export default function FeedPage() {
 
     try {
       // 🔥 BACKEND URL - Change before deploy! 🔥
-      const BACKEND_URL = "https://sourced-5ovn.onrender.com";
+      const BACKEND_URL = "http://localhost:8000";
 
       await fetch(`${BACKEND_URL}/feed/log-view`, {
         method: 'POST',
@@ -217,6 +221,13 @@ export default function FeedPage() {
   const goToNextPost = async () => {
     if (isAnimating) return;
 
+    // Debounce: prevent rapid swipes
+    const now = Date.now();
+    if (now - lastSwipeTime.current < 300) {
+      return;
+    }
+    lastSwipeTime.current = now;
+
     if (currentHistoryIndex < postHistory.length - 1) {
       setIsAnimating(true);
       setIsFading(true);
@@ -227,8 +238,8 @@ export default function FeedPage() {
         setCurrentHistoryIndex(nextIndex);
         setViewMode('discover');
         setIsFading(false);
-        setTimeout(() => setIsAnimating(false), 50);
-      }, 200);
+        setTimeout(() => setIsAnimating(false), 30);
+      }, 120); // Faster: 200ms → 120ms
     } else {
       if (!nextPostData) {
         const post = await fetchNextPost(false);
@@ -245,8 +256,8 @@ export default function FeedPage() {
           setNextPostData(null);
           setViewMode('discover');
           setIsFading(false);
-          setTimeout(() => setIsAnimating(false), 50);
-        }, 200);
+          setTimeout(() => setIsAnimating(false), 30);
+        }, 120);
       } else {
         setIsAnimating(true);
         setIsFading(true);
@@ -259,14 +270,21 @@ export default function FeedPage() {
           setNextPostData(null);
           setViewMode('discover');
           setIsFading(false);
-          setTimeout(() => setIsAnimating(false), 50);
-        }, 200);
+          setTimeout(() => setIsAnimating(false), 30);
+        }, 120);
       }
     }
   };
 
   const goToPrevPost = () => {
     if (isAnimating || currentHistoryIndex <= 0) return;
+
+    // Debounce
+    const now = Date.now();
+    if (now - lastSwipeTime.current < 300) {
+      return;
+    }
+    lastSwipeTime.current = now;
 
     setIsAnimating(true);
     setIsFading(true);
@@ -277,6 +295,9 @@ export default function FeedPage() {
       setCurrentHistoryIndex(prevIndex);
       setViewMode('discover');
       setIsFading(false);
+      setTimeout(() => setIsAnimating(false), 30);
+    }, 120); // Faster: 200ms → 120ms
+  };
       setTimeout(() => setIsAnimating(false), 50);
     }, 200);
   };
@@ -305,34 +326,54 @@ export default function FeedPage() {
 
   function handleTouchStart(e: React.TouchEvent) {
     if (isAnimating) return;
-    if (viewMode === 'shop') return; // Don't interfere with shop overlay scrolling
-    setTouchStart(e.targetTouches[0].clientY);
-    setTouchEnd(e.targetTouches[0].clientY);
+    if (viewMode === 'shop') return;
+
+    swipeInProgress.current = true;
+    setTouchStartY(e.targetTouches[0].clientY);
+    setTouchStartTime(Date.now());
   }
 
   function handleTouchMove(e: React.TouchEvent) {
+    if (!swipeInProgress.current) return;
     if (isAnimating) return;
     if (viewMode === 'shop') return;
-    setTouchEnd(e.targetTouches[0].clientY);
+
+    // Let the browser handle the touch move
   }
 
-  function handleTouchEnd() {
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (!swipeInProgress.current) return;
     if (isAnimating) return;
     if (viewMode === 'shop') return;
 
-    const swipeDistance = touchStart - touchEnd;
-    const minSwipeDistance = 150; // Increased from 100 for more intentional swipes
+    const touchEndY = e.changedTouches[0].clientY;
+    const touchEndTime = Date.now();
 
-    if (Math.abs(swipeDistance) > minSwipeDistance) {
-      if (swipeDistance > 0) {
+    const distance = touchStartY - touchEndY;
+    const duration = touchEndTime - touchStartTime;
+    const velocity = Math.abs(distance / duration); // pixels per ms
+
+    // Smart swipe detection based on distance OR velocity
+    const minSwipeDistance = 80; // Reduced from 150 for easier swipes
+    const minVelocity = 0.3; // Fast swipes can be shorter
+
+    const isFastSwipe = velocity > minVelocity && Math.abs(distance) > 40;
+    const isFullSwipe = Math.abs(distance) > minSwipeDistance;
+
+    if (isFastSwipe || isFullSwipe) {
+      if (distance > 0) {
+        // Swiped up - next post
         goToNextPost();
       } else {
+        // Swiped down - previous post
         goToPrevPost();
       }
     }
 
-    setTouchStart(0);
-    setTouchEnd(0);
+    // Reset
+    swipeInProgress.current = false;
+    setTouchStartY(0);
+    setTouchStartTime(0);
   }
 
   async function toggleLike(postId: string, currentlyLiked: boolean) {
@@ -568,15 +609,15 @@ export default function FeedPage() {
         }
 
         .fade-in {
-          animation: fadeIn 0.3s ease-out;
+          animation: fadeIn 0.15s ease-out;
         }
 
         .fade-out {
-          animation: fadeOut 0.2s ease-out forwards;
+          animation: fadeOut 0.12s ease-out forwards;
         }
 
         .fade-in-content {
-          animation: fadeInContent 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          animation: fadeInContent 0.15s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .animate-scroll {
