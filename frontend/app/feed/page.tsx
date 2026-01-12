@@ -149,10 +149,10 @@ export default function FeedPage() {
       // PRODUCTION: https://sourced-5ovn.onrender.com
       const BACKEND_URL = "https://sourced-5ovn.onrender.com";
 
-      console.log('📡 Fetching from:', `${BACKEND_URL}/api/feed/next`);
+      console.log('📡 Fetching from:', `${BACKEND_URL}/feed/next`);
       console.log('📤 Request data:', { exclude_ids: Array.from(seenPostIds), is_initial: isInitial, user_id: currentUserId });
 
-      const response = await fetch(`${BACKEND_URL}/api/feed/next`, {
+      const response = await fetch(`${BACKEND_URL}/feed/next`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -197,7 +197,7 @@ export default function FeedPage() {
       // 🔥 BACKEND URL - Change before deploy! 🔥
       const BACKEND_URL = "https://sourced-5ovn.onrender.com";
 
-      await fetch(`${BACKEND_URL}/api/feed/log-view`, {
+      await fetch(`${BACKEND_URL}/feed/log-view`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
