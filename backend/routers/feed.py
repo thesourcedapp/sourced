@@ -116,15 +116,15 @@ def get_user_preference_signals(sb: Client, user_id: str) -> Dict:
         # Get followed users
         following_response = sb.table('followers').select('following_id').eq('follower_id', user_id).limit(
             200).execute()
-        signals['followed_users'] = [f['following_id'] for f in
-                                     following_response.data] if following_response.data else []
+        if following_response and following_response.data:
+            signals['followed_users'] = [f['following_id'] for f in following_response.data]
 
         # Get recent post views (last 100)
         views_response = sb.table('post_views').select('post_id, time_spent_ms, interacted, viewed_at').eq('user_id',
                                                                                                            user_id).order(
             'viewed_at', desc=True).limit(100).execute()
 
-        if views_response.data:
+        if views_response and views_response.data:
             # Calculate average view time
             total_time = sum(v.get('time_spent_ms', 0) for v in views_response.data)
             signals['avg_view_time'] = total_time / len(views_response.data) if views_response.data else 0
@@ -139,7 +139,7 @@ def get_user_preference_signals(sb: Client, user_id: str) -> Dict:
             if engaged_posts:
                 engaged_posts_response = sb.table('feed_posts').select('owner_id').in_('id',
                                                                                        engaged_posts[:50]).execute()
-                if engaged_posts_response.data:
+                if engaged_posts_response and engaged_posts_response.data:
                     # Count frequency of each creator
                     creator_counts = {}
                     for post in engaged_posts_response.data:
