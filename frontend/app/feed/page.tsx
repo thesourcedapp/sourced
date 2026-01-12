@@ -47,11 +47,8 @@ export default function FeedPage() {
   const [toastMessage, setToastMessage] = useState('');
   const [viewMode, setViewMode] = useState<'discover' | 'shop'>('discover');
   const [showCommentsModal, setShowCommentsModal] = useState(false);
-
-  // Improved swipe tracking
-  const [touchStartY, setTouchStartY] = useState(0);
-  const [touchStartTime, setTouchStartTime] = useState(0);
-  const lastSwipeTime = useRef(0);
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
 
   // Algorithm state
   const [seenPostIds, setSeenPostIds] = useState<Set<string>>(new Set());
@@ -67,8 +64,13 @@ export default function FeedPage() {
   }, []);
 
   useEffect(() => {
+    console.log('🎯 currentUserId changed:', currentUserId);
+    // Load feed for both logged-in users AND guests
     if (currentUserId !== undefined) {
+      console.log('✅ Loading initial post (user:', currentUserId || 'guest', ')');
       loadInitialPost();
+    } else {
+      console.log('⏳ Auth not checked yet...');
     }
   }, [currentUserId]);
 
@@ -95,99 +97,42 @@ export default function FeedPage() {
   }, [currentPost?.id]);
 
   async function loadCurrentUser() {
+    console.log('🔐 Loading current user...');
     const { data: { user } } = await supabase.auth.getUser();
+    console.log('👤 User from Supabase:', user);
 
     if (user) {
+      console.log('✅ User authenticated:', user.id);
       setCurrentUserId(user.id);
-
       const { data: profile } = await supabase
         .from('profiles')
         .select('is_onboarded')
         .eq('id', user.id)
         .single();
-
       setIsOnboarded(profile?.is_onboarded || false);
+      console.log('📋 Onboarded status:', profile?.is_onboarded);
     } else {
+      console.log('❌ No user - guest mode');
       setCurrentUserId(null);
+      setIsOnboarded(false);
     }
   }
 
   async function loadInitialPost() {
+    console.log('🔄 Loading initial post...');
     setLoading(true);
-    try {
-      const post = await fetchNextPost(true);
-      if (post) {
-        setCurrentPost(post);
-        setPostHistory([post]);
-        setCurrentHistoryIndex(0);
-        setSeenPostIds(new Set([post.id]));
-      }
-    } catch (error) {
-      console.error('Error loading initial post:', error);
-    } finally {
-      setLoading(false);
+    const post = await fetchNextPost(true);
+    console.log('📦 Fetched post:', post);
+    if (post) {
+      setCurrentPost(post);
+      setPostHistory([post]);
+      setCurrentHistoryIndex(0);
+      setSeenPostIds(new Set([post.id]));
+      console.log('✅ Post loaded successfully');
+    } else {
+      console.log('❌ No post returned');
     }
-  }
-
-  async function fetchNextPost(isInitial: boolean): Promise<FeedPost | null> {
-    try {
-      const excludeIds = Array.from(seenPostIds);
-
-      const response = await fetch('https://sourced-5ovn.onrender.com/feed/next', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUserId || null,
-          exclude_ids: excludeIds,
-          is_initial: isInitial
-        }),
-      });
-
-      if (!response.ok) return null;
-
-      const data = await response.json();
-      if (!data.post) return null;
-
-      const post = data.post;
-
-      // Check like/save status
-      if (currentUserId && isOnboarded) {
-        const [likedRes, savedRes] = await Promise.all([
-          supabase.from('liked_feed_posts').select('id').eq('user_id', currentUserId).eq('feed_post_id', post.id).single(),
-          supabase.from('saved_feed_posts').select('id').eq('user_id', currentUserId).eq('feed_post_id', post.id).single()
-        ]);
-
-        post.is_liked = !!likedRes.data;
-        post.is_saved = !!savedRes.data;
-
-        // Check liked items
-        if (post.items && post.items.length > 0) {
-          const itemIds = post.items.map((item: any) => item.id);
-          const { data: likedItems } = await supabase
-            .from('liked_feed_post_items')
-            .select('item_id')
-            .eq('user_id', currentUserId)
-            .in('item_id', itemIds);
-
-          const likedItemIds = new Set(likedItems?.map(li => li.item_id) || []);
-          post.items = post.items.map((item: any) => ({
-            ...item,
-            is_liked: likedItemIds.has(item.id)
-          }));
-        }
-      } else {
-        post.is_liked = false;
-        post.is_saved = false;
-        if (post.items) {
-          post.items = post.items.map((item: any) => ({ ...item, is_liked: false }));
-        }
-      }
-
-      return post;
-    } catch (error) {
-      console.error('Error fetching next post:', error);
-      return null;
-    }
+    setLoading(false);
   }
 
   async function preloadNextPost() {
@@ -197,19 +142,72 @@ export default function FeedPage() {
     }
   }
 
+  async function fetchNextPost(isInitial: boolean = false): Promise<FeedPost | null> {
+    try {
+      // 🔥 BACKEND URL - Change before deploy! 🔥
+      // LOCAL: http://localhost:8000
+      // PRODUCTION: https://sourced-5ovn.onrender.com
+      const BACKEND_URL = "https://sourced-5ovn.onrender.com";
+
+      console.log('📡 Fetching from:', `${BACKEND_URL}/feed/next`);
+      console.log('📤 Request data:', { exclude_ids: Array.from(seenPostIds), is_initial: isInitial, user_id: currentUserId });
+
+      const response = await fetch(`${BACKEND_URL}/feed/next`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          exclude_ids: Array.from(seenPostIds),
+          is_initial: isInitial,
+          user_id: currentUserId
+        })
+      });
+
+      console.log('📥 Response status:', response.status);
+
+      if (!response.ok) {
+        console.error('❌ Failed to fetch post:', response.status);
+        return null;
+      }
+
+      const data = await response.json();
+      console.log('📦 Response data:', data);
+
+      if (!data.post) {
+        if (seenPostIds.size > 0 && !isInitial) {
+          console.log('🔄 Resetting feed - all content seen');
+          setSeenPostIds(new Set());
+          return fetchNextPost(isInitial);
+        }
+        return null;
+      }
+
+      return data.post as FeedPost;
+    } catch (error) {
+      console.error('💥 Error fetching next post:', error);
+      return null;
+    }
+  }
+
   async function logPostInteraction(postId: string, timeSpent: number) {
-    if (!currentUserId || !isOnboarded) return;
+    if (!currentUserId) return;
 
     try {
-      await fetch('https://sourced-5ovn.onrender.com/feed/log-view', {
+      // 🔥 BACKEND URL - Change before deploy! 🔥
+      const BACKEND_URL = "https://sourced-5ovn.onrender.com";
+
+      await fetch(`${BACKEND_URL}/feed/log-view`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          user_id: currentUserId,
           post_id: postId,
           time_spent: timeSpent,
-          interacted: hasInteracted.current
-        }),
+          interacted: hasInteracted.current,
+          user_id: currentUserId
+        })
       });
     } catch (error) {
       console.error('Error logging interaction:', error);
@@ -218,11 +216,6 @@ export default function FeedPage() {
 
   const goToNextPost = async () => {
     if (isAnimating) return;
-
-    // Debounce: prevent rapid swipes (300ms cooldown)
-    const now = Date.now();
-    if (now - lastSwipeTime.current < 300) return;
-    lastSwipeTime.current = now;
 
     if (currentHistoryIndex < postHistory.length - 1) {
       setIsAnimating(true);
@@ -234,8 +227,8 @@ export default function FeedPage() {
         setCurrentHistoryIndex(nextIndex);
         setViewMode('discover');
         setIsFading(false);
-        setTimeout(() => setIsAnimating(false), 30);
-      }, 120);
+        setTimeout(() => setIsAnimating(false), 50);
+      }, 200);
     } else {
       if (!nextPostData) {
         const post = await fetchNextPost(false);
@@ -252,8 +245,8 @@ export default function FeedPage() {
           setNextPostData(null);
           setViewMode('discover');
           setIsFading(false);
-          setTimeout(() => setIsAnimating(false), 30);
-        }, 120);
+          setTimeout(() => setIsAnimating(false), 50);
+        }, 200);
       } else {
         setIsAnimating(true);
         setIsFading(true);
@@ -266,19 +259,14 @@ export default function FeedPage() {
           setNextPostData(null);
           setViewMode('discover');
           setIsFading(false);
-          setTimeout(() => setIsAnimating(false), 30);
-        }, 120);
+          setTimeout(() => setIsAnimating(false), 50);
+        }, 200);
       }
     }
   };
 
   const goToPrevPost = () => {
     if (isAnimating || currentHistoryIndex <= 0) return;
-
-    // Debounce
-    const now = Date.now();
-    if (now - lastSwipeTime.current < 300) return;
-    lastSwipeTime.current = now;
 
     setIsAnimating(true);
     setIsFading(true);
@@ -289,14 +277,14 @@ export default function FeedPage() {
       setCurrentHistoryIndex(prevIndex);
       setViewMode('discover');
       setIsFading(false);
-      setTimeout(() => setIsAnimating(false), 30);
-    }, 120);
+      setTimeout(() => setIsAnimating(false), 50);
+    }, 200);
   };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isAnimating) return;
-      if (showCommentsModal || viewMode === 'shop') return;
+      if (showCommentsModal || viewMode === 'shop') return; // Don't interfere with modals/overlays
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -308,6 +296,7 @@ export default function FeedPage() {
       }
     };
 
+    // Remove wheel event - too sensitive and causes auto-scroll
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -315,43 +304,35 @@ export default function FeedPage() {
   }, [isAnimating, currentHistoryIndex, postHistory, showCommentsModal, viewMode]);
 
   function handleTouchStart(e: React.TouchEvent) {
-    if (isAnimating || viewMode === 'shop') return;
-
-    setTouchStartY(e.targetTouches[0].clientY);
-    setTouchStartTime(Date.now());
+    if (isAnimating) return;
+    if (viewMode === 'shop') return; // Don't interfere with shop overlay scrolling
+    setTouchStart(e.targetTouches[0].clientY);
+    setTouchEnd(e.targetTouches[0].clientY);
   }
 
   function handleTouchMove(e: React.TouchEvent) {
-    // Allow native scroll behavior
+    if (isAnimating) return;
+    if (viewMode === 'shop') return;
+    setTouchEnd(e.targetTouches[0].clientY);
   }
 
-  function handleTouchEnd(e: React.TouchEvent) {
-    if (isAnimating || viewMode === 'shop') return;
+  function handleTouchEnd() {
+    if (isAnimating) return;
+    if (viewMode === 'shop') return;
 
-    const touchEndY = e.changedTouches[0].clientY;
-    const touchEndTime = Date.now();
+    const swipeDistance = touchStart - touchEnd;
+    const minSwipeDistance = 150; // Increased from 100 for more intentional swipes
 
-    const distance = touchStartY - touchEndY;
-    const duration = touchEndTime - touchStartTime;
-    const velocity = Math.abs(distance / duration); // pixels per ms
-
-    // Smart swipe: distance OR velocity
-    const minSwipeDistance = 80;
-    const minVelocity = 0.3;
-
-    const isFastSwipe = velocity > minVelocity && Math.abs(distance) > 40;
-    const isFullSwipe = Math.abs(distance) > minSwipeDistance;
-
-    if (isFastSwipe || isFullSwipe) {
-      if (distance > 0) {
+    if (Math.abs(swipeDistance) > minSwipeDistance) {
+      if (swipeDistance > 0) {
         goToNextPost();
       } else {
         goToPrevPost();
       }
     }
 
-    setTouchStartY(0);
-    setTouchStartTime(0);
+    setTouchStart(0);
+    setTouchEnd(0);
   }
 
   async function toggleLike(postId: string, currentlyLiked: boolean) {
@@ -443,7 +424,11 @@ export default function FeedPage() {
           ...currentPost,
           items: currentPost.items.map(item =>
             item.id === itemId
-              ? { ...item, is_liked: !currentlyLiked, like_count: item.like_count + (currentlyLiked ? -1 : 1) }
+              ? {
+                  ...item,
+                  is_liked: !currentlyLiked,
+                  like_count: currentlyLiked ? Math.max(0, item.like_count - 1) : item.like_count + 1
+                }
               : item
           )
         });
@@ -472,11 +457,12 @@ export default function FeedPage() {
           .eq('feed_post_id', postId);
 
         if (currentPost && currentPost.id === postId) {
-          setCurrentPost({
-            ...currentPost,
-            is_saved: false
-          });
+          setCurrentPost({ ...currentPost, is_saved: false });
         }
+
+        setToastMessage('Post removed from saved');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2000);
       } else {
         await supabase
           .from('saved_feed_posts')
@@ -486,47 +472,30 @@ export default function FeedPage() {
           });
 
         if (currentPost && currentPost.id === postId) {
-          setCurrentPost({
-            ...currentPost,
-            is_saved: true
-          });
+          setCurrentPost({ ...currentPost, is_saved: true });
         }
-      }
-    } catch (error) {
-      console.error('Toggle save failed:', error);
-    }
-  }
 
-  async function handleShare() {
-    if (!currentPost) return;
-
-    hasInteracted.current = true;
-
-    const shareUrl = `${window.location.origin}/post/${currentPost.id}`;
-
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: 'Check out this post on Sourced',
-          url: shareUrl
-        });
-      } else {
-        await navigator.clipboard.writeText(shareUrl);
-        setToastMessage('Link copied to clipboard!');
+        setToastMessage('Post saved!');
         setShowToast(true);
         setTimeout(() => setShowToast(false), 2000);
       }
-    } catch (error) {
-      console.error('Share failed:', error);
+    } catch (error: any) {
+      console.error('Toggle save failed:', error);
     }
   }
 
   if (loading) {
     return (
-      <div className="h-screen w-screen bg-black flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl mb-4">✦</div>
-          <p className="text-white text-xs tracking-[0.4em]" style={{ fontFamily: 'Bebas Neue' }}>LOADING...</p>
+      <div className="fixed inset-0 bg-black flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="text-white text-3xl font-black tracking-widest animate-pulse" style={{ fontFamily: 'Bebas Neue' }}>
+            SOURCED
+          </div>
+          <div className="flex gap-2">
+            <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
         </div>
       </div>
     );
@@ -534,13 +503,9 @@ export default function FeedPage() {
 
   if (!currentPost) {
     return (
-      <div className="h-screen w-screen bg-black flex items-center justify-center p-6">
+      <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
         <div className="text-center">
-          <div className="text-6xl mb-6 opacity-20">✦</div>
-          <h2 className="text-white text-2xl font-black tracking-tighter mb-3" style={{ fontFamily: 'Archivo Black' }}>
-            NO POSTS YET
-          </h2>
-          <p className="text-white/60 text-sm mb-6">Be the first to create a post!</p>
+          <h1 className="text-4xl font-black text-white mb-4" style={{ fontFamily: 'Archivo Black' }}>NO POSTS YET</h1>
           <button
             onClick={() => router.push('/create/post')}
             className="px-8 py-3 bg-white text-black hover:bg-black hover:text-white border-2 border-white transition-all font-black tracking-wider"
@@ -573,6 +538,11 @@ export default function FeedPage() {
           background: #000;
         }
 
+        @keyframes slideUp {
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
@@ -588,175 +558,378 @@ export default function FeedPage() {
           to { opacity: 1; transform: scale(1); }
         }
 
+        @keyframes scroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+
+        .slide-up {
+          animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
         .fade-in {
-          animation: fadeIn 0.15s ease-out;
+          animation: fadeIn 0.3s ease-out;
         }
 
         .fade-out {
-          animation: fadeOut 0.12s ease-out forwards;
+          animation: fadeOut 0.2s ease-out forwards;
         }
 
         .fade-in-content {
-          animation: fadeInContent 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+          animation: fadeInContent 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .animate-scroll {
+          animation: scroll 20s linear infinite;
+        }
+
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
         }
       `}</style>
 
       <div
-        className="relative h-screen w-screen bg-black overflow-hidden"
+        className="fixed inset-0 bg-black overflow-hidden"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Background Image with Blur */}
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{
-            backgroundImage: `url(${currentPost.image_url})`,
-            filter: 'blur(40px)',
-            transform: 'scale(1.1)',
-            opacity: 0.3
-          }}
-        />
-
-        {/* Main Content */}
-        <div className={`relative h-full flex flex-col items-center justify-center px-3 pt-32 pb-24 ${isFading ? 'fade-out' : 'fade-in-content'}`}>
-          {/* Post Image */}
+        {/* Background */}
+        <div className="absolute inset-0 overflow-hidden">
           <div
-            key={currentPost.id}
-            className="relative max-w-md w-full aspect-[3/4] rounded-2xl overflow-hidden shadow-2xl cursor-pointer"
-            onClick={() => {
-              if (viewMode === 'discover') {
-                router.push(`/post/${currentPost.id}`);
-              }
+            className="absolute inset-0 scale-110 blur-3xl opacity-10 transition-all duration-1000"
+            style={{
+              backgroundImage: `url(${currentPost.image_url})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center'
+            }}
+          ></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-black to-neutral-950"></div>
+        </div>
+
+        {/* FEED Header */}
+        <div className="absolute top-0 left-0 right-0 z-30 pt-3 pb-3">
+          <div className="flex items-center justify-between px-4">
+            <div className="w-10"></div>
+            <div className="flex flex-col items-center">
+              <h1 className="text-white text-xl font-bold mb-1.5 tracking-tight" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', letterSpacing: '-0.02em' }}>
+                Feed
+              </h1>
+              <div className="w-10 h-0.5 bg-white rounded-full"></div>
+            </div>
+            <button
+              onClick={() => router.push('/create/post/setup')}
+              className="w-10 h-10 flex items-center justify-center text-white hover:opacity-70 transition-opacity"
+            >
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Main Content with Animation */}
+        <div className={`relative h-full flex flex-col items-center justify-center px-3 pt-32 pb-24 ${isFading ? 'fade-out' : 'fade-in-content'}`}>
+
+          {/* Image Card */}
+          <div
+            className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-3"
+            style={{
+              minHeight: '64vh',
+              maxHeight: '66vh',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
             }}
           >
+            {/* Main Image */}
             <img
+              key={currentPost.id}
               src={currentPost.image_url}
-              alt="Post"
+              alt=""
               className="w-full h-full object-cover"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%'
+              }}
             />
 
             {/* Shop Overlay */}
-            {viewMode === 'shop' && currentPost.items && currentPost.items.length > 0 && (
-              <div className="absolute inset-0 bg-black/90 backdrop-blur-sm overflow-y-auto p-4">
-                <div className="space-y-3">
-                  {currentPost.items.map((item) => (
-                    <div key={item.id} className="flex gap-3 bg-white/10 rounded-lg p-3">
-                      <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
-                        <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-white text-sm font-black truncate">{item.title}</h4>
-                        {item.seller && <p className="text-white/60 text-xs truncate">{item.seller}</p>}
-                        {item.price && <p className="text-white text-sm font-black mt-1">${item.price}</p>}
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            onClick={() => toggleItemLike(item.id, item.is_liked)}
-                            className={`text-xs px-3 py-1 rounded ${item.is_liked ? 'bg-red-500 text-white' : 'bg-white/20 text-white'}`}
+            {viewMode === 'shop' && (
+              <div className="absolute inset-0 z-30 flex flex-col">
+                <div
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{
+                    backgroundImage: `url(${currentPost.image_url})`,
+                    filter: 'blur(50px) brightness(0.4)',
+                    transform: 'scale(1.2)'
+                  }}
+                ></div>
+                <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/70 to-black/80"></div>
+
+                <div className="relative flex flex-col h-full">
+                  <div className="flex items-center justify-between px-6 py-5">
+                    <h2 className="text-white text-2xl font-black tracking-wider" style={{ fontFamily: 'Bebas Neue' }}>
+                      SHOP THE LOOK
+                    </h2>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setViewMode('discover');
+                      }}
+                      className="w-10 h-10 flex items-center justify-center text-white bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto px-4 pb-6 scrollbar-hide">
+                    <div className="grid grid-cols-2 gap-4 mt-2">
+                      {currentPost.items.map((item, idx) => (
+                        <div
+                          key={item.id}
+                          className="bg-black border border-white/20 rounded-xl overflow-hidden shadow-xl slide-up hover:border-white/40 transition-all"
+                          style={{ animationDelay: `${idx * 0.05}s` }}
+                        >
+                          <div
+                            className="aspect-square bg-neutral-900 overflow-hidden cursor-pointer relative"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (item.product_url) window.open(item.product_url, '_blank');
+                            }}
                           >
-                            {item.is_liked ? '♥' : '♡'} {item.like_count}
-                          </button>
-                          {item.product_url && (
+                            <img src={item.image_url} alt={item.title} className="w-full h-full object-cover hover:scale-105 transition-transform" />
+
+                            {/* Like Button Overlay */}
                             <button
-                              onClick={() => window.open(item.product_url!, '_blank')}
-                              className="text-xs px-3 py-1 bg-white text-black rounded font-black"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleItemLike(item.id, item.is_liked);
+                              }}
+                              className="absolute top-2 right-2 w-8 h-8 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
                             >
-                              SHOP
+                              <svg
+                                className="w-4 h-4 text-white"
+                                fill={item.is_liked ? 'currentColor' : 'none'}
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                              </svg>
                             </button>
-                          )}
+                          </div>
+
+                          <div className="p-3 bg-black border-t border-white/20">
+                            {item.seller && (
+                              <p className="text-[9px] text-white/50 uppercase tracking-wider font-bold mb-1.5">
+                                {item.seller}
+                              </p>
+                            )}
+
+                            <h3 className="text-xs font-black tracking-wide uppercase leading-tight text-white mb-2 line-clamp-2" style={{ fontFamily: 'Bebas Neue' }}>
+                              {item.title}
+                            </h3>
+
+                            <div className="flex items-center justify-between mb-3">
+                              {item.price && (
+                                <p className="text-base font-black text-white" style={{ fontFamily: 'Archivo Black' }}>
+                                  ${item.price}
+                                </p>
+                              )}
+
+                              {/* Like Count */}
+                              {item.like_count > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <svg className="w-3 h-3 text-white/60" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                                  </svg>
+                                  <span className="text-xs text-white/60 font-black" style={{ fontFamily: 'Bebas Neue' }}>
+                                    {item.like_count}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {item.product_url && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(item.product_url!, '_blank');
+                                }}
+                                className="w-full py-2 border border-white/40 hover:bg-white hover:text-black transition-all text-xs font-black text-white"
+                                style={{ fontFamily: 'Bebas Neue' }}
+                              >
+                                VIEW PRODUCT
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Post Info */}
-          <div className="mt-4 max-w-md w-full">
-            {/* User Info */}
+          {/* Profile + Shop Button */}
+          <div className="w-full max-w-lg flex items-center justify-between mb-2">
             <div
-              className="flex items-center gap-3 mb-3 cursor-pointer hover:opacity-80 transition-opacity"
               onClick={() => router.push(`/${currentPost.owner.username}`)}
+              className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity flex-1"
             >
-              <div className="w-10 h-10 rounded-full border-2 border-white overflow-hidden">
+              <div className="w-11 h-11 rounded-full border-2 border-white overflow-hidden bg-neutral-800">
                 {currentPost.owner.avatar_url ? (
-                  <img src={currentPost.owner.avatar_url} alt={currentPost.owner.username} className="w-full h-full object-cover" />
+                  <img src={currentPost.owner.avatar_url} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full bg-white/20" />
+                  <div className="w-full h-full flex items-center justify-center text-white text-sm">👤</div>
                 )}
               </div>
-              <div className="flex-1">
-                <p className="text-white font-black text-sm tracking-wide">@{currentPost.owner.username}</p>
+              <div className="flex items-center gap-2">
+                <span className="text-white font-black text-lg tracking-wide" style={{ fontFamily: 'Bebas Neue' }}>
+                  {currentPost.owner.username}
+                </span>
+                {currentPost.owner.is_verified && (
+                  <svg className="w-4 h-4 text-blue-500 fill-current" viewBox="0 0 24 24">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
               </div>
             </div>
 
-            {/* Caption */}
-            {currentPost.caption && (
-              <p className="text-white text-sm leading-relaxed mb-3">{currentPost.caption}</p>
+            {currentPost.items.length > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setViewMode(viewMode === 'shop' ? 'discover' : 'shop'); }}
+                className="px-4 py-2 bg-white/95 backdrop-blur-sm text-black font-black text-[11px] tracking-widest rounded-full hover:bg-white hover:scale-105 active:scale-95 transition-all shadow-lg"
+                style={{ fontFamily: 'Bebas Neue' }}
+              >
+                {viewMode === 'shop' ? 'CLOSE' : 'SHOP THE LOOK'}
+              </button>
             )}
-
-            {/* Actions */}
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => toggleLike(currentPost.id, currentPost.is_liked)}
-                className="flex items-center gap-2 text-white hover:opacity-70 transition-opacity"
-              >
-                <span className="text-2xl">{currentPost.is_liked ? '♥' : '♡'}</span>
-                <span className="text-sm font-black">{currentPost.like_count}</span>
-              </button>
-
-              <button
-                onClick={handleComment}
-                className="flex items-center gap-2 text-white hover:opacity-70 transition-opacity"
-              >
-                <span className="text-2xl">💬</span>
-                <span className="text-sm font-black">{currentPost.comment_count}</span>
-              </button>
-
-              <button
-                onClick={() => toggleSave(currentPost.id, currentPost.is_saved)}
-                className="flex items-center gap-2 text-white hover:opacity-70 transition-opacity"
-              >
-                <span className="text-2xl">{currentPost.is_saved ? '🔖' : '📑'}</span>
-              </button>
-
-              <button
-                onClick={handleShare}
-                className="flex items-center gap-2 text-white hover:opacity-70 transition-opacity ml-auto"
-              >
-                <span className="text-2xl">↗</span>
-              </button>
-
-              {currentPost.items && currentPost.items.length > 0 && (
-                <button
-                  onClick={() => setViewMode(viewMode === 'discover' ? 'shop' : 'discover')}
-                  className="px-4 py-2 bg-white text-black rounded-full text-xs font-black tracking-wider hover:bg-white/90 transition-all"
-                  style={{ fontFamily: 'Bebas Neue' }}
-                >
-                  {viewMode === 'discover' ? '🛍️ SHOP' : 'CLOSE'}
-                </button>
-              )}
-            </div>
           </div>
+
+          {/* Actions */}
+          <div className="w-full max-w-lg flex items-center gap-5 mb-2">
+            <button
+              onClick={() => toggleLike(currentPost.id, currentPost.is_liked)}
+              className="flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform"
+            >
+              <svg className="w-7 h-7 transition-all" fill={currentPost.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+              <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{currentPost.like_count}</span>
+            </button>
+
+            <button onClick={handleComment} className="flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform">
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{currentPost.comment_count}</span>
+            </button>
+
+            <button
+              onClick={() => {
+                const shareUrl = `${window.location.origin}/post/${currentPost.id}`;
+                if (navigator.share) {
+                  navigator.share({
+                    title: `@${currentPost.owner.username} on Sourced`,
+                    url: shareUrl
+                  });
+                } else {
+                  navigator.clipboard.writeText(shareUrl);
+                  setToastMessage('Link copied!');
+                  setShowToast(true);
+                  setTimeout(() => setShowToast(false), 2000);
+                }
+              }}
+              className="flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4m0 0L8 6m4-4v13" />
+              </svg>
+            </button>
+
+            {/* Save/Bookmark Button */}
+            <button
+              onClick={() => toggleSave(currentPost.id, currentPost.is_saved)}
+              className="ml-auto flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform"
+            >
+              <svg className="w-6 h-6 transition-all" fill={currentPost.is_saved ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Caption */}
+          {currentPost.caption && (
+            <div className="w-full max-w-lg mb-2">
+              <p className="text-white/90 text-sm leading-relaxed">
+                {currentPost.caption}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Toast */}
         {showToast && (
-          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-white text-black px-6 py-3 rounded-full shadow-lg z-50">
-            <p className="text-sm font-black tracking-wide" style={{ fontFamily: 'Bebas Neue' }}>{toastMessage}</p>
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 fade-in">
+            <div className="bg-white text-black px-6 py-3 rounded-full shadow-2xl">
+              <p className="font-black text-sm tracking-wider" style={{ fontFamily: 'Bebas Neue' }}>
+                {toastMessage}
+              </p>
+            </div>
           </div>
         )}
 
-        {/* Comments Modal */}
-        {showCommentsModal && currentPost && (
-          <CommentsModal
-            postId={currentPost.id}
-            onClose={() => setShowCommentsModal(false)}
-          />
+        {/* Swipe Indicator */}
+        {currentHistoryIndex === 0 && (
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/40 text-center z-20 fade-in">
+            <svg className="w-8 h-8 mx-auto mb-2 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+            <p className="text-xs tracking-widest font-black" style={{ fontFamily: 'Bebas Neue' }}>
+              SWIPE TO DISCOVER
+            </p>
+          </div>
         )}
       </div>
+
+      {/* Comments Modal */}
+      {currentUserId && (
+        <CommentsModal
+          postId={currentPost.id}
+          postOwnerId={currentPost.owner.id}
+          isOpen={showCommentsModal}
+          onClose={() => {
+            setShowCommentsModal(false);
+            if (currentPost) {
+              supabase
+                .from('feed_posts')
+                .select('comment_count')
+                .eq('id', currentPost.id)
+                .single()
+                .then(({ data }) => {
+                  if (data) {
+                    setCurrentPost({
+                      ...currentPost,
+                      comment_count: data.comment_count || 0
+                    });
+                  }
+                });
+            }
+          }}
+          currentUserId={currentUserId}
+        />
+      )}
     </>
   );
 }
