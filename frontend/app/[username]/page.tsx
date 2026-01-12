@@ -1489,6 +1489,220 @@ export default function ProfilePage() {
 
           </div>
         </div>
+
+        {/* Edit Profile Modal */}
+        {showEditModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <div className="w-full max-w-md md:max-w-2xl relative max-h-[85vh] md:max-h-[80vh]">
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setShowCropper(false);
+                }}
+                className="absolute -top-10 md:-top-16 right-0 text-[10px] tracking-[0.4em] text-white hover:opacity-50 transition-opacity"
+                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+              >
+                [ESC]
+              </button>
+
+              <div className="border-2 border-white p-6 md:p-12 bg-black relative text-white overflow-y-auto max-h-[85vh] md:max-h-[80vh]">
+                <div className="space-y-6 md:space-y-8">
+                  <div className="space-y-2">
+                    <div className="text-[10px] tracking-[0.5em] opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                      EDIT PROFILE
+                    </div>
+                    <h2 className="text-3xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                      UPDATE
+                    </h2>
+                  </div>
+
+                  <form onSubmit={handleUpdateProfile} className="space-y-4 md:space-y-6">
+                    <div className="space-y-2">
+                      <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        FULL NAME (OPTIONAL)
+                      </label>
+                      <input
+                        type="text"
+                        value={editFullName}
+                        onChange={(e) => setEditFullName(e.target.value)}
+                        className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40"
+                        style={{ fontSize: '16px' }}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        BIO (OPTIONAL)
+                      </label>
+                      <textarea
+                        value={editBio}
+                        onChange={(e) => setEditBio(e.target.value)}
+                        rows={4}
+                        maxLength={300}
+                        className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40 resize-none"
+                        placeholder="Tell us about yourself..."
+                        style={{ fontSize: '16px' }}
+                      />
+                      <p className="text-[9px] tracking-wider opacity-40">
+                        {editBio.length}/300 characters
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        AVATAR (OPTIONAL)
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setUploadMethod('file')}
+                          className={`px-3 md:px-4 py-1.5 md:py-2 text-xs tracking-wider font-black transition-all ${
+                            uploadMethod === 'file'
+                              ? 'bg-white text-black'
+                              : 'border border-white text-white hover:bg-white/10'
+                          }`}
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                        >
+                          UPLOAD FILE
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUploadMethod('url')}
+                          className={`px-3 md:px-4 py-1.5 md:py-2 text-xs tracking-wider font-black transition-all ${
+                            uploadMethod === 'url'
+                              ? 'bg-white text-black'
+                              : 'border border-white text-white hover:bg-white/10'
+                          }`}
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                        >
+                          IMAGE URL
+                        </button>
+                      </div>
+                    </div>
+
+                    {uploadMethod === 'file' && (
+                      <div className="space-y-3">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileSelect}
+                          className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none text-white file:mr-4 file:py-1 file:px-3 file:border-0 file:bg-white file:text-black file:text-xs file:tracking-wider file:font-black"
+                          style={{ fontSize: '16px' }}
+                        />
+                        <p className="text-[9px] tracking-wider opacity-40">
+                          JPG, PNG, or GIF. Max size 5MB.
+                        </p>
+                      </div>
+                    )}
+
+                    {uploadMethod === 'url' && (
+                      <div className="space-y-3">
+                        <input
+                          type="url"
+                          value={editAvatarUrl}
+                          onChange={(e) => setEditAvatarUrl(e.target.value)}
+                          placeholder="https://example.com/image.jpg"
+                          className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40"
+                          style={{ fontSize: '16px' }}
+                        />
+                        <p className="text-[9px] tracking-wider opacity-40">
+                          Paste a link to your avatar image
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Image Cropper */}
+                    {showCropper && previewUrl && (
+                      <div className="space-y-4">
+                        <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                          CROP YOUR AVATAR
+                        </label>
+                        <div className="relative w-full h-64 bg-neutral-900 rounded-lg overflow-hidden">
+                          <Cropper
+                            image={previewUrl}
+                            crop={crop}
+                            zoom={zoom}
+                            aspect={1}
+                            cropShape="round"
+                            showGrid={false}
+                            onCropChange={setCrop}
+                            onZoomChange={setZoom}
+                            onCropComplete={onCropComplete}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs tracking-wider opacity-60">ZOOM</label>
+                          <input
+                            type="range"
+                            min={1}
+                            max={3}
+                            step={0.1}
+                            value={zoom}
+                            onChange={(e) => setZoom(Number(e.target.value))}
+                            className="w-full"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {((uploadMethod === 'url' && editAvatarUrl && !showCropper) || (uploadMethod === 'file' && !showCropper && editAvatarUrl)) && (
+                      <div className="space-y-3">
+                        <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                          PREVIEW
+                        </label>
+                        <div className="flex items-center gap-4 p-3 md:p-4 border border-white/20">
+                          <img
+                            src={editAvatarUrl}
+                            alt="Preview"
+                            className="w-12 h-12 md:w-16 md:h-16 rounded-full border-2 border-white object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                          <div className="text-xs opacity-60">
+                            Avatar preview
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {imageError && (
+                      <div className="p-3 border border-red-400 text-red-400 text-xs tracking-wide">
+                        {imageError}
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 md:gap-4 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowEditModal(false);
+                          setShowCropper(false);
+                        }}
+                        className="flex-1 py-3 md:py-4 border-2 border-white text-white hover:bg-white hover:text-black transition-all text-xs tracking-[0.4em] font-black"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        CANCEL
+                      </button>
+
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="flex-1 py-3 md:py-4 bg-white text-black hover:bg-black hover:text-white hover:border-white border-2 border-white transition-all text-xs tracking-[0.4em] font-black disabled:opacity-30 disabled:cursor-not-allowed"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        {saving ? 'SAVING...' : 'SAVE'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Followers/Following Modal - Add back from original */}
+        {/* Expanded Item Modal - Add back from original */}
       </div>
     </>
   );
