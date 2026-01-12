@@ -298,9 +298,6 @@ export default function FeedPage() {
       setTimeout(() => setIsAnimating(false), 30);
     }, 120); // Faster: 200ms → 120ms
   };
-      setTimeout(() => setIsAnimating(false), 50);
-    }, 200);
-  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
