@@ -615,33 +615,6 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
               </svg>
             </button>
           </div>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              <span className="font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.comment_count}</span>
-            </button>
-
-            <button
-              onClick={() => {
-                const shareUrl = `${window.location.origin}/post/${post.id}`;
-                if (navigator.share) {
-                  navigator.share({
-                    title: `@${post.owner.username} on Sourced`,
-                    url: shareUrl
-                  });
-                } else {
-                  navigator.clipboard.writeText(shareUrl);
-                  setToastMessage('Link copied!');
-                  setShowToast(true);
-                  setTimeout(() => setShowToast(false), 2000);
-                }
-              }}
-              className="flex items-center gap-2 text-white hover:scale-110 transition-transform"
-            >
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4m0 0L8 6m4-4v13" />
-              </svg>
-            </button>
-          </div>
 
           {/* Caption */}
           {post.caption && (
