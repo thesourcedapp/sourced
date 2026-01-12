@@ -1521,8 +1521,110 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {/* Bookmarked Catalogs and Liked Items tabs remain the same as before... */}
-            {/* I'll continue in the next message due to length */}
+            {/* Bookmarked Catalogs Tab */}
+            {activeTab === 'bookmarks' && (
+              <div className="space-y-6">
+                {bookmarkedCatalogs.length === 0 ? (
+                  <div className="text-center py-20">
+                    <p className="text-lg tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                      NO BOOKMARKED CATALOGS YET
+                    </p>
+                    <p className="text-sm tracking-wide opacity-30 mt-2">
+                      {isOwner ? "You haven't bookmarked any catalogs yet" : "This user hasn't bookmarked any catalogs yet"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                    {bookmarkedCatalogs.map(catalog => (
+                      <div
+                        key={catalog.id}
+                        className="border border-white/20 hover:border-white transition-all cursor-pointer group"
+                        onClick={() => router.push(`/${catalog.username}/${catalog.slug}`)}
+                      >
+                        <div className="aspect-square bg-white/5 overflow-hidden">
+                          {catalog.image_url ? (
+                            <img src={catalog.image_url} alt={catalog.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <span className="text-4xl md:text-6xl opacity-10">✦</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-3 md:p-4 space-y-2">
+                          <h3 className="text-sm md:text-base font-black tracking-wide uppercase truncate" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                            {catalog.name}
+                          </h3>
+                          <div className="flex items-center gap-2 text-xs opacity-60">
+                            <span>@{catalog.username}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs opacity-60">
+                            <span>{catalog.item_count} items</span>
+                            <span>🔖 {catalog.bookmark_count}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Liked Items Tab */}
+            {activeTab === 'liked' && (
+              <div className="space-y-6">
+                {likedItems.length === 0 ? (
+                  <div className="text-center py-20">
+                    <p className="text-lg tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                      NO LIKED ITEMS YET
+                    </p>
+                    <p className="text-sm tracking-wide opacity-30 mt-2">
+                      {isOwner ? "You haven't liked any items yet" : "This user hasn't liked any items yet"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                    {likedItems.map(item => (
+                      <div
+                        key={item.id}
+                        className="border border-white/20 hover:border-white transition-all group"
+                      >
+                        <div
+                          className="aspect-square bg-white/5 overflow-hidden cursor-pointer"
+                          onClick={() => item.product_url && window.open(item.product_url, '_blank')}
+                        >
+                          <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                        </div>
+                        <div className="p-3 space-y-2">
+                          <h3 className="text-xs md:text-sm font-black tracking-wide uppercase truncate leading-tight" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                            {item.title}
+                          </h3>
+                          {item.seller && (
+                            <p className="text-[10px] md:text-xs opacity-60 truncate">{item.seller}</p>
+                          )}
+                          {item.price && (
+                            <p className="text-xs md:text-sm font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                              ${item.price}
+                            </p>
+                          )}
+                          <div className="flex items-center justify-between text-[10px] opacity-60">
+                            <span>♥ {item.like_count}</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/${item.catalog_owner}/${item.catalog_slug}`);
+                              }}
+                              className="hover:opacity-100 transition-opacity"
+                            >
+                              VIEW CATALOG →
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
           </div>
         </div>
