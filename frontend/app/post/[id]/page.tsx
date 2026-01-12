@@ -37,7 +37,7 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
   const router = useRouter();
   const [post, setPost] = useState<FeedPost | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null | undefined>(undefined);
   const [isOnboarded, setIsOnboarded] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -55,9 +55,15 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
   useEffect(() => {
     if (postId) {
       loadCurrentUser();
-      loadPost();
     }
   }, [postId]);
+
+  useEffect(() => {
+    if (postId && currentUserId !== undefined) {
+      // Wait for auth to be checked (currentUserId can be null for guests, but not undefined)
+      loadPost();
+    }
+  }, [postId, currentUserId]);
 
   async function loadCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();

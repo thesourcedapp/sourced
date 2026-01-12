@@ -218,6 +218,7 @@ async def get_next_feed_post(request: FeedRequest):
         # 'discovery' has no filter - completely random
 
         # Exclude recently seen posts (if list is manageable)
+        # Only exclude if we haven't seen too many (to allow recirculation)
         if len(exclude_ids) > 0 and len(exclude_ids) <= 20:
             # For small exclude lists, filter them out
             for post_id in exclude_ids:
@@ -229,11 +230,31 @@ async def get_next_feed_post(request: FeedRequest):
 
         posts_response = query.execute()
 
-        # If no posts found, try discovery mode
+        # If no posts found with filters, try without filters (fallback to all posts)
+        if not posts_response.data and selected_strategy != 'discovery':
+            print(f"⚠️ No posts found with strategy '{selected_strategy}'. Falling back to all posts...")
+
+            # Build fresh query without strategy filters
+            query = sb.table('feed_posts').select(
+                'id, image_url, caption, like_count, comment_count, music_preview_url, owner_id, created_at, '
+                'profiles!feed_posts_owner_id_fkey(id, username, avatar_url, is_verified)'
+            )
+
+            # Still respect exclude_ids if reasonable
+            if len(exclude_ids) > 0 and len(exclude_ids) <= 20:
+                for post_id in exclude_ids:
+                    query = query.neq('id', post_id)
+
+            query = query.order('created_at', desc=True).limit(50)
+            posts_response = query.execute()
+
+        # If STILL no posts found AND we're excluding posts, reset and recirculate
         if not posts_response.data:
-            if not is_initial and selected_strategy != 'discovery':
-                # Try pure discovery
+            if len(exclude_ids) > 0:
+                # All posts seen! Reset exclude list and recirculate
+                print(f"🔄 All content seen ({len(exclude_ids)} posts). Recirculating...")
                 return await get_next_feed_post(FeedRequest(exclude_ids=[], is_initial=False, user_id=user_id))
+            # Truly no posts available
             return {"post": None, "message": "No posts available"}
 
         # Score and rank posts
