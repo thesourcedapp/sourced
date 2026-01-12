@@ -231,7 +231,7 @@ async def get_next_feed_post(request: FeedRequest):
         posts_response = query.execute()
 
         # If no posts found with filters, try without filters (fallback to all posts)
-        if not posts_response.data and selected_strategy != 'discovery':
+        if (not posts_response or not posts_response.data) and selected_strategy != 'discovery':
             print(f"⚠️ No posts found with strategy '{selected_strategy}'. Falling back to all posts...")
 
             # Build fresh query without strategy filters
@@ -249,7 +249,7 @@ async def get_next_feed_post(request: FeedRequest):
             posts_response = query.execute()
 
         # If STILL no posts found AND we're excluding posts, reset and recirculate
-        if not posts_response.data:
+        if not posts_response or not posts_response.data:
             if len(exclude_ids) > 0:
                 # All posts seen! Reset exclude list and recirculate
                 print(f"🔄 All content seen ({len(exclude_ids)} posts). Recirculating...")
@@ -281,8 +281,8 @@ async def get_next_feed_post(request: FeedRequest):
             saved_response = sb.table('saved_feed_posts').select('feed_post_id').eq('user_id', user_id).eq(
                 'feed_post_id', selected_post['id']).maybe_single().execute()
 
-            is_liked = bool(liked_response.data)
-            is_saved = bool(saved_response.data)
+            is_liked = bool(liked_response.data) if liked_response else False
+            is_saved = bool(saved_response.data) if saved_response else False
 
         # Get items for this post
         items_response = sb.table('feed_post_items').select(
@@ -291,12 +291,12 @@ async def get_next_feed_post(request: FeedRequest):
 
         # Get liked items for current user
         liked_item_ids = set()
-        if user_id and items_response.data:
+        if user_id and items_response and items_response.data:
             item_ids = [item['id'] for item in items_response.data]
             liked_items_response = sb.table('liked_feed_post_items').select('item_id').eq('user_id', user_id).in_(
                 'item_id', item_ids).execute()
-            liked_item_ids = {like['item_id'] for like in
-                              liked_items_response.data} if liked_items_response.data else set()
+            if liked_items_response and liked_items_response.data:
+                liked_item_ids = {like['item_id'] for like in liked_items_response.data}
 
         items = [
             FeedItem(
@@ -309,7 +309,7 @@ async def get_next_feed_post(request: FeedRequest):
                 like_count=item.get('like_count', 0),
                 is_liked=item['id'] in liked_item_ids
             )
-            for item in (items_response.data or [])
+            for item in (items_response.data if items_response and items_response.data else [])
         ]
 
         # Format owner data
