@@ -266,7 +266,7 @@ export default function FeedPage() {
       // Need to fetch new post
       setIsTransitioning(true);
 
-      let postToShow = nextPostData;
+      let postToShow: FeedPost | null = nextPostData;
 
       // If next post isn't ready, fetch it
       if (!nextPostData) {
@@ -304,14 +304,17 @@ export default function FeedPage() {
         )
       );
 
+      // TypeScript now knows postToShow is FeedPost (not null) because we returned early if null
+      const validPost = postToShow as FeedPost;
+
       setIsAnimating(true);
       setIsFading(true);
 
       setTimeout(() => {
-        setCurrentPost(postToShow);
-        setPostHistory(prev => [...prev, postToShow]);
+        setCurrentPost(validPost);
+        setPostHistory(prev => [...prev, validPost]);
         setCurrentHistoryIndex(prev => prev + 1);
-        setSeenPostIds(prev => new Set([...prev, postToShow.id]));
+        setSeenPostIds(prev => new Set([...prev, validPost.id]));
         setNextPostData(null);
         setNextImagePreloaded(false);
         setViewMode('discover');
