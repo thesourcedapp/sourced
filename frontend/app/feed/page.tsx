@@ -59,13 +59,17 @@ export default function FeedPage() {
   const postStartTime = useRef<number>(Date.now());
   const hasInteracted = useRef<boolean>(false);
 
+  // Image loading and transition states
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [nextImagePreloaded, setNextImagePreloaded] = useState(false);
+
   useEffect(() => {
     loadCurrentUser();
   }, []);
 
   useEffect(() => {
     console.log('🎯 currentUserId changed:', currentUserId);
-    // Load feed for both logged-in users AND guests
     if (currentUserId !== undefined) {
       console.log('✅ Loading initial post (user:', currentUserId || 'guest', ')');
       loadInitialPost();
@@ -76,10 +80,41 @@ export default function FeedPage() {
 
   // Pre-load next post when current post loads
   useEffect(() => {
-    if (currentPost && !nextPostData && !isAnimating) {
+    if (currentPost && !nextPostData && !isAnimating && imageLoaded) {
       preloadNextPost();
     }
-  }, [currentPost, nextPostData, isAnimating]);
+  }, [currentPost, nextPostData, isAnimating, imageLoaded]);
+
+  // Preload next post's image
+  useEffect(() => {
+    if (nextPostData && !nextImagePreloaded) {
+      const img = new Image();
+      img.src = nextPostData.image_url;
+      img.onload = () => {
+        setNextImagePreloaded(true);
+        console.log('✅ Next image preloaded');
+      };
+
+      // Preload item images too
+      nextPostData.items.forEach(item => {
+        const itemImg = new Image();
+        itemImg.src = item.image_url;
+      });
+    }
+  }, [nextPostData, nextImagePreloaded]);
+
+  // Reset image loaded state when post changes
+  useEffect(() => {
+    if (currentPost) {
+      setImageLoaded(false);
+      const img = new Image();
+      img.src = currentPost.image_url;
+      img.onload = () => {
+        setImageLoaded(true);
+        setIsTransitioning(false);
+      };
+    }
+  }, [currentPost?.id]);
 
   // Track post view time
   useEffect(() => {
@@ -139,14 +174,12 @@ export default function FeedPage() {
     const post = await fetchNextPost(false);
     if (post) {
       setNextPostData(post);
+      setNextImagePreloaded(false); // Trigger preloading
     }
   }
 
   async function fetchNextPost(isInitial: boolean = false): Promise<FeedPost | null> {
     try {
-      // 🔥 BACKEND URL - Change before deploy! 🔥
-      // LOCAL: http://localhost:8000
-      // PRODUCTION: https://sourced-5ovn.onrender.com
       const BACKEND_URL = "https://sourced-5ovn.onrender.com";
 
       console.log('📡 Fetching from:', `${BACKEND_URL}/feed/next`);
@@ -194,7 +227,6 @@ export default function FeedPage() {
     if (!currentUserId) return;
 
     try {
-      // 🔥 BACKEND URL - Change before deploy! 🔥
       const BACKEND_URL = "https://sourced-5ovn.onrender.com";
 
       await fetch(`${BACKEND_URL}/feed/log-view`, {
@@ -215,8 +247,9 @@ export default function FeedPage() {
   }
 
   const goToNextPost = async () => {
-    if (isAnimating) return;
+    if (isAnimating || isTransitioning) return;
 
+    // Going forward in history
     if (currentHistoryIndex < postHistory.length - 1) {
       setIsAnimating(true);
       setIsFading(true);
@@ -228,45 +261,69 @@ export default function FeedPage() {
         setViewMode('discover');
         setIsFading(false);
         setTimeout(() => setIsAnimating(false), 50);
-      }, 200);
+      }, 150);
     } else {
+      // Need to fetch new post
+      setIsTransitioning(true);
+
+      let postToShow = nextPostData;
+
+      // If next post isn't ready, fetch it
       if (!nextPostData) {
-        const post = await fetchNextPost(false);
-        if (!post) return;
-
-        setIsAnimating(true);
-        setIsFading(true);
-
-        setTimeout(() => {
-          setCurrentPost(post);
-          setPostHistory(prev => [...prev, post]);
-          setCurrentHistoryIndex(prev => prev + 1);
-          setSeenPostIds(prev => new Set([...prev, post.id]));
-          setNextPostData(null);
-          setViewMode('discover');
-          setIsFading(false);
-          setTimeout(() => setIsAnimating(false), 50);
-        }, 200);
-      } else {
-        setIsAnimating(true);
-        setIsFading(true);
-
-        setTimeout(() => {
-          setCurrentPost(nextPostData);
-          setPostHistory(prev => [...prev, nextPostData]);
-          setCurrentHistoryIndex(prev => prev + 1);
-          setSeenPostIds(prev => new Set([...prev, nextPostData.id]));
-          setNextPostData(null);
-          setViewMode('discover');
-          setIsFading(false);
-          setTimeout(() => setIsAnimating(false), 50);
-        }, 200);
+        postToShow = await fetchNextPost(false);
+        if (!postToShow) {
+          setIsTransitioning(false);
+          return;
+        }
       }
+
+      // Wait for the image to fully load before showing
+      await new Promise<void>((resolve) => {
+        const img = new Image();
+        img.src = postToShow!.image_url;
+
+        if (img.complete) {
+          resolve();
+        } else {
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+          setTimeout(resolve, 3000); // Fallback timeout
+        }
+      });
+
+      // Also preload item images
+      await Promise.all(
+        postToShow!.items.slice(0, 4).map(item =>
+          new Promise<void>((resolve) => {
+            const img = new Image();
+            img.src = item.image_url;
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+            setTimeout(resolve, 1000);
+          })
+        )
+      );
+
+      setIsAnimating(true);
+      setIsFading(true);
+
+      setTimeout(() => {
+        setCurrentPost(postToShow);
+        setPostHistory(prev => [...prev, postToShow]);
+        setCurrentHistoryIndex(prev => prev + 1);
+        setSeenPostIds(prev => new Set([...prev, postToShow.id]));
+        setNextPostData(null);
+        setNextImagePreloaded(false);
+        setViewMode('discover');
+        setIsTransitioning(false);
+        setIsFading(false);
+        setTimeout(() => setIsAnimating(false), 50);
+      }, 150);
     }
   };
 
   const goToPrevPost = () => {
-    if (isAnimating || currentHistoryIndex <= 0) return;
+    if (isAnimating || isTransitioning || currentHistoryIndex <= 0) return;
 
     setIsAnimating(true);
     setIsFading(true);
@@ -278,13 +335,13 @@ export default function FeedPage() {
       setViewMode('discover');
       setIsFading(false);
       setTimeout(() => setIsAnimating(false), 50);
-    }, 200);
+    }, 150);
   };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isAnimating) return;
-      if (showCommentsModal || viewMode === 'shop') return; // Don't interfere with modals/overlays
+      if (isAnimating || isTransitioning) return;
+      if (showCommentsModal || viewMode === 'shop') return;
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -296,32 +353,31 @@ export default function FeedPage() {
       }
     };
 
-    // Remove wheel event - too sensitive and causes auto-scroll
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isAnimating, currentHistoryIndex, postHistory, showCommentsModal, viewMode]);
+  }, [isAnimating, isTransitioning, currentHistoryIndex, postHistory, showCommentsModal, viewMode]);
 
   function handleTouchStart(e: React.TouchEvent) {
-    if (isAnimating) return;
-    if (viewMode === 'shop') return; // Don't interfere with shop overlay scrolling
+    if (isAnimating || isTransitioning) return;
+    if (viewMode === 'shop') return;
     setTouchStart(e.targetTouches[0].clientY);
     setTouchEnd(e.targetTouches[0].clientY);
   }
 
   function handleTouchMove(e: React.TouchEvent) {
-    if (isAnimating) return;
+    if (isAnimating || isTransitioning) return;
     if (viewMode === 'shop') return;
     setTouchEnd(e.targetTouches[0].clientY);
   }
 
   function handleTouchEnd() {
-    if (isAnimating) return;
+    if (isAnimating || isTransitioning) return;
     if (viewMode === 'shop') return;
 
     const swipeDistance = touchStart - touchEnd;
-    const minSwipeDistance = 150; // Increased from 100 for more intentional swipes
+    const minSwipeDistance = 150;
 
     if (Math.abs(swipeDistance) > minSwipeDistance) {
       if (swipeDistance > 0) {
@@ -563,6 +619,11 @@ export default function FeedPage() {
           100% { transform: translateX(-50%); }
         }
 
+        @keyframes shimmer {
+          0% { background-position: -1000px 0; }
+          100% { background-position: 1000px 0; }
+        }
+
         .slide-up {
           animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
@@ -581,6 +642,12 @@ export default function FeedPage() {
 
         .animate-scroll {
           animation: scroll 20s linear infinite;
+        }
+
+        .skeleton {
+          background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+          background-size: 1000px 100%;
+          animation: shimmer 2s infinite;
         }
 
         .scrollbar-hide {
@@ -633,6 +700,19 @@ export default function FeedPage() {
           </div>
         </div>
 
+        {/* Loading Overlay - Shows during transitions */}
+        {isTransitioning && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex gap-2">
+                <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Main Content with Animation */}
         <div className={`relative h-full flex flex-col items-center justify-center px-3 pt-32 pb-24 ${isFading ? 'fade-out' : 'fade-in-content'}`}>
 
@@ -658,6 +738,7 @@ export default function FeedPage() {
                 width: '100%',
                 height: '100%'
               }}
+              onLoad={() => setImageLoaded(true)}
             />
 
             {/* Shop Overlay */}
