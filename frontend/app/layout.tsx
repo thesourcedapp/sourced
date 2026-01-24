@@ -45,6 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        {/* Verification Meta Tags - Must be first */}
+        <meta name="impact-site-verification" content="fd9b02da-a93b-4371-9311-e5c143a1acde" />
+
         {/* Favicon - browser tab icon */}
         <link rel="icon" href="/logo-s.svg" type="image/svg+xml" />
 
