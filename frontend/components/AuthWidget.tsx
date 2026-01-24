@@ -148,6 +148,11 @@ export default function AuthWidget({ showUsername = false }: AuthWidgetProps) {
     }
   }
 
+  function handleViewAnalytics() {
+    setMenuOpen(false);
+    router.push('/creator/analytics');
+  }
+
   if (!session) {
     return (
       <>
@@ -233,6 +238,18 @@ export default function AuthWidget({ showUsername = false }: AuthWidgetProps) {
                 </svg>
                 <span className="text-sm font-semibold text-black" style={{ fontFamily: 'Inter, sans-serif' }}>
                   View Profile
+                </span>
+              </button>
+
+              <button
+                onClick={handleViewAnalytics}
+                className="w-full py-3 px-4 rounded-xl hover:bg-black/5 transition-all text-left flex items-center gap-3"
+              >
+                <svg className="w-5 h-5 text-black/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span className="text-sm font-semibold text-black" style={{ fontFamily: 'Inter, sans-serif' }}>
+                  Creator Analytics
                 </span>
               </button>
 
