@@ -79,9 +79,9 @@ export default function MobileBottomNav() {
         {!isExpanded ? (
           <button
             onClick={() => setIsExpanded(true)}
-            className="transition-all duration-300 ease-out pointer-events-auto hover:scale-110 animate-bounce"
+            className="transition-all duration-300 ease-out pointer-events-auto hover:scale-110 animate-bounce bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-lg border border-black/10"
           >
-            <svg className="w-6 h-6 text-white/60 hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <svg className="w-6 h-6 text-black/70 hover:text-black transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
             </svg>
           </button>
@@ -95,9 +95,9 @@ export default function MobileBottomNav() {
             <div className="flex justify-center pt-1 pb-0.5">
               <button
                 onClick={() => setIsExpanded(false)}
-                className="p-0.5 hover:bg-black/5 rounded-full transition-colors"
+                className="p-0.5 hover:bg-black/10 rounded-full transition-colors bg-black/5"
               >
-                <svg className="w-3 h-3 text-black/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <svg className="w-3 h-3 text-black/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
