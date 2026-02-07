@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Use service role for admin access
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function POST(request: NextRequest) {
@@ -19,14 +19,10 @@ export async function POST(request: NextRequest) {
 
     const tableName = itemType === 'catalog' ? 'catalog_items' : 'feed_post_items';
 
-    // Increment click count and update last clicked timestamp
-    const { error } = await supabase
-      .from(tableName)
-      .update({
-        click_count: supabase.raw('click_count + 1'),
-        last_clicked_at: new Date().toISOString()
-      })
-      .eq('id', itemId);
+    const { data, error } = await supabase.rpc('increment_click_count', {
+      table_name: tableName,
+      item_id: itemId
+    });
 
     if (error) {
       console.error('Error tracking click:', error);
@@ -36,7 +32,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, click_count: data });
   } catch (error) {
     console.error('Error:', error);
     return NextResponse.json(
