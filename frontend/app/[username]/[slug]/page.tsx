@@ -272,8 +272,10 @@ export default function CatalogDetailPage() {
 
   // Track click function
   async function trackClick(itemId: string) {
+    console.log('🔵 trackClick called with itemId:', itemId);
     try {
-      await fetch('/api/track-click', {
+      console.log('🔵 Making fetch request to /api/track-click');
+      const response = await fetch('/api/track-click', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -283,24 +285,41 @@ export default function CatalogDetailPage() {
           itemType: 'catalog'
         }),
       });
+
+      console.log('🔵 Response status:', response.status);
+      const data = await response.json();
+      console.log('🔵 Response data:', data);
+
+      if (!response.ok) {
+        console.error('❌ Tracking failed:', data);
+      } else {
+        console.log('✅ Click tracked successfully:', data);
+      }
     } catch (error) {
-      console.error('Error tracking click:', error);
+      console.error('❌ Error tracking click:', error);
       // Don't block navigation if tracking fails
     }
   }
 
   // Handle item click with tracking
-  async function handleItemClick(item: CatalogItem, e?: React.MouseEvent) {
+  function handleItemClick(item: CatalogItem, e?: React.MouseEvent) {
+    console.log('🟢 handleItemClick called for item:', item.id, item.title);
+
     if (e) {
       e.stopPropagation();
     }
 
     if (item.product_url) {
+      console.log('🟢 Item has product_url:', item.product_url);
+
       // Track the click (fire and forget)
       trackClick(item.id);
 
       // Open the link
+      console.log('🟢 Opening product URL in new tab');
       window.open(item.product_url, '_blank');
+    } else {
+      console.log('⚠️ Item has no product_url');
     }
   }
 
