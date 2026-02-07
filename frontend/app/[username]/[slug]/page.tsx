@@ -34,6 +34,7 @@ type CatalogItem = {
   brand?: string;
   primary_color?: string;
   style_tags?: string[];
+  click_count?: number;
 };
 
 type SortOption = 'recent' | 'oldest' | 'most_liked' | 'title';
@@ -269,6 +270,40 @@ export default function CatalogDetailPage() {
     }
   }
 
+  // Track click function
+  async function trackClick(itemId: string) {
+    try {
+      await fetch('/api/track-click', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          itemId,
+          itemType: 'catalog'
+        }),
+      });
+    } catch (error) {
+      console.error('Error tracking click:', error);
+      // Don't block navigation if tracking fails
+    }
+  }
+
+  // Handle item click with tracking
+  async function handleItemClick(item: CatalogItem, e?: React.MouseEvent) {
+    if (e) {
+      e.stopPropagation();
+    }
+
+    if (item.product_url) {
+      // Track the click (fire and forget)
+      trackClick(item.id);
+
+      // Open the link
+      window.open(item.product_url, '_blank');
+    }
+  }
+
   async function toggleBookmark() {
     if (!currentUserId || !isOnboarded) {
       setShowLoginMessage(true);
@@ -417,169 +452,165 @@ export default function CatalogDetailPage() {
     setCreatingStatus('');
   }
 
-  // Updated handleAddItem function
-// Replace your existing handleAddItem with this version
-// This saves external image URLs to your Supabase bucket to prevent broken links
+  async function handleAddItem(e: React.FormEvent) {
+    e.preventDefault();
 
-async function handleAddItem(e: React.FormEvent) {
-  e.preventDefault();
-
-  if (!currentUserId) {
-    setImageError('You must be logged in');
-    return;
-  }
-
-  if (!catalog) {
-    setImageError('Catalog not loaded');
-    return;
-  }
-
-  setCreating(true);
-  setImageError('');
-  setProductUrlError('');
-
-  try {
-    if (!itemProductUrl.trim()) {
-      setProductUrlError('Product URL is required');
-      setCreating(false);
+    if (!currentUserId) {
+      setImageError('You must be logged in');
       return;
     }
+
+    if (!catalog) {
+      setImageError('Catalog not loaded');
+      return;
+    }
+
+    setCreating(true);
+    setImageError('');
+    setProductUrlError('');
 
     try {
-      new URL(itemProductUrl);
-    } catch {
-      setProductUrlError('Please enter a valid URL');
-      setCreating(false);
-      return;
-    }
-
-    let finalImageUrl = itemImageUrl;
-
-    // Handle file upload
-    if (uploadMethod === 'file' && selectedFile) {
-      setCreatingStatus('Uploading image...');
-      const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
-
-      if (!uploadResult.url) {
-        setImageError(uploadResult.error || "Failed to upload image");
+      if (!itemProductUrl.trim()) {
+        setProductUrlError('Product URL is required');
         setCreating(false);
-        setCreatingStatus('');
         return;
       }
 
-      finalImageUrl = uploadResult.url;
-    }
-    // Handle external URL - download and save to our bucket
-    else if (uploadMethod === 'url' && itemImageUrl) {
-      setCreatingStatus('Saving image to storage...');
       try {
-        // Fetch the external image
-        const response = await fetch(itemImageUrl);
+        new URL(itemProductUrl);
+      } catch {
+        setProductUrlError('Please enter a valid URL');
+        setCreating(false);
+        return;
+      }
 
-        if (!response.ok) {
-          throw new Error('Failed to fetch image');
-        }
+      let finalImageUrl = itemImageUrl;
 
-        const blob = await response.blob();
-
-        // Create a file from the blob
-        const file = new File([blob], `item-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
-
-        // Upload to our bucket
-        const uploadResult = await uploadImageToStorage(file, currentUserId);
+      // Handle file upload
+      if (uploadMethod === 'file' && selectedFile) {
+        setCreatingStatus('Uploading image...');
+        const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
 
         if (!uploadResult.url) {
-          setImageError(uploadResult.error || "Failed to save image");
+          setImageError(uploadResult.error || "Failed to upload image");
           setCreating(false);
           setCreatingStatus('');
           return;
         }
 
         finalImageUrl = uploadResult.url;
-      } catch (err: any) {
-        console.error('Error saving image:', err);
-        setImageError("Failed to save image from URL. Make sure the URL is accessible.");
+      }
+      // Handle external URL - download and save to our bucket
+      else if (uploadMethod === 'url' && itemImageUrl) {
+        setCreatingStatus('Saving image to storage...');
+        try {
+          // Fetch the external image
+          const response = await fetch(itemImageUrl);
+
+          if (!response.ok) {
+            throw new Error('Failed to fetch image');
+          }
+
+          const blob = await response.blob();
+
+          // Create a file from the blob
+          const file = new File([blob], `item-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+
+          // Upload to our bucket
+          const uploadResult = await uploadImageToStorage(file, currentUserId);
+
+          if (!uploadResult.url) {
+            setImageError(uploadResult.error || "Failed to save image");
+            setCreating(false);
+            setCreatingStatus('');
+            return;
+          }
+
+          finalImageUrl = uploadResult.url;
+        } catch (err: any) {
+          console.error('Error saving image:', err);
+          setImageError("Failed to save image from URL. Make sure the URL is accessible.");
+          setCreating(false);
+          setCreatingStatus('');
+          return;
+        }
+      }
+
+      if (!finalImageUrl) {
+        setImageError('Image is required');
         setCreating(false);
-        setCreatingStatus('');
         return;
       }
-    }
 
-    if (!finalImageUrl) {
-      setImageError('Image is required');
+      setCreatingStatus('Categorizing with AI...');
+
+      const requestBody = {
+        catalog_id: catalog.id,
+        title: itemTitle.trim(),
+        image_url: finalImageUrl,
+        product_url: itemProductUrl.trim(),
+        seller: itemSeller.trim() || null,
+        price: itemPrice.trim() || null,
+        user_id: currentUserId
+      };
+
+      // Call backend API with AI categorization
+      const response = await fetch(`https://sourced-5ovn.onrender.com/create-catalog-item`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        throw new Error('Server returned invalid response');
+      }
+
+      if (!response.ok) {
+        // If it's a duplicate error (item already exists), consider it success
+        if (result.detail && result.detail.includes('duplicate') || result.detail.includes('already exists')) {
+          console.log('Item already exists, treating as success');
+          resetAddItemForm();
+          setShowAddItemModal(false);
+          await loadItems();
+          return;
+        }
+        throw new Error(result.detail || `Server error: ${response.status}`);
+      }
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to create item');
+      }
+
+      resetAddItemForm();
+      setShowAddItemModal(false);
+      await loadItems();
+
+    } catch (error: any) {
+      console.error('❌ Error adding item:', error);
+
+      let errorMessage = error.message || 'Failed to add item';
+
+      // Better error handling for common issues
+      if (errorMessage.includes('fetch')) {
+        errorMessage = 'Cannot connect to server. Make sure backend is running.';
+      } else if (errorMessage.includes('Network')) {
+        errorMessage = 'Network error. Check your connection.';
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+        errorMessage = 'Request timed out. The item may have been added - please check before retrying.';
+      }
+
+      setImageError(errorMessage);
+    } finally {
       setCreating(false);
-      return;
+      setCreatingStatus('');
     }
-
-    setCreatingStatus('Categorizing with AI...');
-
-    const requestBody = {
-      catalog_id: catalog.id,
-      title: itemTitle.trim(),
-      image_url: finalImageUrl, // Now this is always a Supabase storage URL
-      product_url: itemProductUrl.trim(),
-      seller: itemSeller.trim() || null,
-      price: itemPrice.trim() || null,
-      user_id: currentUserId
-    };
-
-    // Call backend API with AI categorization
-    const response = await fetch(`https://sourced-5ovn.onrender.com/create-catalog-item`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    let result;
-    try {
-      result = await response.json();
-    } catch (parseError) {
-      throw new Error('Server returned invalid response');
-    }
-
-    if (!response.ok) {
-      // If it's a duplicate error (item already exists), consider it success
-      if (result.detail && result.detail.includes('duplicate') || result.detail.includes('already exists')) {
-        console.log('Item already exists, treating as success');
-        resetAddItemForm();
-        setShowAddItemModal(false);
-        await loadItems();
-        return;
-      }
-      throw new Error(result.detail || `Server error: ${response.status}`);
-    }
-
-    if (!result.success) {
-      throw new Error(result.message || 'Failed to create item');
-    }
-
-    resetAddItemForm();
-    setShowAddItemModal(false);
-    await loadItems();
-
-  } catch (error: any) {
-    console.error('❌ Error adding item:', error);
-
-    let errorMessage = error.message || 'Failed to add item';
-
-    // Better error handling for common issues
-    if (errorMessage.includes('fetch')) {
-      errorMessage = 'Cannot connect to server. Make sure backend is running.';
-    } else if (errorMessage.includes('Network')) {
-      errorMessage = 'Network error. Check your connection.';
-    } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
-      errorMessage = 'Request timed out. The item may have been added - please check before retrying.';
-    }
-
-    setImageError(errorMessage);
-  } finally {
-    setCreating(false);
-    setCreatingStatus('');
   }
-}
 
   // Edit Catalog Functions
   function openEditCatalogModal() {
@@ -789,12 +820,12 @@ async function handleAddItem(e: React.FormEvent) {
               </div>
 
               <div className="flex-1 space-y-3 md:space-y-4">
-                <div className="flex items-center gap-4">
-                  <h1 className="text-3xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{catalog.name}</h1>
+                <div className="flex items-center gap-2 md:gap-4">
+                  <h1 className="text-3xl md:text-5xl font-black tracking-tighter flex-1" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{catalog.name}</h1>
                   {isOwner && (
                     <button
                       onClick={openEditCatalogModal}
-                      className="hidden md:block px-4 py-2 border-2 border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-[0.3em] font-black"
+                      className="px-3 md:px-4 py-1.5 md:py-2 border-2 border-black/20 hover:border-black hover:bg-black/5 transition-all text-[10px] md:text-xs tracking-[0.3em] font-black flex-shrink-0"
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       EDIT
@@ -1007,7 +1038,10 @@ async function handleAddItem(e: React.FormEvent) {
                       </div>
                     )}
 
-                    <div className="aspect-square bg-white overflow-hidden cursor-pointer relative" onClick={() => { if (item.product_url) window.open(item.product_url, '_blank'); }}>
+                    <div
+                      className="aspect-square bg-white overflow-hidden cursor-pointer relative"
+                      onClick={() => handleItemClick(item)}
+                    >
                       <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                       {item.like_count > 0 && (
                         <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/80 text-white text-[8px] tracking-wider font-black">♥ {item.like_count}</div>
@@ -1057,7 +1091,7 @@ async function handleAddItem(e: React.FormEvent) {
 
                     <div
                       className="w-12 h-12 md:w-16 md:h-16 bg-black/5 flex-shrink-0 cursor-pointer"
-                      onClick={() => { if (item.product_url) window.open(item.product_url, '_blank'); }}
+                      onClick={() => handleItemClick(item)}
                     >
                       <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
                     </div>
@@ -1260,7 +1294,10 @@ async function handleAddItem(e: React.FormEvent) {
 
               <div className="bg-white border-2 border-white overflow-hidden">
                 <div className="grid md:grid-cols-2 gap-0">
-                  <div className="aspect-square bg-black/5 overflow-hidden cursor-pointer" onClick={() => { if (expandedItem.product_url) window.open(expandedItem.product_url, '_blank'); }}>
+                  <div
+                    className="aspect-square bg-black/5 overflow-hidden cursor-pointer"
+                    onClick={() => handleItemClick(expandedItem)}
+                  >
                     <img src={expandedItem.image_url} alt={expandedItem.title} className="w-full h-full object-contain" />
                   </div>
 
@@ -1273,7 +1310,13 @@ async function handleAddItem(e: React.FormEvent) {
                       <button onClick={() => toggleLike(expandedItem.id, expandedItem.is_liked)} className="w-full py-2 md:py-3 border-2 border-black hover:bg-black hover:text-white transition-all text-[10px] md:text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{expandedItem.is_liked ? '♥ LIKED' : '♡ LIKE'} ({expandedItem.like_count})</button>
 
                       {expandedItem.product_url && (
-                        <button onClick={() => window.open(expandedItem.product_url!, '_blank')} className="w-full py-2 md:py-3 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-[10px] md:text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>VIEW PRODUCT ↗</button>
+                        <button
+                          onClick={() => handleItemClick(expandedItem)}
+                          className="w-full py-2 md:py-3 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-[10px] md:text-xs tracking-[0.4em] font-black"
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                        >
+                          VIEW PRODUCT ↗
+                        </button>
                       )}
                     </div>
                   </div>
