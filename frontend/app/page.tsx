@@ -25,6 +25,7 @@ type CatalogItem = {
   product_url: string | null;
   price: string | null;
   seller: string | null;
+  click_count?: number;
 };
 
 export default function FeaturedCatalogsPage() {
@@ -67,7 +68,7 @@ export default function FeaturedCatalogsPage() {
   async function loadCatalogItems(catalogId: string) {
     const { data, error } = await supabase
       .from("catalog_items")
-      .select("id, title, image_url, product_url, price, seller")
+      .select("id, title, image_url, product_url, price, seller, click_count")
       .eq("catalog_id", catalogId)
       .limit(20);
 
@@ -76,6 +77,35 @@ export default function FeaturedCatalogsPage() {
         ...prev,
         [catalogId]: data
       }));
+    }
+  }
+
+  // Track click function
+  async function trackClick(itemId: string, itemType: 'catalog' | 'feed') {
+    try {
+      await fetch('/api/track-click', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ itemId, itemType }),
+      });
+    } catch (error) {
+      console.error('Error tracking click:', error);
+      // Don't block the navigation if tracking fails
+    }
+  }
+
+  // Handle item click
+  async function handleItemClick(item: CatalogItem, e: React.MouseEvent) {
+    e.stopPropagation();
+
+    if (item.product_url) {
+      // Track the click (fire and forget)
+      trackClick(item.id, 'catalog');
+
+      // Open the link
+      window.open(item.product_url, '_blank');
     }
   }
 
@@ -293,10 +323,7 @@ export default function FeaturedCatalogsPage() {
                             <div
                               key={`${item.id}-${idx}`}
                               className="flex-shrink-0 w-40 mx-4 group cursor-pointer"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (item.product_url) window.open(item.product_url, '_blank');
-                              }}
+                              onClick={(e) => handleItemClick(item, e)}
                             >
                               {/* Item image */}
                               <div className="w-40 h-40 border border-black/30 bg-white overflow-hidden group-hover:border-black transition-all mb-2">
