@@ -80,21 +80,26 @@ export default function FeaturedCatalogsPage() {
     }
   }
 
-  // Track click function
-  async function trackClick(itemId: string, itemType: 'catalog' | 'feed') {
-    try {
-      await fetch('/api/track-click', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ itemId, itemType }),
-      });
-    } catch (error) {
-      console.error('Error tracking click:', error);
-      // Don't block the navigation if tracking fails
+      async function trackClick(itemId: string, itemType: 'catalog' | 'feed') {
+      try {
+        // Get current user ID from Supabase
+        const { data: { user } } = await supabase.auth.getUser();
+
+        await fetch('/api/track-click', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            itemId,
+            itemType,
+            userId: user?.id || null
+          }),
+        });
+      } catch (error) {
+        console.error('Error tracking click:', error);
+      }
     }
-  }
 
   // Handle item click
   async function handleItemClick(item: CatalogItem, e: React.MouseEvent) {

@@ -255,6 +255,42 @@ function DiscoverContent() {
     }
   }
 
+        // Track click function
+    async function trackClick(itemId: string, itemType: 'catalog' | 'feed') {
+      try {
+        await fetch('/api/track-click', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            itemId,
+            itemType,
+            userId: currentUserId
+          }),
+        });
+      } catch (error) {
+        console.error('Error tracking click:', error);
+        // Don't block navigation if tracking fails
+      }
+    }
+
+    // Handle item click with tracking
+    function handleItemClick(item: SearchItem, e: React.MouseEvent) {
+      e.stopPropagation();
+
+      if (item.product_url) {
+        // Determine if it's a catalog item or feed item based on catalog.id
+        const itemType = item.catalog.id === 'feed' ? 'feed' : 'catalog';
+
+        // Track the click
+        trackClick(item.id, itemType);
+
+        // Open the link
+        window.open(item.product_url, '_blank');
+      }
+    }
+
   async function performSearch() {
     if (!searchQuery.trim()) {
       loadDefaultContent();
@@ -1125,8 +1161,7 @@ async function toggleLike(itemId: string, currentlyLiked: boolean) {
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
                         {items.map((item) => (
                           <div key={item.id} className="border border-black/20 hover:border-black transition-all">
-                            <div className="aspect-square bg-white overflow-hidden cursor-pointer" onClick={() => { if (item.product_url) window.open(item.product_url, '_blank'); }}>
-                              <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                            <div className="aspect-square bg-white overflow-hidden cursor-pointer" onClick={(e) => handleItemClick(item, e)}> <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
                             </div>
 
                             <div className="p-3 bg-white border-t border-black/20">
@@ -1336,8 +1371,7 @@ async function toggleLike(itemId: string, currentlyLiked: boolean) {
 
               <div className="bg-white border-2 border-white overflow-hidden">
                 <div className="grid md:grid-cols-2 gap-0">
-                  <div className="aspect-square bg-black/5 overflow-hidden cursor-pointer" onClick={() => { if (expandedItem.product_url) window.open(expandedItem.product_url, '_blank'); }}>
-                    <img src={expandedItem.image_url} alt={expandedItem.title} className="w-full h-full object-contain" />
+                    <div className="aspect-square bg-black/5 overflow-hidden cursor-pointer" onClick={(e) => handleItemClick(expandedItem, e)}>                    <img src={expandedItem.image_url} alt={expandedItem.title} className="w-full h-full object-contain" />
                   </div>
 
                   <div className="p-4 md:p-8 space-y-3 md:space-y-6">
@@ -1376,7 +1410,7 @@ async function toggleLike(itemId: string, currentlyLiked: boolean) {
 
                       {expandedItem.product_url && (
                         <button
-                          onClick={() => window.open(expandedItem.product_url!, '_blank')}
+                          onClick={(e) => handleItemClick(expandedItem, e)}
                           className="w-full py-2 md:py-3 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-[10px] md:text-xs tracking-[0.4em] font-black"
                           style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                         >

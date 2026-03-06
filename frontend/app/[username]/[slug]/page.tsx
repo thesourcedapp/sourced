@@ -35,6 +35,7 @@ type CatalogItem = {
   primary_color?: string;
   style_tags?: string[];
   click_count?: number;
+  unique_click_count?: number; // Add this line
 };
 
 type SortOption = 'recent' | 'oldest' | 'most_liked' | 'title';
@@ -271,35 +272,37 @@ export default function CatalogDetailPage() {
   }
 
   // Track click function
-  async function trackClick(itemId: string) {
-    console.log('🔵 trackClick called with itemId:', itemId);
-    try {
-      console.log('🔵 Making fetch request to /api/track-click');
-      const response = await fetch('/api/track-click', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          itemId,
-          itemType: 'catalog'
-        }),
-      });
+async function trackClick(itemId: string) {
+  console.log('🔵 trackClick called with itemId:', itemId);
+  try {
+    console.log('🔵 Making fetch request to /api/track-click');
+    const response = await fetch('/api/track-click', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        itemId,
+        itemType: 'catalog',
+        userId: currentUserId // Add this line
+      }),
+    });
 
-      console.log('🔵 Response status:', response.status);
-      const data = await response.json();
-      console.log('🔵 Response data:', data);
+    console.log('🔵 Response status:', response.status);
+    const data = await response.json();
+    console.log('🔵 Response data:', data);
 
-      if (!response.ok) {
-        console.error('❌ Tracking failed:', data);
-      } else {
-        console.log('✅ Click tracked successfully:', data);
-      }
-    } catch (error) {
-      console.error('❌ Error tracking click:', error);
-      // Don't block navigation if tracking fails
+    if (!response.ok) {
+      console.error('❌ Tracking failed:', data);
+    } else {
+      console.log('✅ Click tracked successfully:', data);
+      console.log(`   Total clicks: ${data.total_clicks}, Unique clicks: ${data.unique_clicks}`);
     }
+  } catch (error) {
+    console.error('❌ Error tracking click:', error);
+    // Don't block navigation if tracking fails
   }
+}
 
   // Handle item click with tracking
   function handleItemClick(item: CatalogItem, e?: React.MouseEvent) {

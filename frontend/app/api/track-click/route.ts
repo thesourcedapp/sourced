@@ -8,7 +8,7 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
-    const { itemId, itemType } = await request.json();
+    const { itemId, itemType, userId } = await request.json();
 
     if (!itemId || !itemType) {
       return NextResponse.json(
@@ -21,7 +21,8 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase.rpc('increment_click_count', {
       table_name: tableName,
-      item_id: itemId
+      item_id: itemId,
+      user_id: userId || null
     });
 
     if (error) {
@@ -32,7 +33,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, click_count: data });
+    return NextResponse.json({
+      success: true,
+      total_clicks: data.total_clicks,
+      unique_clicks: data.unique_clicks,
+      is_new_unique: data.is_new_unique
+    });
   } catch (error) {
     console.error('Error:', error);
     return NextResponse.json(
