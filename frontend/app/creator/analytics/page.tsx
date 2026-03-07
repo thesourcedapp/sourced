@@ -329,20 +329,24 @@ export default function CreatorAnalyticsPage() {
 
         @media (max-width: 768px) {
           .sidebar { display: none !important; }
-          .main-content { padding: 24px 20px !important; }
-          .stats-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
-          .stat-card { padding: 18px !important; }
-          .stat-card p:first-child { font-size: 10px !important; margin-bottom: 8px !important; }
-          .stat-card p:nth-child(2) { font-size: 24px !important; }
-          .stat-card p:last-child { font-size: 10px !important; }
-          .catalog-row { flex-direction: column !important; align-items: flex-start !important; padding: 16px !important; }
-          .catalog-stats { flex-direction: column !important; gap: 12px !important; width: 100% !important; margin-top: 16px !important; }
+          .main-content { padding: 24px 20px 120px !important; }
+          .stats-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 14px !important; }
+          .stat-card { padding: 20px !important; }
+          .stat-card p:first-child { font-size: 10px !important; margin-bottom: 10px !important; }
+          .stat-card p:nth-child(2) { font-size: 28px !important; }
+          .stat-card p:last-child { font-size: 11px !important; }
+          .catalog-row { flex-direction: column !important; align-items: flex-start !important; padding: 18px !important; }
+          .catalog-stats { flex-direction: row !important; gap: 16px !important; width: 100% !important; margin-top: 16px !important; flex-wrap: wrap !important; }
           .catalog-stat { text-align: left !important; }
-          .item-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
-          .item-card { border-radius: 14px !important; }
-          .item-card > div:last-child { padding: 12px !important; }
-          .mobile-nav { display: block !important; position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid rgba(0,0,0,0.08); padding: 12px; z-index: 100; }
+          .catalog-stat p:first-child { font-size: 20px !important; }
+          .item-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 14px !important; }
+          .item-card { border-radius: 16px !important; }
+          .item-card > div:last-child { padding: 14px !important; }
+          .item-card p:first-child { font-size: 14px !important; }
+          .item-card p:nth-child(2) { font-size: 12px !important; }
+          .mobile-nav { display: flex !important; }
           .desktop-only { display: none !important; }
+          .engagement-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
         }
 
         @media (min-width: 769px) {
@@ -401,18 +405,18 @@ export default function CreatorAnalyticsPage() {
           </aside>
 
           {/* Mobile bottom nav */}
-          <div className="mobile-nav">
-            <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center" }}>
+          <div className="mobile-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid rgba(0,0,0,0.08)", padding: "14px 16px", zIndex: 100, display: "none" }}>
+            <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", gap: "8px" }}>
               {(["overview", "catalogs", "items"] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", background: "none", border: "none", cursor: "pointer", padding: "8px 12px", borderRadius: "10px", backgroundColor: activeTab === tab ? "#f5f5f5" : "transparent" }}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", background: "none", border: "none", cursor: "pointer", padding: "10px 16px", borderRadius: "12px", backgroundColor: activeTab === tab ? "#f5f5f5" : "transparent", flex: 1 }}
                 >
-                  {tab === "overview" && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeTab === tab ? "#0a0a0a" : "#999"} strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>}
-                  {tab === "catalogs" && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeTab === tab ? "#0a0a0a" : "#999"} strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}
-                  {tab === "items" && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeTab === tab ? "#0a0a0a" : "#999"} strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
-                  <span style={{ fontSize: "10px", fontWeight: activeTab === tab ? 600 : 400, color: activeTab === tab ? "#0a0a0a" : "#999", fontFamily: "DM Sans, sans-serif" }}>
+                  {tab === "overview" && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={activeTab === tab ? "#0a0a0a" : "#999"} strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>}
+                  {tab === "catalogs" && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={activeTab === tab ? "#0a0a0a" : "#999"} strokeWidth="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}
+                  {tab === "items" && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={activeTab === tab ? "#0a0a0a" : "#999"} strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
+                  <span style={{ fontSize: "11px", fontWeight: activeTab === tab ? 600 : 500, color: activeTab === tab ? "#0a0a0a" : "#999", fontFamily: "DM Sans, sans-serif", letterSpacing: "-0.01em" }}>
                     {tab === "overview" ? "Overview" : tab === "catalogs" ? "Catalogs" : "Items"}
                   </span>
                 </button>
@@ -445,10 +449,10 @@ export default function CreatorAnalyticsPage() {
                     { label: "Total Likes", value: fmt(overviewStats.total_likes), sub: "Across all items", highlight: false },
                     { label: "Bookmarks", value: fmt(overviewStats.total_bookmarks), sub: "Catalog saves", highlight: false },
                   ].map(s => (
-                    <div key={s.label} className="stat-card" style={{ background: s.highlight ? "#0a0a0a" : "#fff", color: s.highlight ? "#fff" : "#0a0a0a", borderRadius: "18px", padding: "24px", border: s.highlight ? "none" : "1px solid rgba(0,0,0,0.08)", boxShadow: s.highlight ? "0 8px 32px rgba(0,0,0,0.12)" : "none" }}>
-                      <p style={{ margin: "0 0 12px", fontSize: "11px", fontWeight: 600, letterSpacing: "0.05em", opacity: s.highlight ? 0.6 : 0.5, color: "inherit" }}>{s.label.toUpperCase()}</p>
-                      <p style={{ margin: "0 0 4px", fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "34px", letterSpacing: "-0.03em", color: "inherit" }}>{s.value}</p>
-                      <p style={{ margin: 0, fontSize: "11px", opacity: 0.45, color: "inherit" }}>{s.sub}</p>
+                    <div key={s.label} className="stat-card" style={{ background: s.highlight ? "#0a0a0a" : "#fff", color: s.highlight ? "#fff" : "#0a0a0a", borderRadius: "18px", padding: "28px", border: s.highlight ? "none" : "1px solid rgba(0,0,0,0.08)", boxShadow: s.highlight ? "0 8px 32px rgba(0,0,0,0.12)" : "none" }}>
+                      <p style={{ margin: "0 0 14px", fontSize: "11px", fontWeight: 600, letterSpacing: "0.06em", opacity: s.highlight ? 0.6 : 0.5, color: "inherit" }}>{s.label.toUpperCase()}</p>
+                      <p style={{ margin: "0 0 6px", fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "42px", letterSpacing: "-0.03em", color: "inherit", lineHeight: 1 }}>{s.value}</p>
+                      <p style={{ margin: 0, fontSize: "12px", opacity: 0.5, color: "inherit" }}>{s.sub}</p>
                     </div>
                   ))}
                 </div>
@@ -461,27 +465,27 @@ export default function CreatorAnalyticsPage() {
                     { label: "Avg Likes / Item", value: overviewStats.avg_likes_per_item.toFixed(1) },
                     { label: "Avg Clicks / Item", value: overviewStats.avg_clicks_per_item.toFixed(1) },
                   ].map(s => (
-                    <div key={s.label} className="stat-card" style={{ background: "#fff", borderRadius: "18px", padding: "20px 24px", border: "1px solid rgba(0,0,0,0.08)" }}>
-                      <p style={{ margin: "0 0 8px", fontSize: "11px", fontWeight: 600, letterSpacing: "0.05em", color: "#aaa" }}>{s.label.toUpperCase()}</p>
-                      <p style={{ margin: 0, fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "26px", letterSpacing: "-0.02em" }}>{s.value}</p>
+                    <div key={s.label} className="stat-card" style={{ background: "#fff", borderRadius: "18px", padding: "24px", border: "1px solid rgba(0,0,0,0.08)" }}>
+                      <p style={{ margin: "0 0 10px", fontSize: "11px", fontWeight: 600, letterSpacing: "0.06em", color: "#aaa" }}>{s.label.toUpperCase()}</p>
+                      <p style={{ margin: 0, fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "32px", letterSpacing: "-0.02em", lineHeight: 1 }}>{s.value}</p>
                     </div>
                   ))}
                 </div>
 
                 {/* Engagement metrics */}
                 <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", border: "1px solid rgba(0,0,0,0.08)" }}>
-                  <h2 style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "17px", margin: "0 0 24px", letterSpacing: "-0.02em" }}>Engagement</h2>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "32px" }}>
+                  <h2 style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "18px", margin: "0 0 28px", letterSpacing: "-0.02em" }}>Engagement</h2>
+                  <div className="engagement-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "36px" }}>
                     {[
                       { label: "Click-through rate", value: overviewStats.click_through_rate.toFixed(1) + "%", note: "Unique / total clicks", color: "#667eea" },
                       { label: "Engagement rate", value: overviewStats.total_items > 0 ? ((overviewStats.total_likes / overviewStats.total_items) * 100).toFixed(1) + "%" : "0%", note: "Likes per item ratio", color: "#f5576c" },
                       { label: "Total reach", value: fmt(overviewStats.total_unique_clicks + overviewStats.total_bookmarks), note: "Unique clicks + saves", color: "#4facfe" },
                     ].map(m => (
                       <div key={m.label}>
-                        <div style={{ width: "32px", height: "4px", borderRadius: "2px", background: m.color, marginBottom: "14px" }} />
-                        <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#aaa", fontWeight: 500 }}>{m.label}</p>
-                        <p style={{ margin: "0 0 4px", fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "28px", letterSpacing: "-0.02em" }}>{m.value}</p>
-                        <p style={{ margin: 0, fontSize: "11px", color: "#bbb" }}>{m.note}</p>
+                        <div style={{ width: "40px", height: "4px", borderRadius: "2px", background: m.color, marginBottom: "16px" }} />
+                        <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#aaa", fontWeight: 500 }}>{m.label}</p>
+                        <p style={{ margin: "0 0 6px", fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "36px", letterSpacing: "-0.02em", lineHeight: 1 }}>{m.value}</p>
+                        <p style={{ margin: 0, fontSize: "12px", color: "#bbb" }}>{m.note}</p>
                       </div>
                     ))}
                   </div>
@@ -514,13 +518,13 @@ export default function CreatorAnalyticsPage() {
                       </div>
 
                       {/* Name + meta */}
-                      <div style={{ flex: 1 }}>
-                        <p style={{ margin: "0 0 3px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "16px", letterSpacing: "-0.01em" }}>{catalog.name}</p>
-                        <p style={{ margin: 0, fontSize: "12px", color: "#aaa" }}>{catalog.total_items} items</p>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: "0 0 4px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "17px", letterSpacing: "-0.01em" }}>{catalog.name}</p>
+                        <p style={{ margin: 0, fontSize: "13px", color: "#aaa" }}>{catalog.total_items} items</p>
                       </div>
 
                       {/* Stats inline */}
-                      <div className="catalog-stats desktop-only" style={{ display: "flex", gap: "32px", alignItems: "center" }}>
+                      <div className="catalog-stats desktop-only" style={{ display: "flex", gap: "28px", alignItems: "center" }}>
                         {[
                           { l: "Likes", v: fmt(catalog.total_likes) },
                           { l: "Bookmarks", v: fmt(catalog.total_bookmarks) },
@@ -528,13 +532,13 @@ export default function CreatorAnalyticsPage() {
                           { l: "Unique", v: fmt(catalog.total_unique_clicks) },
                         ].map(s => (
                           <div key={s.l} className="catalog-stat" style={{ textAlign: "right" }}>
-                            <p style={{ margin: "0 0 2px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "17px" }}>{s.v}</p>
-                            <p style={{ margin: 0, fontSize: "10px", color: "#aaa", fontWeight: 500, letterSpacing: "0.04em" }}>{s.l.toUpperCase()}</p>
+                            <p style={{ margin: "0 0 3px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "20px", lineHeight: 1 }}>{s.v}</p>
+                            <p style={{ margin: 0, fontSize: "11px", color: "#aaa", fontWeight: 500, letterSpacing: "0.04em" }}>{s.l.toUpperCase()}</p>
                           </div>
                         ))}
                       </div>
 
-                      <button onClick={() => router.push(`/${currentUsername}/${catalog.slug}`)} style={{ background: "#0a0a0a", color: "#fff", border: "none", borderRadius: "10px", padding: "10px 18px", fontSize: "12px", fontWeight: 600, cursor: "pointer", fontFamily: "DM Sans, sans-serif", flexShrink: 0, whiteSpace: "nowrap" }}>
+                      <button onClick={() => router.push(`/${currentUsername}/${catalog.slug}`)} style={{ background: "#0a0a0a", color: "#fff", border: "none", borderRadius: "10px", padding: "11px 20px", fontSize: "13px", fontWeight: 600, cursor: "pointer", fontFamily: "DM Sans, sans-serif", flexShrink: 0, whiteSpace: "nowrap" }}>
                         View →
                       </button>
                     </div>
@@ -573,8 +577,8 @@ export default function CreatorAnalyticsPage() {
                           </div>
                         </div>
                         <div style={{ padding: "16px" }}>
-                          <p style={{ margin: "0 0 4px", fontWeight: 600, fontSize: "13px", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title}</p>
-                          <p style={{ margin: "0 0 14px", fontSize: "11px", color: "#aaa" }}>{item.catalog_name}{item.seller && ` · ${item.seller}`}</p>
+                          <p style={{ margin: "0 0 5px", fontWeight: 600, fontSize: "14px", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title}</p>
+                          <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#aaa" }}>{item.catalog_name}{item.seller && ` · ${item.seller}`}</p>
 
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "14px" }}>
                             {[
@@ -582,15 +586,15 @@ export default function CreatorAnalyticsPage() {
                               { l: "Clicks", v: fmt(item.click_count) },
                               { l: "Unique", v: fmt(item.unique_click_count) },
                             ].map(s => (
-                              <div key={s.l} style={{ background: "#f7f7f7", borderRadius: "10px", padding: "8px 0", textAlign: "center" }}>
-                                <p style={{ margin: "0 0 1px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "14px" }}>{s.v}</p>
+                              <div key={s.l} style={{ background: "#f7f7f7", borderRadius: "10px", padding: "10px 0", textAlign: "center" }}>
+                                <p style={{ margin: "0 0 2px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "16px", lineHeight: 1 }}>{s.v}</p>
                                 <p style={{ margin: 0, fontSize: "9px", color: "#aaa", fontWeight: 600, letterSpacing: "0.05em" }}>{s.l.toUpperCase()}</p>
                               </div>
                             ))}
                           </div>
 
                           {item.product_url && (
-                            <a href={item.product_url} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", padding: "9px", background: "#0a0a0a", color: "#fff", borderRadius: "10px", fontSize: "11px", fontWeight: 600, textDecoration: "none", letterSpacing: "0.02em" }}>
+                            <a href={item.product_url} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", padding: "10px", background: "#0a0a0a", color: "#fff", borderRadius: "10px", fontSize: "12px", fontWeight: 600, textDecoration: "none", letterSpacing: "0.01em" }}>
                               Shop product ↗
                             </a>
                           )}
