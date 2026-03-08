@@ -420,7 +420,7 @@ export default function AnalyticsPage() {
 
       setStats({
         totalFollowers: followerCount || 0,
-        followerGrowth: followerCount > 0 ? ((recentFollowers || 0) / followerCount) * 100 : 0,
+        followerGrowth: (followerCount && followerCount > 0) ? ((recentFollowers || 0) / followerCount) * 100 : 0,
         totalViews,
         viewGrowth: 0, // TODO: Calculate from historical data
         totalEngagement: totalLikes + totalBookmarks,
@@ -431,7 +431,7 @@ export default function AnalyticsPage() {
         clickGrowth: 0, // TODO: Calculate from historical data
         totalCatalogs: catalogsData?.length || 0,
         totalItems,
-        avgItemsPerCatalog: catalogsData?.length ? totalItems / catalogsData.length : 0,
+        avgItemsPerCatalog: (catalogsData && catalogsData.length > 0) ? totalItems / catalogsData.length : 0,
         totalLikes,
         totalBookmarks,
         totalShares: 0, // TODO: Implement sharing
