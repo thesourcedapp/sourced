@@ -6,13 +6,6 @@ import { useRouter } from "next/navigation";
 
 type Tab = "overview" | "catalogs" | "items" | "monetization";
 
-// Partner brands eligible for verification
-const PARTNER_BRANDS = [
-  "nike", "adidas", "supreme", "the north face", "patagonia",
-  "stone island", "arc'teryx", "carhartt", "levi's", "uniqlo",
-  "zara", "h&m", "ralph lauren", "tommy hilfiger", "calvin klein"
-];
-
 type CatalogData = {
   id: string;
   name: string;
@@ -23,7 +16,6 @@ type CatalogData = {
   totalBookmarks: number;
   totalClicks: number;
   uniqueClicks: number;
-  engagementScore: number;
 };
 
 type ItemData = {
@@ -31,31 +23,24 @@ type ItemData = {
   title: string;
   image: string;
   catalogName: string;
-  catalogSlug: string;
   seller: string | null;
-  brand: string | null;
   likes: number;
   clicks: number;
   uniqueClicks: number;
   isVerified: boolean;
-  isMonetized: boolean;
   canVerify: boolean;
   verificationStatus: string | null;
-  productUrl: string | null;
-  affiliateLink: string | null;
 };
 
 type VerificationRequest = {
   id: string;
   itemId: string;
-  itemType: "catalog" | "feed";
   brandName: string;
   status: "pending" | "approved" | "rejected";
   createdAt: string;
   item: {
     title: string;
     image: string;
-    seller: string;
   };
 };
 
@@ -80,12 +65,12 @@ export default function AnalyticsPage() {
     avgEngagement: 0,
     totalReach: 0,
     verifiedItems: 0,
-    monetizedItems: 0,
   });
 
   const [catalogs, setCatalogs] = useState<CatalogData[]>([]);
   const [items, setItems] = useState<ItemData[]>([]);
   const [verificationRequests, setVerificationRequests] = useState<VerificationRequest[]>([]);
+  const [partnerBrands, setPartnerBrands] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<"clicks" | "likes" | "engagement">("clicks");
 
   useEffect(() => {
@@ -107,7 +92,7 @@ export default function AnalyticsPage() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("is_verified, username, is_onboarded")
+      .select("is_verified, is_onboarded")
       .eq("id", user.id)
       .single();
 
@@ -137,6 +122,15 @@ export default function AnalyticsPage() {
   async function loadAnalytics() {
     setLoading(true);
     try {
+      // Fetch partner brands
+      const { data: brandsData } = await supabase
+        .from("partner_brands")
+        .select("brand_slug")
+        .eq("is_active", true);
+
+      const activeBrands = brandsData?.map(b => b.brand_slug.toLowerCase()) || [];
+      setPartnerBrands(activeBrands);
+
       // Get follower count
       const { count: followerCount } = await supabase
         .from("follows")
@@ -176,14 +170,13 @@ export default function AnalyticsPage() {
             totalBookmarks: bookmarks || 0,
             totalClicks,
             uniqueClicks: totalUniqueClicks,
-            engagementScore: totalLikes + (bookmarks || 0) * 2 + totalClicks * 1.5,
           };
         })
       );
 
       setCatalogs(catalogStats);
 
-      // Get all items with verification status
+      // Get all items
       const { data: allItems } = await supabase
         .from("catalog_items")
         .select(`
@@ -191,19 +184,15 @@ export default function AnalyticsPage() {
           title,
           image_url,
           seller,
-          brand,
           like_count,
           click_count,
           unique_click_count,
           is_verified,
-          is_monetized,
-          product_url,
-          affiliate_link,
-          catalogs!inner(owner_id, name, slug)
+          catalogs!inner(owner_id, name)
         `)
         .eq("catalogs.owner_id", currentUserId);
 
-      // Get verification requests for these items
+      // Get verification requests
       const itemIds = allItems?.map(i => i.id) || [];
       const { data: requests } = await supabase
         .from("item_verification_requests")
@@ -212,8 +201,8 @@ export default function AnalyticsPage() {
         .eq("item_type", "catalog");
 
       const itemsWithStatus = allItems?.map((item: any) => {
-        const brandName = item.seller || item.brand || "";
-        const canVerify = PARTNER_BRANDS.some(b => brandName.toLowerCase().includes(b));
+        const seller = item.seller || "";
+        const canVerify = activeBrands.some(b => seller.toLowerCase().includes(b));
         const request = requests?.find(r => r.item_id === item.id);
 
         return {
@@ -221,18 +210,13 @@ export default function AnalyticsPage() {
           title: item.title,
           image: item.image_url,
           catalogName: item.catalogs.name,
-          catalogSlug: item.catalogs.slug,
           seller: item.seller,
-          brand: item.brand,
           likes: item.like_count || 0,
           clicks: item.click_count || 0,
           uniqueClicks: item.unique_click_count || 0,
           isVerified: item.is_verified || false,
-          isMonetized: item.is_monetized || false,
           canVerify,
           verificationStatus: request?.status || null,
-          productUrl: item.product_url,
-          affiliateLink: item.affiliate_link,
         };
       }) || [];
 
@@ -244,11 +228,10 @@ export default function AnalyticsPage() {
         .select(`
           id,
           item_id,
-          item_type,
           brand_name,
           status,
           created_at,
-          catalog_items!inner(title, image_url, seller)
+          catalog_items!inner(title, image_url)
         `)
         .eq("user_id", currentUserId)
         .eq("item_type", "catalog")
@@ -257,14 +240,12 @@ export default function AnalyticsPage() {
       setVerificationRequests(allRequests?.map((r: any) => ({
         id: r.id,
         itemId: r.item_id,
-        itemType: r.item_type,
         brandName: r.brand_name,
         status: r.status,
         createdAt: r.created_at,
         item: {
           title: r.catalog_items.title,
           image: r.catalog_items.image_url,
-          seller: r.catalog_items.seller,
         },
       })) || []);
 
@@ -275,7 +256,6 @@ export default function AnalyticsPage() {
       const totalUniqueClicks = catalogStats.reduce((sum, c) => sum + c.uniqueClicks, 0);
       const totalItems = catalogStats.reduce((sum, c) => sum + c.totalItems, 0);
       const verifiedItems = itemsWithStatus.filter(i => i.isVerified).length;
-      const monetizedItems = itemsWithStatus.filter(i => i.isMonetized).length;
 
       setStats({
         totalFollowers: followerCount || 0,
@@ -289,7 +269,6 @@ export default function AnalyticsPage() {
         avgEngagement: totalItems > 0 ? (totalLikes / totalItems) * 100 : 0,
         totalReach: totalUniqueClicks + totalBookmarks,
         verifiedItems,
-        monetizedItems,
       });
     } catch (error) {
       console.error("Error loading analytics:", error);
@@ -319,7 +298,7 @@ export default function AnalyticsPage() {
           throw error;
         }
       } else {
-        alert("Verification request submitted!");
+        alert("Verification request submitted! We'll review it soon.");
         loadAnalytics();
       }
     } catch (error) {
@@ -362,9 +341,9 @@ export default function AnalyticsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#1a0a1a] to-[#0a0a1a] flex items-center justify-center">
         <div className="relative">
-          <div className="w-16 h-16 border-4 border-white/10 border-t-white rounded-full animate-spin" />
+          <div className="w-16 h-16 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
         </div>
       </div>
     );
@@ -373,67 +352,58 @@ export default function AnalyticsPage() {
   // VERIFICATION REQUEST SCREEN
   if (!isVerified) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white relative overflow-hidden">
-        <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-0 -left-4 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl animate-blob" />
-          <div className="absolute top-0 -right-4 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000" />
-          <div className="absolute -bottom-8 left-20 w-72 h-72 bg-pink-500 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-4000" />
+      <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#1a0a1a] to-[#0a0a1a] text-white relative overflow-hidden">
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute top-0 -left-4 w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl animate-blob" />
+          <div className="absolute top-0 -right-4 w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000" />
+          <div className="absolute -bottom-8 left-20 w-96 h-96 bg-pink-600 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000" />
         </div>
 
         <div className="relative z-10 max-w-4xl mx-auto px-6 py-20">
           <div className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-full mb-8">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-sm font-medium tracking-wider">CREATOR VERIFICATION</span>
+            <div className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-500/10 backdrop-blur-md border border-purple-500/20 rounded-full mb-8">
+              <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" />
+              <span className="text-sm font-bold tracking-widest text-purple-300">CREATOR ACCESS</span>
             </div>
 
-            <h1 className="text-6xl md:text-7xl font-black mb-6 leading-none">
-              Unlock Your
+            <h1 className="text-6xl md:text-7xl font-black mb-6 leading-none tracking-tight">
+              Unlock
               <br />
-              <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
                 Analytics Dashboard
               </span>
             </h1>
 
-            <p className="text-xl text-white/60 max-w-2xl mx-auto leading-relaxed">
-              Get verified to access comprehensive analytics, item monetization, and powerful growth tools.
+            <p className="text-xl text-white/70 max-w-2xl mx-auto leading-relaxed font-medium">
+              Get verified to access analytics, item monetization, and growth insights
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-6 mb-16">
             {[
-              {
-                title: "Live Analytics",
-                desc: "Track clicks, engagement, and performance in real-time across all catalogs",
-                gradient: "from-blue-500/20 to-cyan-500/20",
-              },
-              {
-                title: "Item Verification",
-                desc: "Submit partner brand items for verification and monetization",
-                gradient: "from-purple-500/20 to-pink-500/20",
-              },
-              {
-                title: "Performance Insights",
-                desc: "Understand what drives engagement and optimize your content",
-                gradient: "from-orange-500/20 to-red-500/20",
-              },
+              { title: "Live Analytics", desc: "Real-time performance tracking across all catalogs" },
+              { title: "Item Verification", desc: "Submit partner brand items for monetization" },
+              { title: "Growth Insights", desc: "Understand your audience and optimize content" },
             ].map((feature, i) => (
               <div
                 key={i}
-                className={`relative p-6 bg-gradient-to-br ${feature.gradient} backdrop-blur-sm border border-white/10 rounded-2xl hover:border-white/20 transition-all`}
+                className="relative p-6 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl hover:border-purple-500/30 hover:bg-white/10 transition-all group"
               >
-                <h3 className="text-lg font-bold mb-2">{feature.title}</h3>
-                <p className="text-sm text-white/60">{feature.desc}</p>
+                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 to-pink-500/0 group-hover:from-purple-500/10 group-hover:to-pink-500/10 rounded-2xl transition-all" />
+                <div className="relative">
+                  <h3 className="text-lg font-bold mb-2">{feature.title}</h3>
+                  <p className="text-sm text-white/60">{feature.desc}</p>
+                </div>
               </div>
             ))}
           </div>
 
           <div className="text-center">
             {hasApplied ? (
-              <div className="inline-flex flex-col items-center gap-4 p-8 bg-yellow-500/10 backdrop-blur-sm border border-yellow-500/20 rounded-2xl">
+              <div className="inline-flex flex-col items-center gap-4 p-8 bg-amber-500/10 backdrop-blur-md border border-amber-500/20 rounded-2xl">
                 <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
-                  <span className="text-xl font-bold">Application Under Review</span>
+                  <div className="w-3 h-3 bg-amber-400 rounded-full animate-pulse" />
+                  <span className="text-xl font-bold">Under Review</span>
                 </div>
                 <p className="text-white/60">We'll notify you once verified</p>
               </div>
@@ -441,9 +411,12 @@ export default function AnalyticsPage() {
               <button
                 onClick={handleApplyForVerification}
                 disabled={applying}
-                className="px-12 py-5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full font-bold text-lg hover:shadow-2xl hover:shadow-purple-500/50 transition-all hover:scale-105 disabled:opacity-50"
+                className="group relative px-12 py-5 bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 rounded-full font-bold text-lg hover:shadow-2xl hover:shadow-purple-500/50 transition-all hover:scale-105 disabled:opacity-50"
               >
-                {applying ? "Submitting..." : "Apply for Verification"}
+                <span className="relative z-10">
+                  {applying ? "Submitting..." : "Apply for Verification"}
+                </span>
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
               </button>
             )}
           </div>
@@ -465,15 +438,18 @@ export default function AnalyticsPage() {
 
   // MAIN DASHBOARD
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
+    <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#1a0a1a] to-[#0a0a1a] text-white">
       {/* Header */}
-      <div className="border-b border-white/10 bg-black/50 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+      <div className="border-b border-white/10 bg-black/40 backdrop-blur-xl sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-black">Creator Analytics</h1>
+            <div>
+              <h1 className="text-2xl font-black bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">Analytics</h1>
+              <p className="text-sm text-white/40 mt-0.5">Track your performance</p>
+            </div>
             <button
               onClick={() => router.push("/")}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-all"
+              className="px-5 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-sm font-semibold transition-all border border-white/10 hover:border-white/20"
             >
               Back to Home
             </button>
@@ -481,10 +457,10 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-white/10 bg-black/30 backdrop-blur-sm sticky top-[73px] z-40">
+      {/* Tabs - Fixed for mobile scrolling */}
+      <div className="border-b border-white/10 bg-black/30 backdrop-blur-sm sticky top-[89px] z-40 overflow-x-auto">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="flex gap-1">
+          <div className="flex gap-1 min-w-max">
             {[
               { id: "overview", label: "Overview" },
               { id: "catalogs", label: "Catalogs" },
@@ -494,15 +470,15 @@ export default function AnalyticsPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as Tab)}
-                className={`px-6 py-4 font-semibold transition-all relative ${
+                className={`px-6 py-4 font-bold transition-all relative whitespace-nowrap ${
                   activeTab === tab.id
                     ? "text-white"
-                    : "text-white/40 hover:text-white/60"
+                    : "text-white/40 hover:text-white/70"
                 }`}
               >
                 {tab.label}
                 {activeTab === tab.id && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500" />
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500" />
                 )}
               </button>
             ))}
@@ -517,17 +493,17 @@ export default function AnalyticsPage() {
             {/* Key metrics */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { label: "Followers", value: fmt(stats.totalFollowers), gradient: "from-blue-500 to-cyan-500" },
-                { label: "Total Clicks", value: fmt(stats.totalClicks), subValue: `${fmt(stats.uniqueClicks)} unique`, gradient: "from-purple-500 to-pink-500" },
-                { label: "Engagement", value: fmt(stats.totalLikes + stats.totalBookmarks), subValue: `${stats.avgEngagement.toFixed(1)}% avg`, gradient: "from-orange-500 to-red-500" },
-                { label: "Total Reach", value: fmt(stats.totalReach), subValue: `${stats.totalCatalogs} catalogs`, gradient: "from-green-500 to-emerald-500" },
+                { label: "Followers", value: fmt(stats.totalFollowers), gradient: "from-blue-500/20 to-cyan-500/20", border: "border-blue-500/30" },
+                { label: "Total Clicks", value: fmt(stats.totalClicks), subValue: `${fmt(stats.uniqueClicks)} unique`, gradient: "from-purple-500/20 to-pink-500/20", border: "border-purple-500/30" },
+                { label: "Engagement", value: fmt(stats.totalLikes + stats.totalBookmarks), subValue: `${stats.avgEngagement.toFixed(1)}% avg`, gradient: "from-pink-500/20 to-red-500/20", border: "border-pink-500/30" },
+                { label: "Total Reach", value: fmt(stats.totalReach), subValue: `${stats.totalCatalogs} catalogs`, gradient: "from-green-500/20 to-emerald-500/20", border: "border-green-500/30" },
               ].map((metric, i) => (
-                <div key={i} className="p-6 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl hover:border-white/20 transition-all group relative overflow-hidden">
-                  <div className={`absolute inset-0 bg-gradient-to-br ${metric.gradient} opacity-0 group-hover:opacity-10 transition-opacity`} />
+                <div key={i} className={`p-6 bg-gradient-to-br ${metric.gradient} backdrop-blur-md border ${metric.border} rounded-2xl hover:scale-105 transition-all group relative overflow-hidden`}>
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/0 to-white/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                   <div className="relative z-10">
-                    <div className="text-sm text-white/50 font-medium mb-3">{metric.label}</div>
+                    <div className="text-xs text-white/60 font-bold mb-3 tracking-wider uppercase">{metric.label}</div>
                     <div className="text-3xl font-black mb-1">{metric.value}</div>
-                    {metric.subValue && <div className="text-xs text-white/40">{metric.subValue}</div>}
+                    {metric.subValue && <div className="text-xs text-white/50 font-medium">{metric.subValue}</div>}
                   </div>
                 </div>
               ))}
@@ -535,21 +511,21 @@ export default function AnalyticsPage() {
 
             {/* Quick stats */}
             <div className="grid md:grid-cols-3 gap-6">
-              <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-                <div className="text-sm text-white/50 mb-2">Click-Through Rate</div>
-                <div className="text-4xl font-black mb-1">{stats.clickThroughRate.toFixed(1)}%</div>
+              <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 backdrop-blur-md border border-blue-500/20 rounded-2xl p-6 hover:border-purple-500/40 transition-all">
+                <div className="text-sm text-blue-300 font-bold mb-2 tracking-wide">Click-Through Rate</div>
+                <div className="text-5xl font-black mb-1 bg-gradient-to-r from-blue-300 to-purple-300 bg-clip-text text-transparent">{stats.clickThroughRate.toFixed(1)}%</div>
                 <div className="text-xs text-white/40">Unique / Total clicks</div>
               </div>
 
-              <div className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-                <div className="text-sm text-white/50 mb-2">Verified Items</div>
-                <div className="text-4xl font-black mb-1">{stats.verifiedItems}</div>
-                <div className="text-xs text-white/40">{stats.monetizedItems} monetized</div>
+              <div className="bg-gradient-to-br from-green-500/10 to-emerald-500/10 backdrop-blur-md border border-green-500/20 rounded-2xl p-6 hover:border-emerald-500/40 transition-all">
+                <div className="text-sm text-green-300 font-bold mb-2 tracking-wide">Verified Items</div>
+                <div className="text-5xl font-black mb-1 bg-gradient-to-r from-green-300 to-emerald-300 bg-clip-text text-transparent">{stats.verifiedItems}</div>
+                <div className="text-xs text-white/40">Partner brand items</div>
               </div>
 
-              <div className="bg-gradient-to-br from-orange-500/20 to-red-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-                <div className="text-sm text-white/50 mb-2">Total Items</div>
-                <div className="text-4xl font-black mb-1">{fmt(stats.totalItems)}</div>
+              <div className="bg-gradient-to-br from-pink-500/10 to-red-500/10 backdrop-blur-md border border-pink-500/20 rounded-2xl p-6 hover:border-red-500/40 transition-all">
+                <div className="text-sm text-pink-300 font-bold mb-2 tracking-wide">Total Items</div>
+                <div className="text-5xl font-black mb-1 bg-gradient-to-r from-pink-300 to-red-300 bg-clip-text text-transparent">{fmt(stats.totalItems)}</div>
                 <div className="text-xs text-white/40">Across all catalogs</div>
               </div>
             </div>
@@ -560,37 +536,37 @@ export default function AnalyticsPage() {
         {activeTab === "catalogs" && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold">Your Catalogs</h2>
-              <div className="text-sm text-white/50">{catalogs.length} total</div>
+              <h2 className="text-2xl font-black">Your Catalogs</h2>
+              <div className="text-sm text-white/50 font-medium">{catalogs.length} total</div>
             </div>
 
             <div className="grid md:grid-cols-3 gap-6">
               {catalogs.map((catalog, i) => (
                 <div
                   key={catalog.id}
-                  onClick={() => router.push(`/catalogs/${catalog.slug}`)}
-                  className="group bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:border-white/30 transition-all cursor-pointer"
+                  onClick={() => router.push(`/${catalog.slug}`)}
+                  className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden hover:border-purple-500/40 hover:scale-105 transition-all cursor-pointer relative"
                 >
                   {i < 3 && (
-                    <div className="absolute top-3 left-3 z-10 w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-black font-bold text-sm">
+                    <div className="absolute top-4 left-4 z-10 w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center text-black font-black text-sm shadow-xl">
                       {i + 1}
                     </div>
                   )}
                   <div className="aspect-square bg-white/5 overflow-hidden">
                     {catalog.image && (
-                      <img src={catalog.image} alt={catalog.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                      <img src={catalog.image} alt={catalog.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                     )}
                   </div>
-                  <div className="p-4">
-                    <h3 className="font-bold mb-3">{catalog.name}</h3>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="bg-white/5 rounded-lg p-2">
-                        <div className="text-white/50 text-xs mb-1">Clicks</div>
-                        <div className="font-bold">{fmt(catalog.totalClicks)}</div>
+                  <div className="p-5">
+                    <h3 className="font-bold text-lg mb-3">{catalog.name}</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                        <div className="text-white/50 text-xs mb-1 font-medium">Clicks</div>
+                        <div className="font-black text-lg">{fmt(catalog.totalClicks)}</div>
                       </div>
-                      <div className="bg-white/5 rounded-lg p-2">
-                        <div className="text-white/50 text-xs mb-1">Engagement</div>
-                        <div className="font-bold">{fmt(catalog.totalLikes + catalog.totalBookmarks)}</div>
+                      <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                        <div className="text-white/50 text-xs mb-1 font-medium">Engagement</div>
+                        <div className="font-black text-lg">{fmt(catalog.totalLikes + catalog.totalBookmarks)}</div>
                       </div>
                     </div>
                   </div>
@@ -604,14 +580,16 @@ export default function AnalyticsPage() {
         {activeTab === "items" && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold">All Items</h2>
+              <h2 className="text-2xl font-black">All Items</h2>
               <div className="flex gap-2">
                 {["clicks", "likes", "engagement"].map((sort) => (
                   <button
                     key={sort}
                     onClick={() => setSortBy(sort as any)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      sortBy === sort ? "bg-white text-black" : "bg-white/5 text-white/60 hover:bg-white/10"
+                    className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+                      sortBy === sort
+                        ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg"
+                        : "bg-white/5 text-white/60 hover:bg-white/10 border border-white/10"
                     }`}
                   >
                     {sort.charAt(0).toUpperCase() + sort.slice(1)}
@@ -622,38 +600,38 @@ export default function AnalyticsPage() {
 
             <div className="grid md:grid-cols-5 gap-4">
               {getSortedItems().map((item, i) => (
-                <div key={item.id} className="group bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:border-white/30 transition-all">
+                <div key={item.id} className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden hover:border-purple-500/40 hover:scale-105 transition-all relative">
                   {i < 3 && (
-                    <div className="absolute top-2 left-2 z-10 w-6 h-6 bg-black/80 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xs">
+                    <div className="absolute top-2 left-2 z-10 w-7 h-7 bg-black/80 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-black text-xs shadow-lg">
                       {i + 1}
                     </div>
                   )}
                   {item.isVerified && (
-                    <div className="absolute top-2 right-2 z-10 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                      <svg className="w-3.5 h-3.5" fill="white" viewBox="0 0 20 20">
+                    <div className="absolute top-2 right-2 z-10 w-7 h-7 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center shadow-lg">
+                      <svg className="w-4 h-4" fill="white" viewBox="0 0 20 20">
                         <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/>
                       </svg>
                     </div>
                   )}
                   <div className="aspect-square bg-white/5 overflow-hidden">
-                    <img src={item.image} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <img src={item.image} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                   </div>
                   <div className="p-3">
                     <div className="text-xs font-bold mb-2 truncate">{item.title}</div>
-                    <div className="flex items-center justify-between text-xs mb-2">
+                    <div className="flex items-center justify-between text-xs mb-3">
                       <span className="text-white/50">Clicks</span>
-                      <span className="font-bold">{fmt(item.clicks)}</span>
+                      <span className="font-black">{fmt(item.clicks)}</span>
                     </div>
                     {item.canVerify && !item.isVerified && !item.verificationStatus && (
                       <button
-                        onClick={() => requestItemVerification(item.id, item.seller || item.brand || "")}
-                        className="w-full py-1.5 bg-blue-500 hover:bg-blue-600 rounded-lg text-xs font-medium transition-all"
+                        onClick={() => requestItemVerification(item.id, item.seller || "")}
+                        className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-lg text-xs font-bold transition-all shadow-lg"
                       >
                         Request Verification
                       </button>
                     )}
                     {item.verificationStatus === "pending" && (
-                      <div className="w-full py-1.5 bg-yellow-500/20 rounded-lg text-xs font-medium text-center text-yellow-400">
+                      <div className="w-full py-2 bg-amber-500/20 border border-amber-500/30 rounded-lg text-xs font-bold text-center text-amber-300">
                         Pending Review
                       </div>
                     )}
@@ -668,46 +646,48 @@ export default function AnalyticsPage() {
         {activeTab === "monetization" && (
           <div className="space-y-8">
             <div>
-              <h2 className="text-2xl font-bold mb-2">Monetization</h2>
-              <p className="text-white/60">Submit partner brand items for verification and earn through affiliate links</p>
+              <h2 className="text-2xl font-black mb-2">Monetization</h2>
+              <p className="text-white/60">Partner brands: Diesel, Hat Club, Finish Line</p>
             </div>
 
             {/* Stats */}
             <div className="grid md:grid-cols-3 gap-6">
-              <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-6">
-                <div className="text-sm text-green-400 mb-2">Verified Items</div>
-                <div className="text-4xl font-black">{stats.verifiedItems}</div>
+              <div className="bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/20 rounded-2xl p-6">
+                <div className="text-sm text-green-300 font-bold mb-2">Verified Items</div>
+                <div className="text-5xl font-black bg-gradient-to-r from-green-300 to-emerald-300 bg-clip-text text-transparent">{stats.verifiedItems}</div>
               </div>
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6">
-                <div className="text-sm text-blue-400 mb-2">Monetized Items</div>
-                <div className="text-4xl font-black">{stats.monetizedItems}</div>
+              <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/20 rounded-2xl p-6">
+                <div className="text-sm text-amber-300 font-bold mb-2">Pending</div>
+                <div className="text-5xl font-black bg-gradient-to-r from-amber-300 to-orange-300 bg-clip-text text-transparent">{verificationRequests.filter(r => r.status === "pending").length}</div>
               </div>
-              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-6">
-                <div className="text-sm text-yellow-400 mb-2">Pending Requests</div>
-                <div className="text-4xl font-black">{verificationRequests.filter(r => r.status === "pending").length}</div>
+              <div className="bg-gradient-to-br from-red-500/10 to-pink-500/10 border border-red-500/20 rounded-2xl p-6">
+                <div className="text-sm text-red-300 font-bold mb-2">Rejected</div>
+                <div className="text-5xl font-black bg-gradient-to-r from-red-300 to-pink-300 bg-clip-text text-transparent">{verificationRequests.filter(r => r.status === "rejected").length}</div>
               </div>
             </div>
 
             {/* Requests */}
             <div>
-              <h3 className="text-xl font-bold mb-4">Verification Requests</h3>
+              <h3 className="text-xl font-black mb-4">Your Requests</h3>
               {verificationRequests.length === 0 ? (
-                <div className="text-center py-12 text-white/40">No verification requests yet</div>
+                <div className="text-center py-16 text-white/40 bg-white/5 rounded-2xl border border-white/10">
+                  No verification requests yet
+                </div>
               ) : (
                 <div className="space-y-3">
                   {verificationRequests.map((request) => (
-                    <div key={request.id} className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+                    <div key={request.id} className="flex items-center gap-4 p-5 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl hover:border-white/20 transition-all">
                       <div className="w-16 h-16 bg-white/5 rounded-lg overflow-hidden flex-shrink-0">
                         <img src={request.item.image} alt={request.item.title} className="w-full h-full object-cover" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold truncate">{request.item.title}</h4>
+                        <h4 className="font-bold truncate">{request.item.title}</h4>
                         <p className="text-sm text-white/50">{request.brandName}</p>
                       </div>
-                      <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        request.status === "pending" ? "bg-yellow-500/20 text-yellow-400" :
-                        request.status === "approved" ? "bg-green-500/20 text-green-400" :
-                        "bg-red-500/20 text-red-400"
+                      <div className={`px-4 py-2 rounded-full text-xs font-bold ${
+                        request.status === "pending" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
+                        request.status === "approved" ? "bg-green-500/20 text-green-300 border border-green-500/30" :
+                        "bg-red-500/20 text-red-300 border border-red-500/30"
                       }`}>
                         {request.status.toUpperCase()}
                       </div>
