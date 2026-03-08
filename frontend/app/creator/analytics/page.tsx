@@ -4,611 +4,625 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
-type CatalogAnalytics = {
-  id: string;
-  name: string;
-  slug: string;
-  total_items: number;
-  total_likes: number;
-  total_bookmarks: number;
-  total_clicks: number;
-  total_unique_clicks: number;
-  top_items: ItemAnalytics[];
-  cover_image?: string;
+type TimeRange = "7d" | "30d" | "90d" | "all";
+
+type AnalyticsData = {
+  overview: {
+    totalFollowers: number;
+    totalCatalogs: number;
+    totalItems: number;
+    totalLikes: number;
+    totalBookmarks: number;
+    totalClicks: number;
+    uniqueClicks: number;
+    clickThroughRate: number;
+    avgEngagementRate: number;
+    totalReach: number;
+    followerGrowth: number;
+  };
+  topCatalogs: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    image: string;
+    items: number;
+    likes: number;
+    bookmarks: number;
+    clicks: number;
+    uniqueClicks: number;
+    engagementScore: number;
+  }>;
+  topItems: Array<{
+    id: string;
+    title: string;
+    image: string;
+    catalogName: string;
+    likes: number;
+    clicks: number;
+    uniqueClicks: number;
+    clickThroughRate: number;
+  }>;
+  recentActivity: Array<{
+    type: "like" | "bookmark" | "click" | "follow";
+    timestamp: string;
+    itemName?: string;
+    catalogName?: string;
+    userName?: string;
+  }>;
 };
 
-type ItemAnalytics = {
-  id: string;
-  title: string;
-  image_url: string;
-  product_url: string | null;
-  seller: string | null;
-  brand: string | null;
-  like_count: number;
-  click_count: number;
-  unique_click_count: number;
-  catalog_name: string;
-  catalog_slug: string;
-};
-
-type OverviewStats = {
-  total_catalogs: number;
-  total_items: number;
-  total_likes: number;
-  total_bookmarks: number;
-  total_clicks: number;
-  total_unique_clicks: number;
-  avg_likes_per_item: number;
-  avg_clicks_per_item: number;
-  click_through_rate: number;
-};
-
-export default function CreatorAnalyticsPage() {
+export default function AnalyticsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentUsername, setCurrentUsername] = useState<string>("");
+  const [currentUsername, setCurrentUsername] = useState("");
   const [isVerified, setIsVerified] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "catalogs" | "items">("overview");
-  const [overviewStats, setOverviewStats] = useState<OverviewStats>({
-    total_catalogs: 0,
-    total_items: 0,
-    total_likes: 0,
-    total_bookmarks: 0,
-    total_clicks: 0,
-    total_unique_clicks: 0,
-    avg_likes_per_item: 0,
-    avg_clicks_per_item: 0,
-    click_through_rate: 0,
-  });
-  const [catalogAnalytics, setCatalogAnalytics] = useState<CatalogAnalytics[]>([]);
-  const [topItems, setTopItems] = useState<ItemAnalytics[]>([]);
-  const [sortBy, setSortBy] = useState<"likes" | "clicks" | "unique_clicks">("clicks");
+  const [timeRange, setTimeRange] = useState<TimeRange>("30d");
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [selectedMetric, setSelectedMetric] = useState<"clicks" | "likes" | "engagement">("clicks");
 
-  useEffect(() => { loadUser(); }, []);
-  useEffect(() => { if (currentUserId && isVerified) loadAnalytics(); }, [currentUserId, isVerified]);
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  useEffect(() => {
+    if (currentUserId && isVerified) {
+      loadAnalytics();
+    }
+  }, [currentUserId, isVerified, timeRange]);
 
   async function loadUser() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push("/login"); return; }
-    const { data: profile } = await supabase.from("profiles").select("is_verified, username, is_onboarded").eq("id", user.id).single();
-    if (!profile?.is_onboarded) { router.push("/"); return; }
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_verified, username, is_onboarded")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.is_onboarded) {
+      router.push("/");
+      return;
+    }
+
     setCurrentUserId(user.id);
     setCurrentUsername(profile.username);
     setIsVerified(profile?.is_verified || false);
+
     if (!profile?.is_verified) {
-      const { data: application } = await supabase.from("verification_requests").select("status").eq("user_id", user.id).single();
-      if (application) setHasApplied(true);
+      const { data: application } = await supabase
+        .from("verification_requests")
+        .select("status")
+        .eq("user_id", user.id)
+        .single();
+
+      if (application) {
+        setHasApplied(true);
+      }
     }
+
     setLoading(false);
   }
 
   async function loadAnalytics() {
     setLoading(true);
-    try { await Promise.all([loadOverviewStats(), loadCatalogAnalytics(), loadTopItems()]); }
-    catch (error) { console.error("Error loading analytics:", error); }
-    finally { setLoading(false); }
-  }
+    try {
+      // Get follower count
+      const { count: followerCount } = await supabase
+        .from("follows")
+        .select("*", { count: "exact", head: true })
+        .eq("following_id", currentUserId);
 
-  async function loadOverviewStats() {
-    if (!currentUserId) return;
-    const { count: catalogCount } = await supabase.from("catalogs").select("*", { count: "exact", head: true }).eq("owner_id", currentUserId);
-    const { data: catalogItems } = await supabase.from("catalog_items").select("id, like_count, click_count, unique_click_count, catalogs!inner(owner_id)").eq("catalogs.owner_id", currentUserId);
-    const { count: bookmarkCount } = await supabase.from("bookmarked_catalogs").select("*, catalogs!inner(owner_id)", { count: "exact", head: true }).eq("catalogs.owner_id", currentUserId);
-    const totalLikes = catalogItems?.reduce((sum, item) => sum + (item.like_count || 0), 0) || 0;
-    const totalClicks = catalogItems?.reduce((sum, item) => sum + (item.click_count || 0), 0) || 0;
-    const totalUniqueClicks = catalogItems?.reduce((sum, item) => sum + (item.unique_click_count || 0), 0) || 0;
-    const itemCount = catalogItems?.length || 0;
-    setOverviewStats({ total_catalogs: catalogCount || 0, total_items: itemCount, total_likes: totalLikes, total_bookmarks: bookmarkCount || 0, total_clicks: totalClicks, total_unique_clicks: totalUniqueClicks, avg_likes_per_item: itemCount > 0 ? totalLikes / itemCount : 0, avg_clicks_per_item: itemCount > 0 ? totalClicks / itemCount : 0, click_through_rate: totalClicks > 0 ? (totalUniqueClicks / totalClicks) * 100 : 0 });
-  }
+      // Get catalogs with stats
+      const { data: catalogs } = await supabase
+        .from("catalogs")
+        .select("id, name, slug, image_url")
+        .eq("owner_id", currentUserId);
 
-  async function loadCatalogAnalytics() {
-    if (!currentUserId) return;
-    const { data: catalogs } = await supabase.from("catalogs").select("id, name, slug").eq("owner_id", currentUserId);
-    if (!catalogs) return;
-    const catalogAnalyticsData = await Promise.all(catalogs.map(async (catalog) => {
-      const { data: items } = await supabase.from("catalog_items").select("id, title, image_url, product_url, seller, brand, like_count, click_count, unique_click_count").eq("catalog_id", catalog.id);
-      const { count: bookmarkCount } = await supabase.from("bookmarked_catalogs").select("*", { count: "exact", head: true }).eq("catalog_id", catalog.id);
-      const totalLikes = items?.reduce((sum, item) => sum + (item.like_count || 0), 0) || 0;
-      const totalClicks = items?.reduce((sum, item) => sum + (item.click_count || 0), 0) || 0;
-      const totalUniqueClicks = items?.reduce((sum, item) => sum + (item.unique_click_count || 0), 0) || 0;
-      const topItems: ItemAnalytics[] = items?.map(item => ({ ...item, catalog_name: catalog.name, catalog_slug: catalog.slug })) || [];
-      const coverImage = items?.[0]?.image_url;
-      return { id: catalog.id, name: catalog.name, slug: catalog.slug, total_items: items?.length || 0, total_likes: totalLikes, total_bookmarks: bookmarkCount || 0, total_clicks: totalClicks, total_unique_clicks: totalUniqueClicks, top_items: topItems, cover_image: coverImage };
-    }));
-    setCatalogAnalytics(catalogAnalyticsData);
-  }
+      const catalogStats = await Promise.all(
+        (catalogs || []).map(async (catalog) => {
+          const { data: items } = await supabase
+            .from("catalog_items")
+            .select("id, image_url, like_count, click_count, unique_click_count")
+            .eq("catalog_id", catalog.id);
 
-  async function loadTopItems() {
-    if (!currentUserId) return;
-    const { data: items } = await supabase.from("catalog_items").select(`id, title, image_url, product_url, seller, brand, like_count, click_count, unique_click_count, catalogs!inner(owner_id, name, slug)`).eq("catalogs.owner_id", currentUserId).order("click_count", { ascending: false }).limit(50);
-    const formattedItems: ItemAnalytics[] = items?.map((item: any) => ({ id: item.id, title: item.title, image_url: item.image_url, product_url: item.product_url, seller: item.seller, brand: item.brand, like_count: item.like_count || 0, click_count: item.click_count || 0, unique_click_count: item.unique_click_count || 0, catalog_name: item.catalogs.name, catalog_slug: item.catalogs.slug })) || [];
-    setTopItems(formattedItems);
+          const { count: bookmarks } = await supabase
+            .from("bookmarked_catalogs")
+            .select("*", { count: "exact", head: true })
+            .eq("catalog_id", catalog.id);
+
+          const totalLikes = items?.reduce((sum, i) => sum + (i.like_count || 0), 0) || 0;
+          const totalClicks = items?.reduce((sum, i) => sum + (i.click_count || 0), 0) || 0;
+          const totalUniqueClicks = items?.reduce((sum, i) => sum + (i.unique_click_count || 0), 0) || 0;
+          const engagementScore = totalLikes + (bookmarks || 0) * 2 + totalClicks * 1.5;
+
+          return {
+            id: catalog.id,
+            name: catalog.name,
+            slug: catalog.slug,
+            image: items?.[0]?.image_url || catalog.image_url || "",
+            items: items?.length || 0,
+            likes: totalLikes,
+            bookmarks: bookmarks || 0,
+            clicks: totalClicks,
+            uniqueClicks: totalUniqueClicks,
+            engagementScore,
+          };
+        })
+      );
+
+      // Get all items
+      const { data: allItems } = await supabase
+        .from("catalog_items")
+        .select(`
+          id,
+          title,
+          image_url,
+          like_count,
+          click_count,
+          unique_click_count,
+          catalogs!inner(owner_id, name)
+        `)
+        .eq("catalogs.owner_id", currentUserId)
+        .order("click_count", { ascending: false })
+        .limit(10);
+
+      const topItems = allItems?.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        image: item.image_url,
+        catalogName: item.catalogs.name,
+        likes: item.like_count || 0,
+        clicks: item.click_count || 0,
+        uniqueClicks: item.unique_click_count || 0,
+        clickThroughRate: item.click_count > 0 ? ((item.unique_click_count || 0) / item.click_count) * 100 : 0,
+      })) || [];
+
+      // Calculate totals
+      const totalLikes = catalogStats.reduce((sum, c) => sum + c.likes, 0);
+      const totalBookmarks = catalogStats.reduce((sum, c) => sum + c.bookmarks, 0);
+      const totalClicks = catalogStats.reduce((sum, c) => sum + c.clicks, 0);
+      const totalUniqueClicks = catalogStats.reduce((sum, c) => sum + c.uniqueClicks, 0);
+      const totalItems = catalogStats.reduce((sum, c) => sum + c.items, 0);
+
+      setAnalytics({
+        overview: {
+          totalFollowers: followerCount || 0,
+          totalCatalogs: catalogs?.length || 0,
+          totalItems,
+          totalLikes,
+          totalBookmarks,
+          totalClicks,
+          uniqueClicks: totalUniqueClicks,
+          clickThroughRate: totalClicks > 0 ? (totalUniqueClicks / totalClicks) * 100 : 0,
+          avgEngagementRate: totalItems > 0 ? (totalLikes / totalItems) * 100 : 0,
+          totalReach: totalUniqueClicks + totalBookmarks,
+          followerGrowth: 0, // TODO: Calculate from historical data
+        },
+        topCatalogs: catalogStats.sort((a, b) => b.engagementScore - a.engagementScore).slice(0, 6),
+        topItems,
+        recentActivity: [], // TODO: Implement activity feed
+      });
+    } catch (error) {
+      console.error("Error loading analytics:", error);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleApplyForVerification() {
     setApplying(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { error } = await supabase.from("verification_requests").insert({ user_id: user.id, status: "pending" });
-    if (error) { console.error("Error applying for verification:", error); alert("Failed to submit application. Please try again."); }
-    else { setHasApplied(true); alert("Application submitted! We will review your request soon."); }
+
+    const { error } = await supabase
+      .from("verification_requests")
+      .insert({ user_id: user.id, status: "pending" });
+
+    if (error) {
+      console.error("Error:", error);
+      alert("Failed to submit. Please try again.");
+    } else {
+      setHasApplied(true);
+      alert("Application submitted!");
+    }
     setApplying(false);
   }
 
-  function getSortedItems(items: ItemAnalytics[]) {
-    return [...items].sort((a, b) => {
-      if (sortBy === "likes") return b.like_count - a.like_count;
-      if (sortBy === "clicks") return b.click_count - a.click_count;
-      if (sortBy === "unique_clicks") return b.unique_click_count - a.unique_click_count;
-      return 0;
-    });
-  }
-
-  function fmt(n: number) {
+  const fmt = (n: number) => {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
     if (n >= 1000) return (n / 1000).toFixed(1) + "K";
     return n.toString();
-  }
+  };
 
   if (loading) {
     return (
-      <>
-        <style jsx global>{`
-          @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@700;800&display=swap');
-          @keyframes spin { to { transform: rotate(360deg); } }
-          .loader { width: 32px; height: 32px; border: 2px solid #e5e5e5; border-top-color: #000; border-radius: 50%; animation: spin 0.8s linear infinite; }
-        `}</style>
-        <div style={{ minHeight: "100vh", background: "#fafafa", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "16px" }}>
-          <div className="loader" />
-          <p style={{ fontFamily: "DM Sans, sans-serif", fontSize: "13px", color: "#999", letterSpacing: "0.05em" }}>Loading your analytics</p>
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="relative">
+          <div className="w-16 h-16 border-4 border-white/10 border-t-white rounded-full animate-spin" />
+          <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-blue-500 rounded-full animate-spin" style={{ animationDuration: "0.8s" }} />
         </div>
-      </>
+      </div>
     );
   }
 
-  // ── VERIFICATION PAGE ──────────────────────────────────────────────────────
+  // VERIFICATION REQUEST SCREEN
   if (!isVerified) {
     return (
-      <>
-        <style jsx global>{`
-          @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=Syne:wght@700;800&display=swap');
-          @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
-          @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-          @keyframes shimmer { from { background-position: -200% center; } to { background-position: 200% center; } }
-          .card-float { animation: float 4s ease-in-out infinite; }
-          .card-float-2 { animation: float 4s ease-in-out infinite 1.3s; }
-          .card-float-3 { animation: float 4s ease-in-out infinite 2.6s; }
-          .fade-1 { animation: fadeUp 0.6s ease forwards; opacity: 0; }
-          .fade-2 { animation: fadeUp 0.6s ease 0.15s forwards; opacity: 0; }
-          .fade-3 { animation: fadeUp 0.6s ease 0.3s forwards; opacity: 0; }
-          .fade-4 { animation: fadeUp 0.6s ease 0.45s forwards; opacity: 0; }
-          .fade-5 { animation: fadeUp 0.6s ease 0.6s forwards; opacity: 0; }
-          .shimmer-text {
-            background: linear-gradient(90deg, #000 0%, #555 40%, #000 60%, #000 100%);
-            background-size: 200% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: shimmer 3s linear infinite;
-          }
-          .apply-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.2); }
-          .apply-btn { transition: all 0.2s ease; }
-          .benefit-card:hover { transform: translateY(-4px); box-shadow: 0 16px 48px rgba(0,0,0,0.08); }
-          .benefit-card { transition: all 0.25s ease; }
+      <div className="min-h-screen bg-[#0a0a0a] text-white relative overflow-hidden">
+        {/* Animated background */}
+        <div className="absolute inset-0 opacity-30">
+          <div className="absolute top-0 -left-4 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl animate-blob" />
+          <div className="absolute top-0 -right-4 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000" />
+          <div className="absolute -bottom-8 left-20 w-72 h-72 bg-pink-500 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-4000" />
+        </div>
 
-          @media (max-width: 768px) {
-            .hero-grid { grid-template-columns: 1fr !important; gap: 48px !important; }
-            .hero-heading { font-size: 36px !important; line-height: 1.15 !important; }
-            .benefit-card { padding: 20px !important; }
-            .sidebar { display: none !important; }
-            .main-content { padding: 24px 20px !important; }
-            .stats-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
-            .stat-card { padding: 18px !important; }
-            .catalog-row { flex-direction: column !important; align-items: flex-start !important; }
-            .catalog-stats { flex-direction: column !important; gap: 12px !important; width: 100% !important; }
-            .item-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
-          }
-        `}</style>
+        <div className="relative z-10 max-w-4xl mx-auto px-6 py-20">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-full mb-8">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              <span className="text-sm font-medium tracking-wider">CREATOR VERIFICATION</span>
+            </div>
 
-        <div style={{ minHeight: "100vh", background: "linear-gradient(160deg, #f8f8f6 0%, #fff 50%, #f5f5f8 100%)", fontFamily: "DM Sans, sans-serif" }}>
-          {/* Top nav bar */}
-          <div style={{ padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-            <span style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "18px", letterSpacing: "-0.02em" }}>catalog</span>
-            <button onClick={() => router.push(`/${currentUsername}`)} style={{ fontSize: "13px", color: "#666", background: "none", border: "none", cursor: "pointer", fontFamily: "DM Sans, sans-serif" }}>
-              ← Back
-            </button>
+            <h1 className="text-6xl md:text-7xl font-black mb-6 leading-none">
+              Unlock Your
+              <br />
+              <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Creator Dashboard
+              </span>
+            </h1>
+
+            <p className="text-xl text-white/60 max-w-2xl mx-auto leading-relaxed">
+              Get verified to access real-time analytics, performance insights, and powerful tools to grow your influence.
+            </p>
           </div>
 
-          <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "60px 24px 100px" }}>
-            <div className="hero-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "80px", alignItems: "center" }}>
-
-              {/* Left — copy */}
-              <div>
-                <div className="fade-1" style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "#000", color: "#fff", padding: "8px 16px", borderRadius: "100px", fontSize: "11px", fontWeight: 600, letterSpacing: "0.08em", marginBottom: "32px" }}>
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="5" fill="#4ade80"/></svg>
-                  CREATOR PROGRAM
-                </div>
-
-                <h1 className="fade-2 hero-heading" style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "clamp(36px, 5vw, 58px)", lineHeight: 1.1, letterSpacing: "-0.03em", margin: "0 0 24px", color: "#0a0a0a" }}>
-                  Unlock your<br />
-                  <span className="shimmer-text">creator tools.</span>
-                </h1>
-
-                <p className="fade-3" style={{ fontSize: "16px", color: "#666", lineHeight: 1.75, margin: "0 0 40px", fontWeight: 400, maxWidth: "480px" }}>
-                  Get verified to access deep analytics, engagement insights, and a badge that sets your catalogs apart. Built for serious creators.
-                </p>
-
-                <div className="fade-4">
-                  {hasApplied ? (
-                    <div style={{ display: "inline-flex", flexDirection: "column", background: "#f5f5f5", borderRadius: "16px", padding: "24px 28px", gap: "8px", maxWidth: "400px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#f59e0b", flexShrink: 0 }} />
-                        <span style={{ fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "15px", color: "#0a0a0a" }}>Application under review</span>
-                      </div>
-                      <p style={{ margin: 0, fontSize: "14px", color: "#888", paddingLeft: "20px", lineHeight: 1.6 }}>We'll reach out once we've reviewed your profile.</p>
-                    </div>
-                  ) : (
-                    <button
-                      className="apply-btn"
-                      onClick={handleApplyForVerification}
-                      disabled={applying}
-                      style={{ background: "#0a0a0a", color: "#fff", border: "none", borderRadius: "14px", padding: "18px 36px", fontSize: "15px", fontWeight: 600, fontFamily: "DM Sans, sans-serif", cursor: applying ? "not-allowed" : "pointer", opacity: applying ? 0.6 : 1, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}
-                    >
-                      {applying ? "Submitting…" : "Apply for verification →"}
-                    </button>
-                  )}
-                </div>
-
-                <p className="fade-5" style={{ fontSize: "13px", color: "#aaa", marginTop: "20px" }}>
-                  Free to apply · Reviewed within 48 hours
-                </p>
+          {/* Feature grid */}
+          <div className="grid md:grid-cols-3 gap-6 mb-16">
+            {[
+              {
+                icon: "📊",
+                title: "Live Analytics",
+                desc: "Track clicks, engagement, and performance in real-time",
+                gradient: "from-blue-500/20 to-cyan-500/20",
+              },
+              {
+                icon: "🎯",
+                title: "Deep Insights",
+                desc: "Understand what resonates with your audience",
+                gradient: "from-purple-500/20 to-pink-500/20",
+              },
+              {
+                icon: "✨",
+                title: "Verified Badge",
+                desc: "Stand out with official creator verification",
+                gradient: "from-orange-500/20 to-red-500/20",
+              },
+            ].map((feature, i) => (
+              <div
+                key={i}
+                className={`relative p-6 bg-gradient-to-br ${feature.gradient} backdrop-blur-sm border border-white/10 rounded-2xl hover:border-white/20 transition-all hover:scale-105`}
+              >
+                <div className="text-4xl mb-4">{feature.icon}</div>
+                <h3 className="text-lg font-bold mb-2">{feature.title}</h3>
+                <p className="text-sm text-white/60">{feature.desc}</p>
               </div>
+            ))}
+          </div>
 
-              {/* Right — visual benefit cards */}
-              <div className="fade-3" style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-
-                <div className="benefit-card card-float" style={{ background: "#fff", borderRadius: "20px", padding: "24px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", border: "1px solid rgba(0,0,0,0.06)", display: "flex", gap: "18px", alignItems: "flex-start" }}>
-                  <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "linear-gradient(135deg, #667eea, #764ba2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: "0 0 8px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "16px", color: "#0a0a0a", lineHeight: 1.3 }}>Real-time analytics</p>
-                    <p style={{ margin: 0, fontSize: "14px", color: "#888", lineHeight: 1.65 }}>Track every click, like, and bookmark across all your catalogs and items.</p>
-                  </div>
+          {/* CTA */}
+          <div className="text-center">
+            {hasApplied ? (
+              <div className="inline-flex flex-col items-center gap-4 p-8 bg-yellow-500/10 backdrop-blur-sm border border-yellow-500/20 rounded-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
+                  <span className="text-xl font-bold">Application Under Review</span>
                 </div>
-
-                <div className="benefit-card card-float-2" style={{ background: "#fff", borderRadius: "20px", padding: "24px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", border: "1px solid rgba(0,0,0,0.06)", display: "flex", gap: "18px", alignItems: "flex-start" }}>
-                  <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "linear-gradient(135deg, #f093fb, #f5576c)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: "0 0 8px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "16px", color: "#0a0a0a", lineHeight: 1.3 }}>Verified badge</p>
-                    <p style={{ margin: 0, fontSize: "14px", color: "#888", lineHeight: 1.65 }}>Stand out on the platform with a badge that signals trust and authenticity.</p>
-                  </div>
-                </div>
-
-                <div className="benefit-card card-float-3" style={{ background: "#fff", borderRadius: "20px", padding: "24px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", border: "1px solid rgba(0,0,0,0.06)", display: "flex", gap: "18px", alignItems: "flex-start" }}>
-                  <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "linear-gradient(135deg, #4facfe, #00f2fe)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: "0 0 8px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "16px", color: "#0a0a0a", lineHeight: 1.3 }}>Performance insights</p>
-                    <p style={{ margin: 0, fontSize: "14px", color: "#888", lineHeight: 1.65 }}>See which items resonate most and optimize your catalogs for engagement.</p>
-                  </div>
-                </div>
-
+                <p className="text-white/60">We'll notify you once your profile has been reviewed</p>
               </div>
-            </div>
+            ) : (
+              <button
+                onClick={handleApplyForVerification}
+                disabled={applying}
+                className="group relative px-12 py-5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full font-bold text-lg hover:shadow-2xl hover:shadow-purple-500/50 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="relative z-10">
+                  {applying ? "Submitting..." : "Apply for Verification →"}
+                </span>
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
+              </button>
+            )}
           </div>
         </div>
-      </>
+
+        <style jsx>{`
+          @keyframes blob {
+            0%, 100% { transform: translate(0px, 0px) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+          }
+          .animate-blob {
+            animation: blob 7s infinite;
+          }
+          .animation-delay-2000 {
+            animation-delay: 2s;
+          }
+          .animation-delay-4000 {
+            animation-delay: 4s;
+          }
+        `}</style>
+      </div>
     );
   }
 
-  // ── ANALYTICS DASHBOARD ────────────────────────────────────────────────────
+  // MAIN ANALYTICS DASHBOARD
+  if (!analytics) return null;
+
   return (
-    <>
-      <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=Syne:wght@700;800&display=swap');
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-        .fade-in { animation: fadeIn 0.5s ease forwards; }
-        .stat-card:hover { transform: translateY(-2px); }
-        .stat-card { transition: transform 0.2s ease; }
-        .item-card:hover { box-shadow: 0 12px 40px rgba(0,0,0,0.1); transform: translateY(-3px); }
-        .item-card { transition: all 0.25s ease; }
-        .catalog-row:hover { background: #f9f9f9; }
-        .catalog-row { transition: background 0.15s ease; }
-        .tab-btn { transition: all 0.2s ease; }
-        .sort-pill:hover { background: #000; color: #fff; }
-        .sort-pill { transition: all 0.15s ease; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 3px; }
-
-        @media (max-width: 768px) {
-          .sidebar { display: none !important; }
-          .main-content { padding: 24px 20px 120px !important; }
-          .stats-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 14px !important; }
-          .stat-card { padding: 20px !important; }
-          .stat-card p:first-child { font-size: 10px !important; margin-bottom: 10px !important; }
-          .stat-card p:nth-child(2) { font-size: 28px !important; }
-          .stat-card p:last-child { font-size: 11px !important; }
-          .catalog-row { flex-direction: column !important; align-items: flex-start !important; padding: 18px !important; }
-          .catalog-stats { flex-direction: row !important; gap: 16px !important; width: 100% !important; margin-top: 16px !important; flex-wrap: wrap !important; }
-          .catalog-stat { text-align: left !important; }
-          .catalog-stat p:first-child { font-size: 20px !important; }
-          .item-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 14px !important; }
-          .item-card { border-radius: 16px !important; }
-          .item-card > div:last-child { padding: 14px !important; }
-          .item-card p:first-child { font-size: 14px !important; }
-          .item-card p:nth-child(2) { font-size: 12px !important; }
-          .mobile-nav { display: flex !important; }
-          .desktop-only { display: none !important; }
-          .engagement-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
-        }
-
-        @media (min-width: 769px) {
-          .mobile-nav { display: none !important; }
-        }
-      `}</style>
-
-      <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "DM Sans, sans-serif", color: "#0a0a0a" }}>
-
-        {/* ── SIDEBAR + MAIN LAYOUT ── */}
-        <div style={{ display: "flex", minHeight: "100vh" }}>
-
-          {/* Sidebar */}
-          <aside className="sidebar" style={{ width: "220px", background: "#fff", borderRight: "1px solid rgba(0,0,0,0.08)", padding: "28px 20px", flexShrink: 0, position: "sticky", top: 0, height: "100vh", display: "flex", flexDirection: "column", gap: "4px" }}>
-            <div style={{ marginBottom: "32px", paddingLeft: "12px" }}>
-              <span style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "17px", letterSpacing: "-0.02em" }}>catalog</span>
-            </div>
-
-            <p style={{ fontSize: "10px", fontWeight: 600, color: "#aaa", letterSpacing: "0.1em", paddingLeft: "12px", marginBottom: "8px" }}>ANALYTICS</p>
-
-            {(["overview", "catalogs", "items"] as const).map(tab => (
-              <button
-                key={tab}
-                className="tab-btn"
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  display: "flex", alignItems: "center", gap: "10px", width: "100%", padding: "10px 12px", borderRadius: "10px", border: "none", cursor: "pointer", textAlign: "left", fontSize: "13px", fontWeight: activeTab === tab ? 600 : 400, fontFamily: "DM Sans, sans-serif",
-                  background: activeTab === tab ? "#0a0a0a" : "transparent",
-                  color: activeTab === tab ? "#fff" : "#555",
-                }}
-              >
-                {tab === "overview" && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>}
-                {tab === "catalogs" && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}
-                {tab === "items" && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
-                {tab === "overview" ? "Overview" : tab === "catalogs" ? "Catalogs" : "Top Items"}
-              </button>
-            ))}
-
-            <div style={{ marginTop: "auto", padding: "12px", borderRadius: "12px", background: "#f5f5f5" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#0a0a0a", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "12px", fontWeight: 700 }}>
-                  {currentUsername[0]?.toUpperCase()}
-                </div>
-                <div>
-                  <p style={{ margin: 0, fontSize: "12px", fontWeight: 600 }}>@{currentUsername}</p>
-                  <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "1px" }}>
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="#4ade80"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                    <span style={{ fontSize: "10px", color: "#666" }}>Verified</span>
-                  </div>
-                </div>
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
+      {/* Header */}
+      <div className="border-b border-white/10 bg-black/50 backdrop-blur-xl sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center font-bold text-lg">
+                {currentUsername[0]?.toUpperCase()}
               </div>
-              <button onClick={() => router.push(`/${currentUsername}`)} style={{ width: "100%", padding: "7px", background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: "8px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Sans, sans-serif", color: "#333", fontWeight: 500 }}>
-                View profile →
-              </button>
-            </div>
-          </aside>
-
-          {/* Mobile bottom nav */}
-          <div className="mobile-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid rgba(0,0,0,0.08)", padding: "14px 16px", zIndex: 100, display: "none" }}>
-            <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", gap: "8px" }}>
-              {(["overview", "catalogs", "items"] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", background: "none", border: "none", cursor: "pointer", padding: "10px 16px", borderRadius: "12px", backgroundColor: activeTab === tab ? "#f5f5f5" : "transparent", flex: 1 }}
-                >
-                  {tab === "overview" && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={activeTab === tab ? "#0a0a0a" : "#999"} strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>}
-                  {tab === "catalogs" && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={activeTab === tab ? "#0a0a0a" : "#999"} strokeWidth="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}
-                  {tab === "items" && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={activeTab === tab ? "#0a0a0a" : "#999"} strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
-                  <span style={{ fontSize: "11px", fontWeight: activeTab === tab ? 600 : 500, color: activeTab === tab ? "#0a0a0a" : "#999", fontFamily: "DM Sans, sans-serif", letterSpacing: "-0.01em" }}>
-                    {tab === "overview" ? "Overview" : tab === "catalogs" ? "Catalogs" : "Items"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Main content */}
-          <main className="main-content" style={{ flex: 1, padding: "36px 40px", overflow: "auto", paddingBottom: "100px" }}>
-
-            {/* Page header */}
-            <div style={{ marginBottom: "36px" }}>
-              <h1 style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "28px", letterSpacing: "-0.03em", margin: "0 0 4px" }}>
-                {activeTab === "overview" ? "Overview" : activeTab === "catalogs" ? "Catalogs" : "Top Items"}
-              </h1>
-              <p style={{ margin: 0, fontSize: "13px", color: "#888" }}>
-                {activeTab === "overview" ? "Your performance at a glance" : activeTab === "catalogs" ? "Performance by catalog" : "Your best performing items"}
-              </p>
-            </div>
-
-            {/* ── OVERVIEW ── */}
-            {activeTab === "overview" && (
-              <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-
-                {/* Primary stats row */}
-                <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
-                  {[
-                    { label: "Total Clicks", value: fmt(overviewStats.total_clicks), sub: "All time", highlight: true },
-                    { label: "Unique Clicks", value: fmt(overviewStats.total_unique_clicks), sub: "Distinct visitors", highlight: true },
-                    { label: "Total Likes", value: fmt(overviewStats.total_likes), sub: "Across all items", highlight: false },
-                    { label: "Bookmarks", value: fmt(overviewStats.total_bookmarks), sub: "Catalog saves", highlight: false },
-                  ].map(s => (
-                    <div key={s.label} className="stat-card" style={{ background: s.highlight ? "#0a0a0a" : "#fff", color: s.highlight ? "#fff" : "#0a0a0a", borderRadius: "18px", padding: "28px", border: s.highlight ? "none" : "1px solid rgba(0,0,0,0.08)", boxShadow: s.highlight ? "0 8px 32px rgba(0,0,0,0.12)" : "none" }}>
-                      <p style={{ margin: "0 0 14px", fontSize: "11px", fontWeight: 600, letterSpacing: "0.06em", opacity: s.highlight ? 0.6 : 0.5, color: "inherit" }}>{s.label.toUpperCase()}</p>
-                      <p style={{ margin: "0 0 6px", fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "42px", letterSpacing: "-0.03em", color: "inherit", lineHeight: 1 }}>{s.value}</p>
-                      <p style={{ margin: 0, fontSize: "12px", opacity: 0.5, color: "inherit" }}>{s.sub}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Secondary stats row */}
-                <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
-                  {[
-                    { label: "Catalogs", value: overviewStats.total_catalogs },
-                    { label: "Total Items", value: overviewStats.total_items },
-                    { label: "Avg Likes / Item", value: overviewStats.avg_likes_per_item.toFixed(1) },
-                    { label: "Avg Clicks / Item", value: overviewStats.avg_clicks_per_item.toFixed(1) },
-                  ].map(s => (
-                    <div key={s.label} className="stat-card" style={{ background: "#fff", borderRadius: "18px", padding: "24px", border: "1px solid rgba(0,0,0,0.08)" }}>
-                      <p style={{ margin: "0 0 10px", fontSize: "11px", fontWeight: 600, letterSpacing: "0.06em", color: "#aaa" }}>{s.label.toUpperCase()}</p>
-                      <p style={{ margin: 0, fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "32px", letterSpacing: "-0.02em", lineHeight: 1 }}>{s.value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Engagement metrics */}
-                <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", border: "1px solid rgba(0,0,0,0.08)" }}>
-                  <h2 style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "18px", margin: "0 0 28px", letterSpacing: "-0.02em" }}>Engagement</h2>
-                  <div className="engagement-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "36px" }}>
-                    {[
-                      { label: "Click-through rate", value: overviewStats.click_through_rate.toFixed(1) + "%", note: "Unique / total clicks", color: "#667eea" },
-                      { label: "Engagement rate", value: overviewStats.total_items > 0 ? ((overviewStats.total_likes / overviewStats.total_items) * 100).toFixed(1) + "%" : "0%", note: "Likes per item ratio", color: "#f5576c" },
-                      { label: "Total reach", value: fmt(overviewStats.total_unique_clicks + overviewStats.total_bookmarks), note: "Unique clicks + saves", color: "#4facfe" },
-                    ].map(m => (
-                      <div key={m.label}>
-                        <div style={{ width: "40px", height: "4px", borderRadius: "2px", background: m.color, marginBottom: "16px" }} />
-                        <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#aaa", fontWeight: 500 }}>{m.label}</p>
-                        <p style={{ margin: "0 0 6px", fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "36px", letterSpacing: "-0.02em", lineHeight: 1 }}>{m.value}</p>
-                        <p style={{ margin: 0, fontSize: "12px", color: "#bbb" }}>{m.note}</p>
-                      </div>
-                    ))}
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-bold">@{currentUsername}</h1>
+                  <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                    <svg className="w-3 h-3" fill="white" viewBox="0 0 20 20">
+                      <path d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" />
+                    </svg>
                   </div>
                 </div>
-
+                <p className="text-sm text-white/50">Creator Analytics</p>
               </div>
-            )}
+            </div>
 
-            {/* ── CATALOGS ── */}
-            {activeTab === "catalogs" && (
-              <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                {catalogAnalytics.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "80px 0", color: "#bbb", fontSize: "14px" }}>No catalogs found</div>
-                ) : catalogAnalytics.map(catalog => (
-                  <div key={catalog.id} className="catalog-row" style={{ background: "#fff", borderRadius: "20px", border: "1px solid rgba(0,0,0,0.08)", overflow: "hidden" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "20px", padding: "20px 24px" }}>
-
-                      {/* Cover image strip */}
-                      <div className="desktop-only" style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
-                        {catalog.top_items.slice(0, 3).map((item, i) => (
-                          <div key={i} style={{ width: "52px", height: "52px", borderRadius: "10px", overflow: "hidden", background: "#f5f5f5", flexShrink: 0 }}>
-                            {item.image_url && <img src={item.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
-                          </div>
-                        ))}
-                        {catalog.top_items.length === 0 && (
-                          <div style={{ width: "52px", height: "52px", borderRadius: "10px", background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Name + meta */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: "0 0 4px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "17px", letterSpacing: "-0.01em" }}>{catalog.name}</p>
-                        <p style={{ margin: 0, fontSize: "13px", color: "#aaa" }}>{catalog.total_items} items</p>
-                      </div>
-
-                      {/* Stats inline */}
-                      <div className="catalog-stats desktop-only" style={{ display: "flex", gap: "28px", alignItems: "center" }}>
-                        {[
-                          { l: "Likes", v: fmt(catalog.total_likes) },
-                          { l: "Bookmarks", v: fmt(catalog.total_bookmarks) },
-                          { l: "Clicks", v: fmt(catalog.total_clicks) },
-                          { l: "Unique", v: fmt(catalog.total_unique_clicks) },
-                        ].map(s => (
-                          <div key={s.l} className="catalog-stat" style={{ textAlign: "right" }}>
-                            <p style={{ margin: "0 0 3px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "20px", lineHeight: 1 }}>{s.v}</p>
-                            <p style={{ margin: 0, fontSize: "11px", color: "#aaa", fontWeight: 500, letterSpacing: "0.04em" }}>{s.l.toUpperCase()}</p>
-                          </div>
-                        ))}
-                      </div>
-
-                      <button onClick={() => router.push(`/${currentUsername}/${catalog.slug}`)} style={{ background: "#0a0a0a", color: "#fff", border: "none", borderRadius: "10px", padding: "11px 20px", fontSize: "13px", fontWeight: 600, cursor: "pointer", fontFamily: "DM Sans, sans-serif", flexShrink: 0, whiteSpace: "nowrap" }}>
-                        View →
-                      </button>
-                    </div>
-                  </div>
+            <div className="flex items-center gap-3">
+              {/* Time range selector */}
+              <div className="flex bg-white/5 rounded-lg p-1">
+                {(["7d", "30d", "90d", "all"] as TimeRange[]).map((range) => (
+                  <button
+                    key={range}
+                    onClick={() => setTimeRange(range)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      timeRange === range
+                        ? "bg-white text-black"
+                        : "text-white/60 hover:text-white"
+                    }`}
+                  >
+                    {range === "all" ? "All Time" : range.toUpperCase()}
+                  </button>
                 ))}
               </div>
-            )}
 
-            {/* ── TOP ITEMS ── */}
-            {activeTab === "items" && (
-              <div className="fade-in">
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "24px", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: "12px", color: "#aaa", marginRight: "4px" }}>Sort by</span>
-                  {(["clicks", "unique_clicks", "likes"] as const).map(opt => (
-                    <button
-                      key={opt}
-                      className="sort-pill"
-                      onClick={() => setSortBy(opt)}
-                      style={{ padding: "6px 16px", borderRadius: "100px", border: "1px solid rgba(0,0,0,0.15)", fontSize: "12px", fontWeight: 500, fontFamily: "DM Sans, sans-serif", cursor: "pointer", background: sortBy === opt ? "#0a0a0a" : "#fff", color: sortBy === opt ? "#fff" : "#333" }}
-                    >
-                      {opt === "clicks" ? "Clicks" : opt === "unique_clicks" ? "Unique clicks" : "Likes"}
-                    </button>
-                  ))}
+              <button
+                onClick={() => router.push(`/${currentUsername}`)}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-all"
+              >
+                View Profile →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+        {/* Key Metrics Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            {
+              label: "Total Followers",
+              value: fmt(analytics.overview.totalFollowers),
+              change: analytics.overview.followerGrowth,
+              icon: "👥",
+              gradient: "from-blue-500 to-cyan-500",
+            },
+            {
+              label: "Total Clicks",
+              value: fmt(analytics.overview.totalClicks),
+              subValue: `${fmt(analytics.overview.uniqueClicks)} unique`,
+              icon: "👆",
+              gradient: "from-purple-500 to-pink-500",
+            },
+            {
+              label: "Total Engagement",
+              value: fmt(analytics.overview.totalLikes + analytics.overview.totalBookmarks),
+              subValue: `${analytics.overview.avgEngagementRate.toFixed(1)}% rate`,
+              icon: "❤️",
+              gradient: "from-orange-500 to-red-500",
+            },
+            {
+              label: "Total Reach",
+              value: fmt(analytics.overview.totalReach),
+              subValue: `${analytics.overview.totalCatalogs} catalogs`,
+              icon: "📈",
+              gradient: "from-green-500 to-emerald-500",
+            },
+          ].map((metric, i) => (
+            <div
+              key={i}
+              className="relative p-6 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl hover:border-white/20 transition-all group overflow-hidden"
+            >
+              <div className={`absolute inset-0 bg-gradient-to-br ${metric.gradient} opacity-0 group-hover:opacity-10 transition-opacity`} />
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm text-white/50 font-medium">{metric.label}</span>
+                  <span className="text-2xl">{metric.icon}</span>
                 </div>
-
-                {topItems.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "80px 0", color: "#bbb", fontSize: "14px" }}>No items found</div>
-                ) : (
-                  <div className="item-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "18px" }}>
-                    {getSortedItems(topItems).map((item, idx) => (
-                      <div key={item.id} className="item-card" style={{ background: "#fff", borderRadius: "18px", border: "1px solid rgba(0,0,0,0.08)", overflow: "hidden" }}>
-                        <div style={{ position: "relative", aspectRatio: "1", background: "#f5f5f5" }}>
-                          {item.image_url && <img src={item.image_url} alt={item.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
-                          <div style={{ position: "absolute", top: "10px", left: "10px", background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)", color: "#fff", borderRadius: "8px", padding: "3px 9px", fontSize: "11px", fontWeight: 700, fontFamily: "Syne, sans-serif" }}>
-                            #{idx + 1}
-                          </div>
-                        </div>
-                        <div style={{ padding: "16px" }}>
-                          <p style={{ margin: "0 0 5px", fontWeight: 600, fontSize: "14px", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title}</p>
-                          <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#aaa" }}>{item.catalog_name}{item.seller && ` · ${item.seller}`}</p>
-
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "14px" }}>
-                            {[
-                              { l: "Likes", v: fmt(item.like_count) },
-                              { l: "Clicks", v: fmt(item.click_count) },
-                              { l: "Unique", v: fmt(item.unique_click_count) },
-                            ].map(s => (
-                              <div key={s.l} style={{ background: "#f7f7f7", borderRadius: "10px", padding: "10px 0", textAlign: "center" }}>
-                                <p style={{ margin: "0 0 2px", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: "16px", lineHeight: 1 }}>{s.v}</p>
-                                <p style={{ margin: 0, fontSize: "9px", color: "#aaa", fontWeight: 600, letterSpacing: "0.05em" }}>{s.l.toUpperCase()}</p>
-                              </div>
-                            ))}
-                          </div>
-
-                          {item.product_url && (
-                            <a href={item.product_url} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", padding: "10px", background: "#0a0a0a", color: "#fff", borderRadius: "10px", fontSize: "12px", fontWeight: 600, textDecoration: "none", letterSpacing: "0.01em" }}>
-                              Shop product ↗
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                <div className="text-3xl font-black mb-1">{metric.value}</div>
+                {metric.subValue && (
+                  <div className="text-xs text-white/40">{metric.subValue}</div>
+                )}
+                {metric.change !== undefined && metric.change > 0 && (
+                  <div className="text-xs text-green-400 flex items-center gap-1 mt-2">
+                    <span>↗</span>
+                    <span>+{metric.change}% this period</span>
                   </div>
                 )}
               </div>
-            )}
+            </div>
+          ))}
+        </div>
 
-          </main>
+        {/* Performance Overview */}
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="md:col-span-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold">Performance Metrics</h2>
+              <div className="flex gap-2">
+                {["clicks", "likes", "engagement"].map((metric) => (
+                  <button
+                    key={metric}
+                    onClick={() => setSelectedMetric(metric as any)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      selectedMetric === metric
+                        ? "bg-white text-black"
+                        : "bg-white/5 text-white/60 hover:bg-white/10"
+                    }`}
+                  >
+                    {metric.charAt(0).toUpperCase() + metric.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Simple bar visualization */}
+            <div className="space-y-4">
+              {analytics.topCatalogs.slice(0, 5).map((catalog, i) => {
+                const maxValue = Math.max(...analytics.topCatalogs.map(c =>
+                  selectedMetric === "clicks" ? c.clicks : selectedMetric === "likes" ? c.likes : c.engagementScore
+                ));
+                const value = selectedMetric === "clicks" ? catalog.clicks : selectedMetric === "likes" ? catalog.likes : catalog.engagementScore;
+                const percentage = (value / maxValue) * 100;
+
+                return (
+                  <div key={catalog.id}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">{catalog.name}</span>
+                      <span className="text-sm text-white/50">{fmt(value)}</span>
+                    </div>
+                    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Quick stats */}
+          <div className="space-y-4">
+            <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+              <div className="text-sm text-white/50 mb-2">Click-Through Rate</div>
+              <div className="text-4xl font-black mb-1">{analytics.overview.clickThroughRate.toFixed(1)}%</div>
+              <div className="text-xs text-white/40">Unique clicks / Total clicks</div>
+            </div>
+
+            <div className="bg-gradient-to-br from-orange-500/20 to-red-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+              <div className="text-sm text-white/50 mb-2">Avg Engagement</div>
+              <div className="text-4xl font-black mb-1">{analytics.overview.avgEngagementRate.toFixed(1)}%</div>
+              <div className="text-xs text-white/40">Likes per item ratio</div>
+            </div>
+
+            <div className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+              <div className="text-sm text-white/50 mb-2">Total Items</div>
+              <div className="text-4xl font-black mb-1">{fmt(analytics.overview.totalItems)}</div>
+              <div className="text-xs text-white/40">Across {analytics.overview.totalCatalogs} catalogs</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Top Performing Catalogs */}
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+          <h2 className="text-xl font-bold mb-6">Top Performing Catalogs</h2>
+          <div className="grid md:grid-cols-3 gap-4">
+            {analytics.topCatalogs.slice(0, 6).map((catalog, i) => (
+              <div
+                key={catalog.id}
+                onClick={() => router.push(`/${currentUsername}/${catalog.slug}`)}
+                className="group relative bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:border-white/30 transition-all cursor-pointer"
+              >
+                {i < 3 && (
+                  <div className="absolute top-3 left-3 z-10 w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-black font-bold text-sm">
+                    {i + 1}
+                  </div>
+                )}
+                <div className="aspect-square bg-white/5 overflow-hidden">
+                  {catalog.image && (
+                    <img
+                      src={catalog.image}
+                      alt={catalog.name}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    />
+                  )}
+                </div>
+                <div className="p-4">
+                  <h3 className="font-bold mb-3 truncate">{catalog.name}</h3>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="bg-white/5 rounded-lg p-2">
+                      <div className="text-white/50 text-xs mb-1">Clicks</div>
+                      <div className="font-bold">{fmt(catalog.clicks)}</div>
+                    </div>
+                    <div className="bg-white/5 rounded-lg p-2">
+                      <div className="text-white/50 text-xs mb-1">Engagement</div>
+                      <div className="font-bold">{fmt(catalog.likes + catalog.bookmarks)}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Top Performing Items */}
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+          <h2 className="text-xl font-bold mb-6">Top Performing Items</h2>
+          <div className="grid md:grid-cols-5 gap-4">
+            {analytics.topItems.slice(0, 10).map((item, i) => (
+              <div
+                key={item.id}
+                className="group relative bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:border-white/30 transition-all"
+              >
+                {i < 3 && (
+                  <div className="absolute top-2 left-2 z-10 w-6 h-6 bg-black/80 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xs">
+                    {i + 1}
+                  </div>
+                )}
+                <div className="aspect-square bg-white/5 overflow-hidden">
+                  <img
+                    src={item.image}
+                    alt={item.title}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                  />
+                </div>
+                <div className="p-3">
+                  <div className="text-xs font-bold mb-2 truncate">{item.title}</div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-white/50">Clicks</span>
+                    <span className="font-bold">{fmt(item.clicks)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </>
+
+      {/* Mobile padding */}
+      <div className="h-20 md:hidden" />
+    </div>
   );
 }
