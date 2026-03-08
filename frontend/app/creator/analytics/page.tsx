@@ -4,64 +4,89 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
-type TimeRange = "7d" | "30d" | "90d" | "all";
+type Tab = "overview" | "catalogs" | "items" | "monetization";
 
-type AnalyticsData = {
-  overview: {
-    totalFollowers: number;
-    totalCatalogs: number;
-    totalItems: number;
-    totalLikes: number;
-    totalBookmarks: number;
-    totalClicks: number;
-    uniqueClicks: number;
-    clickThroughRate: number;
-    avgEngagementRate: number;
-    totalReach: number;
-    followerGrowth: number;
-  };
-  topCatalogs: Array<{
-    id: string;
-    name: string;
-    slug: string;
-    image: string;
-    items: number;
-    likes: number;
-    bookmarks: number;
-    clicks: number;
-    uniqueClicks: number;
-    engagementScore: number;
-  }>;
-  topItems: Array<{
-    id: string;
+// Partner brands eligible for verification
+const PARTNER_BRANDS = [
+  "nike", "adidas", "supreme", "the north face", "patagonia",
+  "stone island", "arc'teryx", "carhartt", "levi's", "uniqlo",
+  "zara", "h&m", "ralph lauren", "tommy hilfiger", "calvin klein"
+];
+
+type CatalogData = {
+  id: string;
+  name: string;
+  slug: string;
+  image: string;
+  totalItems: number;
+  totalLikes: number;
+  totalBookmarks: number;
+  totalClicks: number;
+  uniqueClicks: number;
+  engagementScore: number;
+};
+
+type ItemData = {
+  id: string;
+  title: string;
+  image: string;
+  catalogName: string;
+  catalogSlug: string;
+  seller: string | null;
+  brand: string | null;
+  likes: number;
+  clicks: number;
+  uniqueClicks: number;
+  isVerified: boolean;
+  isMonetized: boolean;
+  canVerify: boolean;
+  verificationStatus: string | null;
+  productUrl: string | null;
+  affiliateLink: string | null;
+};
+
+type VerificationRequest = {
+  id: string;
+  itemId: string;
+  itemType: "catalog" | "feed";
+  brandName: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+  item: {
     title: string;
     image: string;
-    catalogName: string;
-    likes: number;
-    clicks: number;
-    uniqueClicks: number;
-    clickThroughRate: number;
-  }>;
-  recentActivity: Array<{
-    type: "like" | "bookmark" | "click" | "follow";
-    timestamp: string;
-    itemName?: string;
-    catalogName?: string;
-    userName?: string;
-  }>;
+    seller: string;
+  };
 };
 
 export default function AnalyticsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentUsername, setCurrentUsername] = useState("");
   const [isVerified, setIsVerified] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [timeRange, setTimeRange] = useState<TimeRange>("30d");
-  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
-  const [selectedMetric, setSelectedMetric] = useState<"clicks" | "likes" | "engagement">("clicks");
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
+
+  const [stats, setStats] = useState({
+    totalFollowers: 0,
+    totalCatalogs: 0,
+    totalItems: 0,
+    totalLikes: 0,
+    totalBookmarks: 0,
+    totalClicks: 0,
+    uniqueClicks: 0,
+    clickThroughRate: 0,
+    avgEngagement: 0,
+    totalReach: 0,
+    verifiedItems: 0,
+    monetizedItems: 0,
+  });
+
+  const [catalogs, setCatalogs] = useState<CatalogData[]>([]);
+  const [items, setItems] = useState<ItemData[]>([]);
+  const [verificationRequests, setVerificationRequests] = useState<VerificationRequest[]>([]);
+  const [sortBy, setSortBy] = useState<"clicks" | "likes" | "engagement">("clicks");
 
   useEffect(() => {
     loadUser();
@@ -71,7 +96,7 @@ export default function AnalyticsPage() {
     if (currentUserId && isVerified) {
       loadAnalytics();
     }
-  }, [currentUserId, isVerified, timeRange]);
+  }, [currentUserId, isVerified]);
 
   async function loadUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -92,7 +117,6 @@ export default function AnalyticsPage() {
     }
 
     setCurrentUserId(user.id);
-    setCurrentUsername(profile.username);
     setIsVerified(profile?.is_verified || false);
 
     if (!profile?.is_verified) {
@@ -119,15 +143,16 @@ export default function AnalyticsPage() {
         .select("*", { count: "exact", head: true })
         .eq("following_id", currentUserId);
 
-      // Get catalogs with stats
-      const { data: catalogs } = await supabase
+      // Get catalogs
+      const { data: catalogsData } = await supabase
         .from("catalogs")
         .select("id, name, slug, image_url")
         .eq("owner_id", currentUserId);
 
+      // Get catalog stats
       const catalogStats = await Promise.all(
-        (catalogs || []).map(async (catalog) => {
-          const { data: items } = await supabase
+        (catalogsData || []).map(async (catalog) => {
+          const { data: catalogItems } = await supabase
             .from("catalog_items")
             .select("id, image_url, like_count, click_count, unique_click_count")
             .eq("catalog_id", catalog.id);
@@ -137,82 +162,169 @@ export default function AnalyticsPage() {
             .select("*", { count: "exact", head: true })
             .eq("catalog_id", catalog.id);
 
-          const totalLikes = items?.reduce((sum, i) => sum + (i.like_count || 0), 0) || 0;
-          const totalClicks = items?.reduce((sum, i) => sum + (i.click_count || 0), 0) || 0;
-          const totalUniqueClicks = items?.reduce((sum, i) => sum + (i.unique_click_count || 0), 0) || 0;
-          const engagementScore = totalLikes + (bookmarks || 0) * 2 + totalClicks * 1.5;
+          const totalLikes = catalogItems?.reduce((sum, i) => sum + (i.like_count || 0), 0) || 0;
+          const totalClicks = catalogItems?.reduce((sum, i) => sum + (i.click_count || 0), 0) || 0;
+          const totalUniqueClicks = catalogItems?.reduce((sum, i) => sum + (i.unique_click_count || 0), 0) || 0;
 
           return {
             id: catalog.id,
             name: catalog.name,
             slug: catalog.slug,
-            image: items?.[0]?.image_url || catalog.image_url || "",
-            items: items?.length || 0,
-            likes: totalLikes,
-            bookmarks: bookmarks || 0,
-            clicks: totalClicks,
+            image: catalogItems?.[0]?.image_url || catalog.image_url || "",
+            totalItems: catalogItems?.length || 0,
+            totalLikes,
+            totalBookmarks: bookmarks || 0,
+            totalClicks,
             uniqueClicks: totalUniqueClicks,
-            engagementScore,
+            engagementScore: totalLikes + (bookmarks || 0) * 2 + totalClicks * 1.5,
           };
         })
       );
 
-      // Get all items
+      setCatalogs(catalogStats);
+
+      // Get all items with verification status
       const { data: allItems } = await supabase
         .from("catalog_items")
         .select(`
           id,
           title,
           image_url,
+          seller,
+          brand,
           like_count,
           click_count,
           unique_click_count,
-          catalogs!inner(owner_id, name)
+          is_verified,
+          is_monetized,
+          product_url,
+          affiliate_link,
+          catalogs!inner(owner_id, name, slug)
         `)
-        .eq("catalogs.owner_id", currentUserId)
-        .order("click_count", { ascending: false })
-        .limit(10);
+        .eq("catalogs.owner_id", currentUserId);
 
-      const topItems = allItems?.map((item: any) => ({
-        id: item.id,
-        title: item.title,
-        image: item.image_url,
-        catalogName: item.catalogs.name,
-        likes: item.like_count || 0,
-        clicks: item.click_count || 0,
-        uniqueClicks: item.unique_click_count || 0,
-        clickThroughRate: item.click_count > 0 ? ((item.unique_click_count || 0) / item.click_count) * 100 : 0,
-      })) || [];
+      // Get verification requests for these items
+      const itemIds = allItems?.map(i => i.id) || [];
+      const { data: requests } = await supabase
+        .from("item_verification_requests")
+        .select("*")
+        .in("item_id", itemIds)
+        .eq("item_type", "catalog");
+
+      const itemsWithStatus = allItems?.map((item: any) => {
+        const brandName = item.seller || item.brand || "";
+        const canVerify = PARTNER_BRANDS.some(b => brandName.toLowerCase().includes(b));
+        const request = requests?.find(r => r.item_id === item.id);
+
+        return {
+          id: item.id,
+          title: item.title,
+          image: item.image_url,
+          catalogName: item.catalogs.name,
+          catalogSlug: item.catalogs.slug,
+          seller: item.seller,
+          brand: item.brand,
+          likes: item.like_count || 0,
+          clicks: item.click_count || 0,
+          uniqueClicks: item.unique_click_count || 0,
+          isVerified: item.is_verified || false,
+          isMonetized: item.is_monetized || false,
+          canVerify,
+          verificationStatus: request?.status || null,
+          productUrl: item.product_url,
+          affiliateLink: item.affiliate_link,
+        };
+      }) || [];
+
+      setItems(itemsWithStatus);
+
+      // Load verification requests
+      const { data: allRequests } = await supabase
+        .from("item_verification_requests")
+        .select(`
+          id,
+          item_id,
+          item_type,
+          brand_name,
+          status,
+          created_at,
+          catalog_items!inner(title, image_url, seller)
+        `)
+        .eq("user_id", currentUserId)
+        .eq("item_type", "catalog")
+        .order("created_at", { ascending: false });
+
+      setVerificationRequests(allRequests?.map((r: any) => ({
+        id: r.id,
+        itemId: r.item_id,
+        itemType: r.item_type,
+        brandName: r.brand_name,
+        status: r.status,
+        createdAt: r.created_at,
+        item: {
+          title: r.catalog_items.title,
+          image: r.catalog_items.image_url,
+          seller: r.catalog_items.seller,
+        },
+      })) || []);
 
       // Calculate totals
-      const totalLikes = catalogStats.reduce((sum, c) => sum + c.likes, 0);
-      const totalBookmarks = catalogStats.reduce((sum, c) => sum + c.bookmarks, 0);
-      const totalClicks = catalogStats.reduce((sum, c) => sum + c.clicks, 0);
+      const totalLikes = catalogStats.reduce((sum, c) => sum + c.totalLikes, 0);
+      const totalBookmarks = catalogStats.reduce((sum, c) => sum + c.totalBookmarks, 0);
+      const totalClicks = catalogStats.reduce((sum, c) => sum + c.totalClicks, 0);
       const totalUniqueClicks = catalogStats.reduce((sum, c) => sum + c.uniqueClicks, 0);
-      const totalItems = catalogStats.reduce((sum, c) => sum + c.items, 0);
+      const totalItems = catalogStats.reduce((sum, c) => sum + c.totalItems, 0);
+      const verifiedItems = itemsWithStatus.filter(i => i.isVerified).length;
+      const monetizedItems = itemsWithStatus.filter(i => i.isMonetized).length;
 
-      setAnalytics({
-        overview: {
-          totalFollowers: followerCount || 0,
-          totalCatalogs: catalogs?.length || 0,
-          totalItems,
-          totalLikes,
-          totalBookmarks,
-          totalClicks,
-          uniqueClicks: totalUniqueClicks,
-          clickThroughRate: totalClicks > 0 ? (totalUniqueClicks / totalClicks) * 100 : 0,
-          avgEngagementRate: totalItems > 0 ? (totalLikes / totalItems) * 100 : 0,
-          totalReach: totalUniqueClicks + totalBookmarks,
-          followerGrowth: 0, // TODO: Calculate from historical data
-        },
-        topCatalogs: catalogStats.sort((a, b) => b.engagementScore - a.engagementScore).slice(0, 6),
-        topItems,
-        recentActivity: [], // TODO: Implement activity feed
+      setStats({
+        totalFollowers: followerCount || 0,
+        totalCatalogs: catalogsData?.length || 0,
+        totalItems,
+        totalLikes,
+        totalBookmarks,
+        totalClicks,
+        uniqueClicks: totalUniqueClicks,
+        clickThroughRate: totalClicks > 0 ? (totalUniqueClicks / totalClicks) * 100 : 0,
+        avgEngagement: totalItems > 0 ? (totalLikes / totalItems) * 100 : 0,
+        totalReach: totalUniqueClicks + totalBookmarks,
+        verifiedItems,
+        monetizedItems,
       });
     } catch (error) {
       console.error("Error loading analytics:", error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function requestItemVerification(itemId: string, brandName: string) {
+    if (!currentUserId) return;
+
+    try {
+      const { error } = await supabase
+        .from("item_verification_requests")
+        .insert({
+          user_id: currentUserId,
+          item_id: itemId,
+          item_type: "catalog",
+          brand_name: brandName,
+          status: "pending",
+        });
+
+      if (error) {
+        if (error.code === "23505") {
+          alert("Verification already requested for this item");
+        } else {
+          throw error;
+        }
+      } else {
+        alert("Verification request submitted!");
+        loadAnalytics();
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      alert("Failed to submit request");
     }
   }
 
@@ -226,8 +338,7 @@ export default function AnalyticsPage() {
       .insert({ user_id: user.id, status: "pending" });
 
     if (error) {
-      console.error("Error:", error);
-      alert("Failed to submit. Please try again.");
+      alert("Failed to submit");
     } else {
       setHasApplied(true);
       alert("Application submitted!");
@@ -241,12 +352,19 @@ export default function AnalyticsPage() {
     return n.toString();
   };
 
+  const getSortedItems = () => {
+    return [...items].sort((a, b) => {
+      if (sortBy === "clicks") return b.clicks - a.clicks;
+      if (sortBy === "likes") return b.likes - a.likes;
+      return (b.likes + b.clicks) - (a.likes + a.clicks);
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
         <div className="relative">
           <div className="w-16 h-16 border-4 border-white/10 border-t-white rounded-full animate-spin" />
-          <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-blue-500 rounded-full animate-spin" style={{ animationDuration: "0.8s" }} />
         </div>
       </div>
     );
@@ -256,7 +374,6 @@ export default function AnalyticsPage() {
   if (!isVerified) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] text-white relative overflow-hidden">
-        {/* Animated background */}
         <div className="absolute inset-0 opacity-30">
           <div className="absolute top-0 -left-4 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl animate-blob" />
           <div className="absolute top-0 -right-4 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000" />
@@ -274,49 +391,43 @@ export default function AnalyticsPage() {
               Unlock Your
               <br />
               <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Creator Dashboard
+                Analytics Dashboard
               </span>
             </h1>
 
             <p className="text-xl text-white/60 max-w-2xl mx-auto leading-relaxed">
-              Get verified to access real-time analytics, performance insights, and powerful tools to grow your influence.
+              Get verified to access comprehensive analytics, item monetization, and powerful growth tools.
             </p>
           </div>
 
-          {/* Feature grid */}
           <div className="grid md:grid-cols-3 gap-6 mb-16">
             {[
               {
-                icon: "📊",
                 title: "Live Analytics",
-                desc: "Track clicks, engagement, and performance in real-time",
+                desc: "Track clicks, engagement, and performance in real-time across all catalogs",
                 gradient: "from-blue-500/20 to-cyan-500/20",
               },
               {
-                icon: "🎯",
-                title: "Deep Insights",
-                desc: "Understand what resonates with your audience",
+                title: "Item Verification",
+                desc: "Submit partner brand items for verification and monetization",
                 gradient: "from-purple-500/20 to-pink-500/20",
               },
               {
-                icon: "✨",
-                title: "Verified Badge",
-                desc: "Stand out with official creator verification",
+                title: "Performance Insights",
+                desc: "Understand what drives engagement and optimize your content",
                 gradient: "from-orange-500/20 to-red-500/20",
               },
             ].map((feature, i) => (
               <div
                 key={i}
-                className={`relative p-6 bg-gradient-to-br ${feature.gradient} backdrop-blur-sm border border-white/10 rounded-2xl hover:border-white/20 transition-all hover:scale-105`}
+                className={`relative p-6 bg-gradient-to-br ${feature.gradient} backdrop-blur-sm border border-white/10 rounded-2xl hover:border-white/20 transition-all`}
               >
-                <div className="text-4xl mb-4">{feature.icon}</div>
                 <h3 className="text-lg font-bold mb-2">{feature.title}</h3>
                 <p className="text-sm text-white/60">{feature.desc}</p>
               </div>
             ))}
           </div>
 
-          {/* CTA */}
           <div className="text-center">
             {hasApplied ? (
               <div className="inline-flex flex-col items-center gap-4 p-8 bg-yellow-500/10 backdrop-blur-sm border border-yellow-500/20 rounded-2xl">
@@ -324,18 +435,15 @@ export default function AnalyticsPage() {
                   <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
                   <span className="text-xl font-bold">Application Under Review</span>
                 </div>
-                <p className="text-white/60">We'll notify you once your profile has been reviewed</p>
+                <p className="text-white/60">We'll notify you once verified</p>
               </div>
             ) : (
               <button
                 onClick={handleApplyForVerification}
                 disabled={applying}
-                className="group relative px-12 py-5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full font-bold text-lg hover:shadow-2xl hover:shadow-purple-500/50 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-12 py-5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full font-bold text-lg hover:shadow-2xl hover:shadow-purple-500/50 transition-all hover:scale-105 disabled:opacity-50"
               >
-                <span className="relative z-10">
-                  {applying ? "Submitting..." : "Apply for Verification →"}
-                </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
+                {applying ? "Submitting..." : "Apply for Verification"}
               </button>
             )}
           </div>
@@ -347,282 +455,270 @@ export default function AnalyticsPage() {
             33% { transform: translate(30px, -50px) scale(1.1); }
             66% { transform: translate(-20px, 20px) scale(0.9); }
           }
-          .animate-blob {
-            animation: blob 7s infinite;
-          }
-          .animation-delay-2000 {
-            animation-delay: 2s;
-          }
-          .animation-delay-4000 {
-            animation-delay: 4s;
-          }
+          .animate-blob { animation: blob 7s infinite; }
+          .animation-delay-2000 { animation-delay: 2s; }
+          .animation-delay-4000 { animation-delay: 4s; }
         `}</style>
       </div>
     );
   }
 
-  // MAIN ANALYTICS DASHBOARD
-  if (!analytics) return null;
-
+  // MAIN DASHBOARD
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       {/* Header */}
       <div className="border-b border-white/10 bg-black/50 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center font-bold text-lg">
-                {currentUsername[0]?.toUpperCase()}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold">@{currentUsername}</h1>
-                  <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                    <svg className="w-3 h-3" fill="white" viewBox="0 0 20 20">
-                      <path d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" />
-                    </svg>
-                  </div>
-                </div>
-                <p className="text-sm text-white/50">Creator Analytics</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {/* Time range selector */}
-              <div className="flex bg-white/5 rounded-lg p-1">
-                {(["7d", "30d", "90d", "all"] as TimeRange[]).map((range) => (
-                  <button
-                    key={range}
-                    onClick={() => setTimeRange(range)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      timeRange === range
-                        ? "bg-white text-black"
-                        : "text-white/60 hover:text-white"
-                    }`}
-                  >
-                    {range === "all" ? "All Time" : range.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-
-              <button
-                onClick={() => router.push(`/${currentUsername}`)}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-all"
-              >
-                View Profile →
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* Key Metrics Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            {
-              label: "Total Followers",
-              value: fmt(analytics.overview.totalFollowers),
-              change: analytics.overview.followerGrowth,
-              icon: "👥",
-              gradient: "from-blue-500 to-cyan-500",
-            },
-            {
-              label: "Total Clicks",
-              value: fmt(analytics.overview.totalClicks),
-              subValue: `${fmt(analytics.overview.uniqueClicks)} unique`,
-              icon: "👆",
-              gradient: "from-purple-500 to-pink-500",
-            },
-            {
-              label: "Total Engagement",
-              value: fmt(analytics.overview.totalLikes + analytics.overview.totalBookmarks),
-              subValue: `${analytics.overview.avgEngagementRate.toFixed(1)}% rate`,
-              icon: "❤️",
-              gradient: "from-orange-500 to-red-500",
-            },
-            {
-              label: "Total Reach",
-              value: fmt(analytics.overview.totalReach),
-              subValue: `${analytics.overview.totalCatalogs} catalogs`,
-              icon: "📈",
-              gradient: "from-green-500 to-emerald-500",
-            },
-          ].map((metric, i) => (
-            <div
-              key={i}
-              className="relative p-6 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl hover:border-white/20 transition-all group overflow-hidden"
+            <h1 className="text-2xl font-black">Creator Analytics</h1>
+            <button
+              onClick={() => router.push("/")}
+              className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-all"
             >
-              <div className={`absolute inset-0 bg-gradient-to-br ${metric.gradient} opacity-0 group-hover:opacity-10 transition-opacity`} />
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm text-white/50 font-medium">{metric.label}</span>
-                  <span className="text-2xl">{metric.icon}</span>
-                </div>
-                <div className="text-3xl font-black mb-1">{metric.value}</div>
-                {metric.subValue && (
-                  <div className="text-xs text-white/40">{metric.subValue}</div>
-                )}
-                {metric.change !== undefined && metric.change > 0 && (
-                  <div className="text-xs text-green-400 flex items-center gap-1 mt-2">
-                    <span>↗</span>
-                    <span>+{metric.change}% this period</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Performance Overview */}
-        <div className="grid md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold">Performance Metrics</h2>
-              <div className="flex gap-2">
-                {["clicks", "likes", "engagement"].map((metric) => (
-                  <button
-                    key={metric}
-                    onClick={() => setSelectedMetric(metric as any)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                      selectedMetric === metric
-                        ? "bg-white text-black"
-                        : "bg-white/5 text-white/60 hover:bg-white/10"
-                    }`}
-                  >
-                    {metric.charAt(0).toUpperCase() + metric.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Simple bar visualization */}
-            <div className="space-y-4">
-              {analytics.topCatalogs.slice(0, 5).map((catalog, i) => {
-                const maxValue = Math.max(...analytics.topCatalogs.map(c =>
-                  selectedMetric === "clicks" ? c.clicks : selectedMetric === "likes" ? c.likes : c.engagementScore
-                ));
-                const value = selectedMetric === "clicks" ? catalog.clicks : selectedMetric === "likes" ? catalog.likes : catalog.engagementScore;
-                const percentage = (value / maxValue) * 100;
-
-                return (
-                  <div key={catalog.id}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">{catalog.name}</span>
-                      <span className="text-sm text-white/50">{fmt(value)}</span>
-                    </div>
-                    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500"
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Quick stats */}
-          <div className="space-y-4">
-            <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-              <div className="text-sm text-white/50 mb-2">Click-Through Rate</div>
-              <div className="text-4xl font-black mb-1">{analytics.overview.clickThroughRate.toFixed(1)}%</div>
-              <div className="text-xs text-white/40">Unique clicks / Total clicks</div>
-            </div>
-
-            <div className="bg-gradient-to-br from-orange-500/20 to-red-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-              <div className="text-sm text-white/50 mb-2">Avg Engagement</div>
-              <div className="text-4xl font-black mb-1">{analytics.overview.avgEngagementRate.toFixed(1)}%</div>
-              <div className="text-xs text-white/40">Likes per item ratio</div>
-            </div>
-
-            <div className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-              <div className="text-sm text-white/50 mb-2">Total Items</div>
-              <div className="text-4xl font-black mb-1">{fmt(analytics.overview.totalItems)}</div>
-              <div className="text-xs text-white/40">Across {analytics.overview.totalCatalogs} catalogs</div>
-            </div>
+              Back to Home
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* Top Performing Catalogs */}
-        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-          <h2 className="text-xl font-bold mb-6">Top Performing Catalogs</h2>
-          <div className="grid md:grid-cols-3 gap-4">
-            {analytics.topCatalogs.slice(0, 6).map((catalog, i) => (
-              <div
-                key={catalog.id}
-                onClick={() => router.push(`/${currentUsername}/${catalog.slug}`)}
-                className="group relative bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:border-white/30 transition-all cursor-pointer"
+      {/* Tabs */}
+      <div className="border-b border-white/10 bg-black/30 backdrop-blur-sm sticky top-[73px] z-40">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex gap-1">
+            {[
+              { id: "overview", label: "Overview" },
+              { id: "catalogs", label: "Catalogs" },
+              { id: "items", label: "Items" },
+              { id: "monetization", label: "Monetization" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as Tab)}
+                className={`px-6 py-4 font-semibold transition-all relative ${
+                  activeTab === tab.id
+                    ? "text-white"
+                    : "text-white/40 hover:text-white/60"
+                }`}
               >
-                {i < 3 && (
-                  <div className="absolute top-3 left-3 z-10 w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-black font-bold text-sm">
-                    {i + 1}
-                  </div>
+                {tab.label}
+                {activeTab === tab.id && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500" />
                 )}
-                <div className="aspect-square bg-white/5 overflow-hidden">
-                  {catalog.image && (
-                    <img
-                      src={catalog.image}
-                      alt={catalog.name}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    />
-                  )}
-                </div>
-                <div className="p-4">
-                  <h3 className="font-bold mb-3 truncate">{catalog.name}</h3>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="bg-white/5 rounded-lg p-2">
-                      <div className="text-white/50 text-xs mb-1">Clicks</div>
-                      <div className="font-bold">{fmt(catalog.clicks)}</div>
-                    </div>
-                    <div className="bg-white/5 rounded-lg p-2">
-                      <div className="text-white/50 text-xs mb-1">Engagement</div>
-                      <div className="font-bold">{fmt(catalog.likes + catalog.bookmarks)}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Top Performing Items */}
-        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-          <h2 className="text-xl font-bold mb-6">Top Performing Items</h2>
-          <div className="grid md:grid-cols-5 gap-4">
-            {analytics.topItems.slice(0, 10).map((item, i) => (
-              <div
-                key={item.id}
-                className="group relative bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:border-white/30 transition-all"
-              >
-                {i < 3 && (
-                  <div className="absolute top-2 left-2 z-10 w-6 h-6 bg-black/80 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xs">
-                    {i + 1}
-                  </div>
-                )}
-                <div className="aspect-square bg-white/5 overflow-hidden">
-                  <img
-                    src={item.image}
-                    alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                  />
-                </div>
-                <div className="p-3">
-                  <div className="text-xs font-bold mb-2 truncate">{item.title}</div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-white/50">Clicks</span>
-                    <span className="font-bold">{fmt(item.clicks)}</span>
-                  </div>
-                </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Mobile padding */}
-      <div className="h-20 md:hidden" />
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* OVERVIEW TAB */}
+        {activeTab === "overview" && (
+          <div className="space-y-8">
+            {/* Key metrics */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: "Followers", value: fmt(stats.totalFollowers), gradient: "from-blue-500 to-cyan-500" },
+                { label: "Total Clicks", value: fmt(stats.totalClicks), subValue: `${fmt(stats.uniqueClicks)} unique`, gradient: "from-purple-500 to-pink-500" },
+                { label: "Engagement", value: fmt(stats.totalLikes + stats.totalBookmarks), subValue: `${stats.avgEngagement.toFixed(1)}% avg`, gradient: "from-orange-500 to-red-500" },
+                { label: "Total Reach", value: fmt(stats.totalReach), subValue: `${stats.totalCatalogs} catalogs`, gradient: "from-green-500 to-emerald-500" },
+              ].map((metric, i) => (
+                <div key={i} className="p-6 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl hover:border-white/20 transition-all group relative overflow-hidden">
+                  <div className={`absolute inset-0 bg-gradient-to-br ${metric.gradient} opacity-0 group-hover:opacity-10 transition-opacity`} />
+                  <div className="relative z-10">
+                    <div className="text-sm text-white/50 font-medium mb-3">{metric.label}</div>
+                    <div className="text-3xl font-black mb-1">{metric.value}</div>
+                    {metric.subValue && <div className="text-xs text-white/40">{metric.subValue}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Quick stats */}
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+                <div className="text-sm text-white/50 mb-2">Click-Through Rate</div>
+                <div className="text-4xl font-black mb-1">{stats.clickThroughRate.toFixed(1)}%</div>
+                <div className="text-xs text-white/40">Unique / Total clicks</div>
+              </div>
+
+              <div className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+                <div className="text-sm text-white/50 mb-2">Verified Items</div>
+                <div className="text-4xl font-black mb-1">{stats.verifiedItems}</div>
+                <div className="text-xs text-white/40">{stats.monetizedItems} monetized</div>
+              </div>
+
+              <div className="bg-gradient-to-br from-orange-500/20 to-red-500/20 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+                <div className="text-sm text-white/50 mb-2">Total Items</div>
+                <div className="text-4xl font-black mb-1">{fmt(stats.totalItems)}</div>
+                <div className="text-xs text-white/40">Across all catalogs</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CATALOGS TAB */}
+        {activeTab === "catalogs" && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold">Your Catalogs</h2>
+              <div className="text-sm text-white/50">{catalogs.length} total</div>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6">
+              {catalogs.map((catalog, i) => (
+                <div
+                  key={catalog.id}
+                  onClick={() => router.push(`/catalogs/${catalog.slug}`)}
+                  className="group bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:border-white/30 transition-all cursor-pointer"
+                >
+                  {i < 3 && (
+                    <div className="absolute top-3 left-3 z-10 w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-black font-bold text-sm">
+                      {i + 1}
+                    </div>
+                  )}
+                  <div className="aspect-square bg-white/5 overflow-hidden">
+                    {catalog.image && (
+                      <img src={catalog.image} alt={catalog.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-bold mb-3">{catalog.name}</h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-white/5 rounded-lg p-2">
+                        <div className="text-white/50 text-xs mb-1">Clicks</div>
+                        <div className="font-bold">{fmt(catalog.totalClicks)}</div>
+                      </div>
+                      <div className="bg-white/5 rounded-lg p-2">
+                        <div className="text-white/50 text-xs mb-1">Engagement</div>
+                        <div className="font-bold">{fmt(catalog.totalLikes + catalog.totalBookmarks)}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ITEMS TAB */}
+        {activeTab === "items" && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold">All Items</h2>
+              <div className="flex gap-2">
+                {["clicks", "likes", "engagement"].map((sort) => (
+                  <button
+                    key={sort}
+                    onClick={() => setSortBy(sort as any)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      sortBy === sort ? "bg-white text-black" : "bg-white/5 text-white/60 hover:bg-white/10"
+                    }`}
+                  >
+                    {sort.charAt(0).toUpperCase() + sort.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-5 gap-4">
+              {getSortedItems().map((item, i) => (
+                <div key={item.id} className="group bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:border-white/30 transition-all">
+                  {i < 3 && (
+                    <div className="absolute top-2 left-2 z-10 w-6 h-6 bg-black/80 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xs">
+                      {i + 1}
+                    </div>
+                  )}
+                  {item.isVerified && (
+                    <div className="absolute top-2 right-2 z-10 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                      <svg className="w-3.5 h-3.5" fill="white" viewBox="0 0 20 20">
+                        <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/>
+                      </svg>
+                    </div>
+                  )}
+                  <div className="aspect-square bg-white/5 overflow-hidden">
+                    <img src={item.image} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                  </div>
+                  <div className="p-3">
+                    <div className="text-xs font-bold mb-2 truncate">{item.title}</div>
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="text-white/50">Clicks</span>
+                      <span className="font-bold">{fmt(item.clicks)}</span>
+                    </div>
+                    {item.canVerify && !item.isVerified && !item.verificationStatus && (
+                      <button
+                        onClick={() => requestItemVerification(item.id, item.seller || item.brand || "")}
+                        className="w-full py-1.5 bg-blue-500 hover:bg-blue-600 rounded-lg text-xs font-medium transition-all"
+                      >
+                        Request Verification
+                      </button>
+                    )}
+                    {item.verificationStatus === "pending" && (
+                      <div className="w-full py-1.5 bg-yellow-500/20 rounded-lg text-xs font-medium text-center text-yellow-400">
+                        Pending Review
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* MONETIZATION TAB */}
+        {activeTab === "monetization" && (
+          <div className="space-y-8">
+            <div>
+              <h2 className="text-2xl font-bold mb-2">Monetization</h2>
+              <p className="text-white/60">Submit partner brand items for verification and earn through affiliate links</p>
+            </div>
+
+            {/* Stats */}
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-6">
+                <div className="text-sm text-green-400 mb-2">Verified Items</div>
+                <div className="text-4xl font-black">{stats.verifiedItems}</div>
+              </div>
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6">
+                <div className="text-sm text-blue-400 mb-2">Monetized Items</div>
+                <div className="text-4xl font-black">{stats.monetizedItems}</div>
+              </div>
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-6">
+                <div className="text-sm text-yellow-400 mb-2">Pending Requests</div>
+                <div className="text-4xl font-black">{verificationRequests.filter(r => r.status === "pending").length}</div>
+              </div>
+            </div>
+
+            {/* Requests */}
+            <div>
+              <h3 className="text-xl font-bold mb-4">Verification Requests</h3>
+              {verificationRequests.length === 0 ? (
+                <div className="text-center py-12 text-white/40">No verification requests yet</div>
+              ) : (
+                <div className="space-y-3">
+                  {verificationRequests.map((request) => (
+                    <div key={request.id} className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+                      <div className="w-16 h-16 bg-white/5 rounded-lg overflow-hidden flex-shrink-0">
+                        <img src={request.item.image} alt={request.item.title} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold truncate">{request.item.title}</h4>
+                        <p className="text-sm text-white/50">{request.brandName}</p>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        request.status === "pending" ? "bg-yellow-500/20 text-yellow-400" :
+                        request.status === "approved" ? "bg-green-500/20 text-green-400" :
+                        "bg-red-500/20 text-red-400"
+                      }`}>
+                        {request.status.toUpperCase()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
