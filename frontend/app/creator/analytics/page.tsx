@@ -723,7 +723,7 @@ export default function AnalyticsPage() {
       )}
 
       {/* Header */}
-      <div className="border-b-2 border-white/10 sticky top-0 z-50 bg-black">
+      <div className="border-b-2 border-white/10 sticky top-0 z-40 bg-black">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
@@ -765,7 +765,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b-2 border-white/10 sticky top-[73px] sm:top-[81px] z-40 bg-black overflow-x-auto">
+      <div className="border-b-2 border-white/10 sticky top-[73px] sm:top-[81px] z-30 bg-black overflow-x-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex gap-1 min-w-max">
             {[
@@ -1162,6 +1162,61 @@ export default function AnalyticsPage() {
               </div>
             )}
 
+            {/* Monetized Items - Currently Earning */}
+            {topItems.filter(i => i.isMonetized).length > 0 && (
+              <div>
+                <h2 style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-3xl font-black mb-4">
+                  MONETIZED ITEMS
+                </h2>
+                <p className="text-sm text-white/60 mb-6">
+                  Items currently earning through affiliate links
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {topItems.filter(i => i.isMonetized).map((item) => (
+                    <div key={item.id} className="bg-white/5 border-2 border-green-500/30 overflow-hidden hover:border-green-500 transition-all">
+                      <div className="absolute top-2 right-2 z-10 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                        <span className="text-white font-black text-xs">$</span>
+                      </div>
+                      <div className="aspect-square bg-white/5 overflow-hidden">
+                        <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="p-3">
+                        <div className="text-xs font-bold mb-2 truncate">{item.title}</div>
+                        <div className="text-xs text-white/50 mb-3">{item.seller}</div>
+
+                        {/* Performance Stats */}
+                        <div className="space-y-2 mb-3">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-white/50">Clicks</span>
+                            <span style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="font-black">
+                              {fmt(item.clicks)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-white/50">Click Rate</span>
+                            <span style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="font-black">
+                              {item.clickRate.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Earnings */}
+                        <div className="pt-3 border-t-2 border-white/10">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-white/50">Earned</span>
+                            <span style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-lg font-black text-green-500">
+                              {fmtCurrency(item.earnings)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Items Eligible for Verification */}
             {verifiableItems.length > 0 && (
               <div>
@@ -1388,7 +1443,7 @@ export default function AnalyticsPage() {
                   </div>
                   <div>
                     <h3 className="text-xl font-bold mb-2">Request Verification</h3>
-                    <p className="text-white/70">Go to Monetization tab and click "Request Verification" on eligible items</p>
+                    <p className="text-white/70">Go to Monetization tab and click "Request Verification" on eligible items. We verify authenticity and brand partnership.</p>
                   </div>
                 </div>
 
@@ -1397,8 +1452,8 @@ export default function AnalyticsPage() {
                     3
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold mb-2">Get Approved</h3>
-                    <p className="text-white/70">We review within 48 hours and add affiliate links to approved items</p>
+                    <h3 className="text-xl font-bold mb-2">Get Verified & Monetized</h3>
+                    <p className="text-white/70">Items are marked as 'verified' first, then we add affiliate links and change status to 'monetized'. This takes 24-72 hours total.</p>
                   </div>
                 </div>
 
@@ -1407,8 +1462,8 @@ export default function AnalyticsPage() {
                     4
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold mb-2">Earn From Clicks</h3>
-                    <p className="text-white/70">Track your earnings in real-time. Get paid monthly via your preferred method</p>
+                    <h3 className="text-xl font-bold mb-2">Start Earning</h3>
+                    <p className="text-white/70">Once monetized, your item appears in the "Monetized Items" section. Track clicks, earnings, and performance in real-time.</p>
                   </div>
                 </div>
               </div>
@@ -1423,16 +1478,20 @@ export default function AnalyticsPage() {
               <div className="space-y-4">
                 {[
                   {
+                    q: "What's the difference between verified and monetized?",
+                    a: "Verified items have been approved by our team and confirmed as authentic partner brand products. Monetized items are verified items that have affiliate links active and are currently earning. All monetized items are verified, but not all verified items are monetized yet."
+                  },
+                  {
                     q: "How much can I earn?",
-                    a: "Earnings vary based on clicks and conversion rates. Most creators earn $0.03-$0.10 per click on verified items."
+                    a: "Earnings vary based on clicks and conversion rates. Most creators earn $0.03-$0.10 per click on monetized items. Top performers can earn $500+ per month."
                   },
                   {
                     q: "When do I get paid?",
-                    a: "Payouts are processed monthly for earnings over $50. You can choose PayPal, bank transfer, or other methods."
+                    a: "Payouts are processed monthly for earnings over $50. You can choose PayPal, bank transfer, or other methods. Payments are sent within 7 business days of month end."
                   },
                   {
                     q: "How long does verification take?",
-                    a: "We review verification requests within 24-48 hours. You'll receive an email notification once approved or if we need more information."
+                    a: "We review verification requests within 24-48 hours. Once verified, it may take an additional 1-3 days to activate affiliate links and change status to 'monetized'."
                   },
                   {
                     q: "Can I submit items from other brands?",
@@ -1440,7 +1499,7 @@ export default function AnalyticsPage() {
                   },
                   {
                     q: "What happens to my original product links?",
-                    a: "Your original links are saved and replaced with affiliate links. You can see both in your item details."
+                    a: "Your original links are saved in the 'original_product_url' field and replaced with affiliate links in the 'product_url' field. You can see both in your item details."
                   },
                 ].map((faq, i) => (
                   <div key={i} className="bg-white/5 border-2 border-white/10 p-6">
