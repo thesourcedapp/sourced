@@ -1686,8 +1686,8 @@ export default function AnalyticsPage() {
                     2
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold mb-2">Request Verification</h3>
-                    <p className="text-white/70">Go to Monetization tab and click "Request Verification" on eligible items. We verify authenticity and brand partnership.</p>
+                    <h3 className="text-xl font-bold mb-2">All Verified Items Earn</h3>
+                    <p className="text-white/70">Once you're a verified creator, ALL your items automatically earn 1-3¢ per click. No additional setup required!</p>
                   </div>
                 </div>
 
@@ -1696,8 +1696,8 @@ export default function AnalyticsPage() {
                     3
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold mb-2">Get Verified & Monetized</h3>
-                    <p className="text-white/70">Items are marked as 'verified' first, then we add affiliate links and change status to 'monetized'. This takes 24-72 hours total.</p>
+                    <h3 className="text-xl font-bold mb-2">Request Higher Earnings (Optional)</h3>
+                    <p className="text-white/70">For items from partner brands (Diesel, Hat Club, Finish Line), request verification to unlock 5-12¢ per click with affiliate links.</p>
                   </div>
                 </div>
 
@@ -1706,8 +1706,8 @@ export default function AnalyticsPage() {
                     4
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold mb-2">Start Earning</h3>
-                    <p className="text-white/70">Once monetized, your item appears in the "Monetized Items" section. Track clicks, earnings, and performance in real-time.</p>
+                    <h3 className="text-xl font-bold mb-2">Withdraw Your Earnings</h3>
+                    <p className="text-white/70">Once you hit $10, request a withdrawal to your CashApp. We process payments within 7-14 days.</p>
                   </div>
                 </div>
               </div>
@@ -1722,28 +1722,28 @@ export default function AnalyticsPage() {
               <div className="space-y-4">
                 {[
                   {
+                    q: "How do earnings work?",
+                    a: "There are two earning tiers: (1) Verified items from ANY brand earn 1-3 cents per click. (2) Monetized items with affiliate links earn 5-12 cents per click. All verified creators earn from every click on their items!"
+                  },
+                  {
                     q: "What's the difference between verified and monetized?",
-                    a: "Verified items have been approved by our team and confirmed as authentic partner brand products. Monetized items are verified items that have affiliate links active and are currently earning. All monetized items are verified, but not all verified items are monetized yet."
+                    a: "Verified items have been approved by our team as authentic products. Monetized items are verified items from partner brands (Diesel, Hat Club, Finish Line) that have active affiliate links for higher earnings."
                   },
                   {
                     q: "How much can I earn?",
-                    a: "Earnings vary based on clicks and conversion rates. Most creators earn $0.03-$0.10 per click on monetized items. Top performers can earn $500+ per month."
+                    a: "Verified items: 1-3¢/click (avg 2¢). Monetized items: 5-12¢/click (avg 8.5¢). Example: 1,000 clicks on verified items = ~$20. 1,000 clicks on monetized items = ~$85."
                   },
                   {
                     q: "When do I get paid?",
-                    a: "Payouts are processed monthly for earnings over $50. You can choose PayPal, bank transfer, or other methods. Payments are sent within 7 business days of month end."
+                    a: "Request withdrawal once you reach $10. Payouts are processed within 7-14 business days via CashApp. Payments are sent to your $cashtag."
                   },
                   {
-                    q: "How long does verification take?",
-                    a: "We review verification requests within 24-48 hours. Once verified, it may take an additional 1-3 days to activate affiliate links and change status to 'monetized'."
-                  },
-                  {
-                    q: "Can I submit items from other brands?",
-                    a: "Currently, only items from our partner brands (Diesel, Hat Club, Finish Line) are eligible. We're adding more partners soon!"
+                    q: "Do all my items earn money?",
+                    a: "Only verified items earn. To get items verified: (1) For partner brands (Diesel/Hat Club/Finish Line), request verification for full earnings. (2) For other brands, items auto-verify when your creator account is verified and earn lower rates."
                   },
                   {
                     q: "What happens to my original product links?",
-                    a: "Your original links are saved in the 'original_product_url' field and replaced with affiliate links in the 'product_url' field. You can see both in your item details."
+                    a: "Your original links are saved in 'original_product_url' and replaced with affiliate links in 'product_url' for monetized items. Verified items keep their original links."
                   },
                 ].map((faq, i) => (
                   <div key={i} className="bg-white/5 border-2 border-white/10 p-6">

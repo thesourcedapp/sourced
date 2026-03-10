@@ -15,12 +15,15 @@ export async function POST(request: NextRequest) {
   try {
     const { itemId, itemType, userId } = await request.json();
 
-    if (!itemId || !itemType || !userId) {
+    if (!itemId || !itemType) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: itemId and itemType' },
         { status: 400 }
       );
     }
+
+    // userId is optional - if not provided, we still track the click but can't track unique users
+    const userIdParam = userId || null;
 
     // Call the increment_click_count function (existing functionality)
     const { data: clickData, error: clickError } = await supabase.rpc(
@@ -28,7 +31,7 @@ export async function POST(request: NextRequest) {
       {
         table_name: itemType === 'catalog' ? 'catalog_items' : 'feed_post_items',
         item_id: itemId,
-        user_id_param: userId,
+        user_id_param: userIdParam,
       }
     );
 
@@ -40,12 +43,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if item is monetized and get owner
+    // Check if item is verified/monetized and get owner
     const table = itemType === 'catalog' ? 'catalog_items' : 'feed_post_items';
     const { data: itemData, error: itemError } = await supabase
       .from(table)
       .select(`
         id,
+        is_verified,
         is_monetized,
         ${itemType === 'catalog' ? 'catalogs!inner(owner_id)' : 'feed_posts!inner(user_id)'}
       `)
@@ -62,11 +66,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // If item is monetized, add earnings
+    // Add earnings for verified OR monetized items
     let earningsAdded = false;
     let earningsCents = 0;
 
-    if (itemData.is_monetized) {
+    if (itemData.is_verified || itemData.is_monetized) {
       // Type-safe way to get creator ID
       let creatorId: string;
 
@@ -88,8 +92,16 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Random amount between 3 cents and 10 cents
-      earningsCents = Math.floor(Math.random() * 8) + 3; // 3-10 cents
+      // TIERED EARNINGS:
+      // Monetized items (with affiliate links): 5-12 cents
+      // Verified items (no affiliate link yet): 1-3 cents
+      if (itemData.is_monetized) {
+        // Higher earnings for monetized items with affiliate links
+        earningsCents = Math.floor(Math.random() * 8) + 5; // 5-12 cents
+      } else if (itemData.is_verified) {
+        // Lower earnings for verified but not yet monetized items
+        earningsCents = Math.floor(Math.random() * 3) + 1; // 1-3 cents
+      }
 
       // Add earnings using the SQL function
       const { error: earningsError } = await supabase.rpc('add_creator_earnings', {
@@ -97,7 +109,9 @@ export async function POST(request: NextRequest) {
         p_item_id: itemId,
         p_item_type: itemType,
         p_amount_cents: earningsCents,
-        p_description: `Click earning from ${itemType} item`,
+        p_description: itemData.is_monetized
+          ? `Affiliate click earning from ${itemType} item`
+          : `Verified item click earning from ${itemType} item`,
       });
 
       if (!earningsError) {
