@@ -67,9 +67,26 @@ export async function POST(request: NextRequest) {
     let earningsCents = 0;
 
     if (itemData.is_monetized) {
-      const creatorId = itemType === 'catalog'
-        ? itemData.catalogs.owner_id
-        : itemData.feed_posts.user_id;
+      // Type-safe way to get creator ID
+      let creatorId: string;
+
+      if (itemType === 'catalog') {
+        const catalogItem = itemData as any;
+        creatorId = catalogItem.catalogs?.owner_id;
+      } else {
+        const feedItem = itemData as any;
+        creatorId = feedItem.feed_posts?.user_id;
+      }
+
+      if (!creatorId) {
+        console.error('Could not determine creator ID');
+        return NextResponse.json({
+          total_clicks: clickData?.total_clicks || 0,
+          unique_clicks: clickData?.unique_clicks || 0,
+          is_new_unique: clickData?.is_new_unique || false,
+          earnings_added: false,
+        });
+      }
 
       // Random amount between 3 cents and 10 cents
       earningsCents = Math.floor(Math.random() * 8) + 3; // 3-10 cents
