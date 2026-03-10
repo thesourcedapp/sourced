@@ -13,32 +13,46 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 
 export async function POST(request: NextRequest) {
   try {
-    const { itemId, itemType, userId } = await request.json();
+    const body = await request.json();
+    console.log('🔵 Received body:', JSON.stringify(body));
+
+    const { itemId, itemType, userId } = body;
 
     if (!itemId || !itemType || !userId) {
+      console.error('❌ Missing fields:', { itemId: !!itemId, itemType: !!itemType, userId: !!userId });
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields', received: { itemId: !!itemId, itemType: !!itemType, userId: !!userId } },
         { status: 400 }
       );
     }
 
-    // Call the original increment_click_count function
+    const tableName = itemType === 'catalog' ? 'catalog_items' : 'feed_post_items';
+    console.log('🔧 Calling RPC with:', { tableName, itemId, userId });
+
+    // Call the increment_click_count function
     const { data, error } = await supabase.rpc(
       'increment_click_count',
       {
-        table_name: itemType === 'catalog' ? 'catalog_items' : 'feed_post_items',
+        table_name: tableName,
         item_id: itemId,
         user_id_param: userId,
       }
     );
 
     if (error) {
-      console.error('Error tracking click:', error);
+      console.error('❌ RPC Error:', JSON.stringify(error));
       return NextResponse.json(
-        { error: 'Failed to track click' },
+        {
+          error: 'Failed to track click',
+          details: error.message,
+          code: error.code,
+          hint: error.hint,
+        },
         { status: 500 }
       );
     }
+
+    console.log('✅ RPC Success:', JSON.stringify(data));
 
     return NextResponse.json({
       success: true,
@@ -46,9 +60,13 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Track click error:', error);
+    console.error('❌ Catch block error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      },
       { status: 500 }
     );
   }
