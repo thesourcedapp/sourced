@@ -14,58 +14,52 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    console.log('🔵 Received body:', JSON.stringify(body));
-
     const { itemId, itemType, userId } = body;
 
+    // Validate inputs
     if (!itemId || !itemType || !userId) {
-      console.error('❌ Missing fields:', { itemId: !!itemId, itemType: !!itemType, userId: !!userId });
       return NextResponse.json(
-        { error: 'Missing required fields', received: { itemId: !!itemId, itemType: !!itemType, userId: !!userId } },
+        { error: 'Missing fields', received: { itemId, itemType, userId } },
         { status: 400 }
       );
     }
 
+    // Determine table name
     const tableName = itemType === 'catalog' ? 'catalog_items' : 'feed_post_items';
-    console.log('🔧 Calling RPC with:', { tableName, itemId, userId });
 
-    // Call the increment_click_count function
-    const { data, error } = await supabase.rpc(
-      'increment_click_count',
-      {
-        table_name: tableName,
-        item_id: itemId,
-        user_id_param: userId,
-      }
-    );
+    // Call the function
+    const { data, error } = await supabase.rpc('increment_click_count', {
+      p_table_name: tableName,
+      p_item_id: itemId,
+      p_user_id: userId,
+    });
 
     if (error) {
-      console.error('❌ RPC Error:', JSON.stringify(error));
+      console.error('Supabase RPC Error:', error);
       return NextResponse.json(
         {
-          error: 'Failed to track click',
-          details: error.message,
-          code: error.code,
+          error: 'Database error',
+          message: error.message,
+          details: error.details,
           hint: error.hint,
+          code: error.code,
         },
         { status: 500 }
       );
     }
 
-    console.log('✅ RPC Success:', JSON.stringify(data));
-
+    // Success
     return NextResponse.json({
       success: true,
-      data: data,
+      clicks: data && data.length > 0 ? data[0] : null,
     });
 
   } catch (error) {
-    console.error('❌ Catch block error:', error);
+    console.error('API Error:', error);
     return NextResponse.json(
       {
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
+        error: 'Server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );
