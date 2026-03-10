@@ -47,31 +47,44 @@ export async function POST(request: NextRequest) {
     let earningsCents = 0;
 
     try {
+      console.log('🔍 Checking earnings for item:', itemId);
+
       // Get item verification status
-      const { data: item } = await supabase
+      const { data: item, error: itemError } = await supabase
         .from(tableName)
         .select('is_verified, is_monetized')
         .eq('id', itemId)
         .single();
 
+      console.log('📋 Item data:', item);
+      console.log('❌ Item error:', itemError);
+
       if (item && (item.is_verified || item.is_monetized)) {
+        console.log('✅ Item is verified or monetized, getting owner...');
+
         // Get owner ID
         let ownerId = null;
         if (itemType === 'catalog') {
-          const { data: catalogData } = await supabase
+          const { data: catalogData, error: catalogError } = await supabase
             .from('catalog_items')
             .select('catalog_id, catalogs!inner(owner_id)')
             .eq('id', itemId)
             .single();
+          console.log('👤 Catalog data:', catalogData);
+          console.log('❌ Catalog error:', catalogError);
           ownerId = catalogData?.catalogs?.owner_id;
         } else {
-          const { data: feedData } = await supabase
+          const { data: feedData, error: feedError } = await supabase
             .from('feed_post_items')
             .select('post_id, feed_posts!inner(user_id)')
             .eq('id', itemId)
             .single();
+          console.log('👤 Feed data:', feedData);
+          console.log('❌ Feed error:', feedError);
           ownerId = feedData?.feed_posts?.user_id;
         }
+
+        console.log('👤 Owner ID:', ownerId);
 
         if (ownerId) {
           // Calculate earnings (tiered)
@@ -81,8 +94,10 @@ export async function POST(request: NextRequest) {
             earningsCents = Math.floor(Math.random() * 3) + 1; // 1-3 cents
           }
 
+          console.log('💰 Adding earnings:', earningsCents, 'cents');
+
           // Add earnings
-          await supabase.rpc('add_creator_earnings', {
+          const { data: earningsData, error: earningsError } = await supabase.rpc('add_creator_earnings', {
             p_user_id: ownerId,
             p_item_id: itemId,
             p_item_type: itemType,
@@ -90,12 +105,22 @@ export async function POST(request: NextRequest) {
             p_description: item.is_monetized ? 'Affiliate click' : 'Verified click',
           });
 
-          earningsAdded = true;
+          console.log('💰 Earnings data:', earningsData);
+          console.log('❌ Earnings error:', earningsError);
+
+          if (!earningsError) {
+            earningsAdded = true;
+            console.log('✅ Earnings added successfully!');
+          }
+        } else {
+          console.log('❌ No owner ID found');
         }
+      } else {
+        console.log('ℹ️ Item not verified/monetized, skipping earnings');
       }
     } catch (err) {
       // Log but don't fail the request
-      console.error('Earnings failed (non-critical):', err);
+      console.error('❌ Earnings failed (non-critical):', err);
     }
 
     // Return success with click data
