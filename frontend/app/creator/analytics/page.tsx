@@ -112,6 +112,12 @@ export default function AnalyticsPage() {
   const [verifiableItems, setVerifiableItems] = useState<VerifiableItem[]>([]);
   const [earnings, setEarnings] = useState<EarningsData | null>(null);
   const [partnerBrands, setPartnerBrands] = useState<string[]>([]);
+  const [balance, setBalance] = useState({ available: 0, total: 0, withdrawn: 0 });
+  const [withdrawalRequests, setWithdrawalRequests] = useState<any[]>([]);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [cashappHandle, setCashappHandle] = useState("");
+  const [submittingWithdrawal, setSubmittingWithdrawal] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -184,6 +190,31 @@ export default function AnalyticsPage() {
 
       const activeBrands = brandsData?.map(b => b.brand_slug.toLowerCase()) || [];
       setPartnerBrands(activeBrands);
+
+      // Get user's balance info
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("total_earnings_cents, available_balance_cents, lifetime_withdrawn_cents, cashapp_handle")
+        .eq("id", currentUserId)
+        .single();
+
+      if (profileData) {
+        setBalance({
+          available: profileData.available_balance_cents / 100,
+          total: profileData.total_earnings_cents / 100,
+          withdrawn: profileData.lifetime_withdrawn_cents / 100,
+        });
+        setCashappHandle(profileData.cashapp_handle || "");
+      }
+
+      // Get withdrawal requests
+      const { data: withdrawalData } = await supabase
+        .from("withdrawal_requests")
+        .select("*")
+        .eq("user_id", currentUserId)
+        .order("requested_at", { ascending: false });
+
+      setWithdrawalRequests(withdrawalData || []);
 
       const now = new Date();
       let startDate = new Date();
@@ -485,6 +516,63 @@ export default function AnalyticsPage() {
       showToast("✓ Application submitted successfully!", "success");
     }
     setApplying(false);
+  }
+
+  async function handleWithdrawalRequest() {
+    if (!currentUserId) return;
+
+    const amount = parseFloat(withdrawAmount);
+
+    // Validation
+    if (!amount || amount < 10) {
+      showToast("Minimum withdrawal is $10", "error");
+      return;
+    }
+
+    if (amount > balance.available) {
+      showToast("Insufficient balance", "error");
+      return;
+    }
+
+    if (!cashappHandle || !cashappHandle.startsWith("$")) {
+      showToast("Please enter a valid CashApp handle (e.g., $username)", "error");
+      return;
+    }
+
+    setSubmittingWithdrawal(true);
+
+    try {
+      // Update cashapp handle in profile
+      await supabase
+        .from("profiles")
+        .update({ cashapp_handle: cashappHandle })
+        .eq("id", currentUserId);
+
+      // Create withdrawal request
+      const { error } = await supabase
+        .from("withdrawal_requests")
+        .insert({
+          user_id: currentUserId,
+          amount_cents: Math.floor(amount * 100),
+          payment_method: "cashapp",
+          payment_handle: cashappHandle,
+          status: "pending",
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      showToast("✓ Withdrawal request submitted! We'll process within 7-14 days.", "success");
+      setShowWithdrawModal(false);
+      setWithdrawAmount("");
+      loadAnalytics(); // Refresh data
+    } catch (error) {
+      console.error("Withdrawal error:", error);
+      showToast("Failed to submit withdrawal request", "error");
+    } finally {
+      setSubmittingWithdrawal(false);
+    }
   }
 
   const fmt = (n: number) => {
@@ -1054,6 +1142,162 @@ export default function AnalyticsPage() {
         {/* MONETIZATION TAB */}
         {activeTab === "monetization" && (
           <div className="space-y-8">
+            {/* Earnings & Balance Overview */}
+            <div>
+              <h2 style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-3xl font-black mb-6">
+                YOUR BALANCE
+              </h2>
+
+              <div className="grid sm:grid-cols-3 gap-6 mb-6">
+                <div className="bg-green-500/10 border-2 border-green-500 p-6">
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-sm text-green-300 font-black mb-2">
+                    AVAILABLE TO WITHDRAW
+                  </div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-5xl font-black text-green-500">
+                    {fmtCurrency(balance.available)}
+                  </div>
+                  <button
+                    onClick={() => setShowWithdrawModal(true)}
+                    disabled={balance.available < 10}
+                    style={{ fontFamily: "'Bebas Neue', sans-serif" }}
+                    className="mt-4 w-full py-3 bg-green-500 text-black hover:bg-green-400 disabled:bg-white/10 disabled:text-white/40 disabled:cursor-not-allowed font-black transition-all"
+                  >
+                    {balance.available < 10 ? "MINIMUM $10" : "REQUEST WITHDRAWAL"}
+                  </button>
+                </div>
+
+                <div className="bg-white/5 border-2 border-white/10 p-6">
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-sm text-white/50 font-black mb-2">
+                    TOTAL EARNED
+                  </div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-5xl font-black">
+                    {fmtCurrency(balance.total)}
+                  </div>
+                  <div className="text-xs text-white/40 mt-2">
+                    Lifetime earnings
+                  </div>
+                </div>
+
+                <div className="bg-white/5 border-2 border-white/10 p-6">
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-sm text-white/50 font-black mb-2">
+                    TOTAL WITHDRAWN
+                  </div>
+                  <div style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-5xl font-black">
+                    {fmtCurrency(balance.withdrawn)}
+                  </div>
+                  <div className="text-xs text-white/40 mt-2">
+                    Successfully paid out
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Withdrawal Modal */}
+            {showWithdrawModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-black border-2 border-white max-w-md w-full p-8">
+                  <h2 style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-3xl font-black mb-6">
+                    REQUEST WITHDRAWAL
+                  </h2>
+
+                  <div className="space-y-4 mb-6">
+                    <div>
+                      <label className="block text-sm font-bold mb-2">
+                        AMOUNT (USD)
+                      </label>
+                      <input
+                        type="number"
+                        value={withdrawAmount}
+                        onChange={(e) => setWithdrawAmount(e.target.value)}
+                        placeholder="10.00"
+                        min="10"
+                        max={balance.available}
+                        step="0.01"
+                        className="w-full bg-white/5 border-2 border-white/10 px-4 py-3 text-lg font-bold focus:border-white focus:outline-none"
+                      />
+                      <p className="text-xs text-white/50 mt-1">
+                        Available: {fmtCurrency(balance.available)} • Minimum: $10.00
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-bold mb-2">
+                        CASHAPP HANDLE
+                      </label>
+                      <input
+                        type="text"
+                        value={cashappHandle}
+                        onChange={(e) => setCashappHandle(e.target.value)}
+                        placeholder="$yourhandle"
+                        className="w-full bg-white/5 border-2 border-white/10 px-4 py-3 font-bold focus:border-white focus:outline-none"
+                      />
+                      <p className="text-xs text-white/50 mt-1">
+                        Must start with $ (e.g., $johndoe)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white/5 border-2 border-white/10 p-4 mb-6">
+                    <p className="text-xs text-white/70">
+                      • Processing time: 7-14 business days<br />
+                      • Payment method: CashApp only<br />
+                      • You'll receive email confirmation when processed
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowWithdrawModal(false)}
+                      style={{ fontFamily: "'Bebas Neue', sans-serif" }}
+                      className="flex-1 py-3 border-2 border-white/10 hover:border-white/30 font-black transition-all"
+                    >
+                      CANCEL
+                    </button>
+                    <button
+                      onClick={handleWithdrawalRequest}
+                      disabled={submittingWithdrawal}
+                      style={{ fontFamily: "'Bebas Neue', sans-serif" }}
+                      className="flex-1 py-3 bg-green-500 text-black hover:bg-green-400 disabled:bg-white/10 disabled:text-white/40 font-black transition-all"
+                    >
+                      {submittingWithdrawal ? "SUBMITTING..." : "SUBMIT REQUEST"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Withdrawal History */}
+            {withdrawalRequests.length > 0 && (
+              <div>
+                <h2 style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-3xl font-black mb-6">
+                  WITHDRAWAL HISTORY
+                </h2>
+
+                <div className="space-y-3">
+                  {withdrawalRequests.map((request) => (
+                    <div key={request.id} className="flex items-center justify-between p-5 bg-white/5 border-2 border-white/10">
+                      <div>
+                        <div className="font-bold">
+                          {fmtCurrency(request.amount_cents / 100)}
+                        </div>
+                        <div className="text-xs text-white/50">
+                          {new Date(request.requested_at).toLocaleDateString()} • {request.payment_handle}
+                        </div>
+                      </div>
+                      <div style={{ fontFamily: "'Bebas Neue', sans-serif" }} className={`px-4 py-2 font-black text-sm ${
+                        request.status === 'pending' ? 'bg-amber-500/20 text-amber-500 border border-amber-500' :
+                        request.status === 'processing' ? 'bg-blue-500/20 text-blue-500 border border-blue-500' :
+                        request.status === 'completed' ? 'bg-green-500/20 text-green-500 border border-green-500' :
+                        'bg-red-500/20 text-red-500 border border-red-500'
+                      }`}>
+                        {request.status.toUpperCase()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Earnings Overview */}
             <div>
               <h2 style={{ fontFamily: "'Bebas Neue', sans-serif" }} className="text-3xl font-black mb-6">
