@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
             .single();
           console.log('👤 Catalog data:', catalogData);
           console.log('❌ Catalog error:', catalogError);
-          ownerId = catalogData?.catalogs?.owner_id;
+          ownerId = (catalogData as any)?.catalogs?.owner_id;
         } else {
           const { data: feedData, error: feedError } = await supabase
             .from('feed_post_items')
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
             .single();
           console.log('👤 Feed data:', feedData);
           console.log('❌ Feed error:', feedError);
-          ownerId = feedData?.feed_posts?.user_id;
+          ownerId = (feedData as any)?.feed_posts?.user_id;
         }
 
         console.log('👤 Owner ID:', ownerId);
