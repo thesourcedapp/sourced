@@ -49,74 +49,91 @@ export async function POST(request: NextRequest) {
     try {
       console.log('🔍 Checking earnings for item:', itemId);
 
-      // Get item verification status
-      const { data: item, error: itemError } = await supabase
-        .from(tableName)
-        .select('is_verified, is_monetized')
-        .eq('id', itemId)
-        .single();
+      // Get item and owner in one query
+      let ownerId = null;
+      let itemIsMonetized = false;
 
-      console.log('📋 Item data:', item);
-      console.log('❌ Item error:', itemError);
+      if (itemType === 'catalog') {
+        const { data: catalogData, error: catalogError } = await supabase
+          .from('catalog_items')
+          .select('is_monetized, catalogs!inner(owner_id, profiles!inner(is_verified))')
+          .eq('id', itemId)
+          .single();
 
-      if (item && (item.is_verified || item.is_monetized)) {
-        console.log('✅ Item is verified or monetized, getting owner...');
+        console.log('📋 Catalog data:', catalogData);
+        console.log('❌ Catalog error:', catalogError);
 
-        // Get owner ID
-        let ownerId = null;
-        if (itemType === 'catalog') {
-          const { data: catalogData, error: catalogError } = await supabase
-            .from('catalog_items')
-            .select('catalog_id, catalogs!inner(owner_id)')
-            .eq('id', itemId)
-            .single();
-          console.log('👤 Catalog data:', catalogData);
-          console.log('❌ Catalog error:', catalogError);
-          ownerId = (catalogData as any)?.catalogs?.owner_id;
-        } else {
-          const { data: feedData, error: feedError } = await supabase
-            .from('feed_post_items')
-            .select('post_id, feed_posts!inner(user_id)')
-            .eq('id', itemId)
-            .single();
-          console.log('👤 Feed data:', feedData);
-          console.log('❌ Feed error:', feedError);
-          ownerId = (feedData as any)?.feed_posts?.user_id;
-        }
+        if (catalogData) {
+          const catalogItem = catalogData as any;
+          ownerId = catalogItem?.catalogs?.owner_id;
+          itemIsMonetized = catalogItem?.is_monetized || false;
+          const creatorIsVerified = catalogItem?.catalogs?.profiles?.is_verified || false;
 
-        console.log('👤 Owner ID:', ownerId);
+          console.log('👤 Owner ID:', ownerId);
+          console.log('✅ Creator verified:', creatorIsVerified);
+          console.log('💎 Item monetized:', itemIsMonetized);
 
-        if (ownerId) {
-          // Calculate earnings (tiered)
-          if (item.is_monetized) {
-            earningsCents = Math.floor(Math.random() * 8) + 5; // 5-12 cents
-          } else if (item.is_verified) {
-            earningsCents = Math.floor(Math.random() * 3) + 1; // 1-3 cents
+          // Only add earnings if creator is verified
+          if (!creatorIsVerified) {
+            console.log('ℹ️ Creator not verified, skipping earnings');
+            ownerId = null; // Clear owner ID to skip earnings
           }
-
-          console.log('💰 Adding earnings:', earningsCents, 'cents');
-
-          // Add earnings
-          const { data: earningsData, error: earningsError } = await supabase.rpc('add_creator_earnings', {
-            p_user_id: ownerId,
-            p_item_id: itemId,
-            p_item_type: itemType,
-            p_amount_cents: earningsCents,
-            p_description: item.is_monetized ? 'Affiliate click' : 'Verified click',
-          });
-
-          console.log('💰 Earnings data:', earningsData);
-          console.log('❌ Earnings error:', earningsError);
-
-          if (!earningsError) {
-            earningsAdded = true;
-            console.log('✅ Earnings added successfully!');
-          }
-        } else {
-          console.log('❌ No owner ID found');
         }
       } else {
-        console.log('ℹ️ Item not verified/monetized, skipping earnings');
+        const { data: feedData, error: feedError } = await supabase
+          .from('feed_post_items')
+          .select('is_monetized, feed_posts!inner(user_id, profiles!inner(is_verified))')
+          .eq('id', itemId)
+          .single();
+
+        console.log('📋 Feed data:', feedData);
+        console.log('❌ Feed error:', feedError);
+
+        if (feedData) {
+          const feedItem = feedData as any;
+          ownerId = feedItem?.feed_posts?.user_id;
+          itemIsMonetized = feedItem?.is_monetized || false;
+          const creatorIsVerified = feedItem?.feed_posts?.profiles?.is_verified || false;
+
+          console.log('👤 Owner ID:', ownerId);
+          console.log('✅ Creator verified:', creatorIsVerified);
+          console.log('💎 Item monetized:', itemIsMonetized);
+
+          if (!creatorIsVerified) {
+            console.log('ℹ️ Creator not verified, skipping earnings');
+            ownerId = null;
+          }
+        }
+      }
+
+      if (ownerId) {
+        // TIERED EARNINGS:
+        // Monetized items: 3-8 cents
+        // Regular items (verified creator): 2-4 cents
+        if (itemIsMonetized) {
+          earningsCents = Math.floor(Math.random() * 6) + 3; // 3-8 cents
+        } else {
+          earningsCents = Math.floor(Math.random() * 3) + 2; // 2-4 cents
+        }
+
+        console.log('💰 Adding earnings:', earningsCents, 'cents');
+
+        // Add earnings
+        const { data: earningsData, error: earningsError } = await supabase.rpc('add_creator_earnings', {
+          p_user_id: ownerId,
+          p_item_id: itemId,
+          p_item_type: itemType,
+          p_amount_cents: earningsCents,
+          p_description: itemIsMonetized ? 'Monetized item click' : 'Regular item click',
+        });
+
+        console.log('💰 Earnings data:', earningsData);
+        console.log('❌ Earnings error:', earningsError);
+
+        if (!earningsError) {
+          earningsAdded = true;
+          console.log('✅ Earnings added successfully!');
+        }
       }
     } catch (err) {
       // Log but don't fail the request
