@@ -304,8 +304,8 @@ export default function AnalyticsPage() {
         .limit(50);
 
       const { data: earningsData } = await supabase
-        .from("creator_earnings")
-        .select("item_id, earnings_cents, created_at")
+        .from("earnings_transactions")
+        .select("item_id, amount_cents, created_at")
         .eq("user_id", currentUserId);
 
       const earningsByItem = new Map<string, number>();
@@ -327,15 +327,15 @@ export default function AnalyticsPage() {
       lastMonthEnd.setHours(23, 59, 59, 999);
 
       earningsData?.forEach(e => {
-        totalEarningsCents += e.earnings_cents;
+        totalEarningsCents += e.amount_cents;
         const current = earningsByItem.get(e.item_id) || 0;
-        earningsByItem.set(e.item_id, current + e.earnings_cents);
+        earningsByItem.set(e.item_id, current + e.amount_cents);
 
         const earnDate = new Date(e.created_at);
         if (earnDate >= thisMonthStart) {
-          thisMonthCents += e.earnings_cents;
+          thisMonthCents += e.amount_cents;
         } else if (earnDate >= lastMonthStart && earnDate <= lastMonthEnd) {
-          lastMonthCents += e.earnings_cents;
+          lastMonthCents += e.amount_cents;
         }
       });
 
