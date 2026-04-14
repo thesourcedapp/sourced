@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense, useCallback } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type DiscoverMode = "trending" | "new" | "following";
+type GridItemType = "catalog_item" | "feed_post";
 
 type SearchItem = {
   id: string;
@@ -25,6 +26,8 @@ type SearchItem = {
   primary_color?: string;
   style_tags?: string[];
   created_at?: string;
+  item_type: GridItemType;
+  feed_post_id?: string;
   catalog: {
     id: string;
     name: string;
@@ -65,6 +68,13 @@ type SearchResultsState = {
   profiles: SearchProfile[];
 };
 
+// ─── Scroll position cache (module-level, survives Next.js route changes) ─────
+const scrollCache = {
+  position: 0,
+  mode: "trending" as DiscoverMode,
+  category: "all",
+};
+
 // ─── Smart Search Knowledge Base ──────────────────────────────────────────────
 
 const SEARCH_KNOWLEDGE = {
@@ -78,12 +88,8 @@ const SEARCH_KNOWLEDGE = {
     sweater: ["pullover", "cardigan", "knit", "jumper"],
   },
   brandMappings: {
-    rick: "rick owens",
-    raf: "raf simons",
-    chrome: "chrome hearts",
-    cdg: "comme des garcons",
-    bape: "a bathing ape",
-    junya: "junya watanabe",
+    rick: "rick owens", raf: "raf simons", chrome: "chrome hearts",
+    cdg: "comme des garcons", bape: "a bathing ape", junya: "junya watanabe",
   } as Record<string, string>,
   aesthetics: {
     streetwear: { brands: ["supreme", "stussy", "bape", "palace"], categories: ["hoodies", "tees", "sneakers"] },
@@ -108,8 +114,10 @@ const SEARCH_KNOWLEDGE = {
 function parseSmartQuery(query: string) {
   const lowerQuery = query.toLowerCase();
   const words = lowerQuery.split(" ").filter((w) => w.length > 0);
-  const filters = { colors: [] as string[], brands: [] as string[], categories: [] as string[], priceTier: null as string | null, aesthetic: null as string | null, expandedTerms: [] as string[] };
-
+  const filters = {
+    colors: [] as string[], brands: [] as string[], categories: [] as string[],
+    priceTier: null as string | null, aesthetic: null as string | null, expandedTerms: [] as string[],
+  };
   for (const [aesthetic, config] of Object.entries(SEARCH_KNOWLEDGE.aesthetics)) {
     if (lowerQuery.includes(aesthetic)) {
       filters.aesthetic = aesthetic;
@@ -137,7 +145,7 @@ function parseSmartQuery(query: string) {
   return filters;
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── ItemCard ─────────────────────────────────────────────────────────────────
 
 function ItemCard({ item, onLike, onExpand, onClickThrough }: {
   item: SearchItem;
@@ -145,11 +153,13 @@ function ItemCard({ item, onLike, onExpand, onClickThrough }: {
   onExpand: (item: SearchItem) => void;
   onClickThrough: (item: SearchItem, e: React.MouseEvent) => void;
 }) {
+  const isFeedPost = item.item_type === "feed_post";
+
   return (
     <div className="group border border-black/10 hover:border-black transition-all duration-200 bg-white">
       <div
         className="aspect-square bg-black/5 overflow-hidden cursor-pointer relative"
-        onClick={(e) => onClickThrough(item, e)}
+        onClick={(e) => isFeedPost ? onClickThrough(item, e) : onClickThrough(item, e)}
       >
         <img
           src={item.image_url}
@@ -164,6 +174,12 @@ function ItemCard({ item, onLike, onExpand, onClickThrough }: {
             <span className="text-[10px] font-black text-white" style={{ fontFamily: "Bebas Neue, sans-serif" }}>$</span>
           </div>
         )}
+        {/* Subtle feed post indicator */}
+        {isFeedPost && (
+          <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/35 backdrop-blur-sm">
+            <span className="text-[8px] tracking-[0.2em] text-white/90 font-black" style={{ fontFamily: "Bebas Neue, sans-serif" }}>POST</span>
+          </div>
+        )}
       </div>
       <div className="p-3 border-t border-black/10">
         <h3 className="text-xs font-black tracking-wide uppercase leading-tight truncate mb-1.5" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
@@ -175,21 +191,27 @@ function ItemCard({ item, onLike, onExpand, onClickThrough }: {
         </div>
         {item.brand && <div className="text-[9px] tracking-wider opacity-30 mb-2 uppercase">{item.brand}</div>}
         <div className="flex gap-1.5">
+          {/* Like button only for catalog items */}
+          {!isFeedPost && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onLike(item.id, item.is_liked); }}
+              className={`flex-1 py-1.5 border text-[10px] tracking-wider font-black transition-all ${
+                item.is_liked ? "bg-black text-white border-black" : "border-black/20 hover:border-black hover:bg-black/5"
+              }`}
+              style={{ fontFamily: "Bebas Neue, sans-serif" }}
+            >
+              {item.is_liked ? `♥ ${item.like_count}` : `♡ ${item.like_count}`}
+            </button>
+          )}
           <button
-            onClick={(e) => { e.stopPropagation(); onLike(item.id, item.is_liked); }}
-            className={`flex-1 py-1.5 border text-[10px] tracking-wider font-black transition-all ${
-              item.is_liked ? "bg-black text-white border-black" : "border-black/20 hover:border-black hover:bg-black/5"
-            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              isFeedPost ? onClickThrough(item, e) : onExpand(item);
+            }}
+            className={`${isFeedPost ? "flex-1" : "px-3"} py-1.5 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-[10px] font-black tracking-wider`}
             style={{ fontFamily: "Bebas Neue, sans-serif" }}
           >
-            {item.is_liked ? `♥ ${item.like_count}` : `♡ ${item.like_count}`}
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onExpand(item); }}
-            className="px-3 py-1.5 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-[10px] font-black tracking-wider"
-            style={{ fontFamily: "Bebas Neue, sans-serif" }}
-          >
-            VIEW
+            {isFeedPost ? "VIEW POST ↗" : "VIEW"}
           </button>
         </div>
       </div>
@@ -197,15 +219,18 @@ function ItemCard({ item, onLike, onExpand, onClickThrough }: {
   );
 }
 
-function CatalogSpotlightCard({ catalog, onBookmark, router }: {
+// ─── CatalogSpotlightCard ─────────────────────────────────────────────────────
+
+function CatalogSpotlightCard({ catalog, onBookmark, router, onNavigateAway }: {
   catalog: SearchCatalog;
   onBookmark: (id: string, bookmarked: boolean) => void;
   router: ReturnType<typeof useRouter>;
+  onNavigateAway: () => void;
 }) {
   return (
     <div
       className="col-span-2 border-2 border-black/10 hover:border-black transition-all cursor-pointer flex overflow-hidden bg-white group"
-      onClick={() => router.push(`/${catalog.owner?.username}/${catalog.slug}`)}
+      onClick={() => { onNavigateAway(); router.push(`/${catalog.owner?.username}/${catalog.slug}`); }}
     >
       <div className="w-32 md:w-48 flex-shrink-0 bg-black/5 overflow-hidden">
         {catalog.image_url ? (
@@ -229,7 +254,7 @@ function CatalogSpotlightCard({ catalog, onBookmark, router }: {
           )}
           <div
             className="flex items-center gap-1.5 cursor-pointer hover:opacity-60 transition-opacity"
-            onClick={(e) => { e.stopPropagation(); router.push(`/${catalog.owner?.username}`); }}
+            onClick={(e) => { e.stopPropagation(); onNavigateAway(); router.push(`/${catalog.owner?.username}`); }}
           >
             <div className="w-5 h-5 rounded-full border border-black overflow-hidden">
               {catalog.owner?.avatar_url ? (
@@ -263,12 +288,15 @@ function CatalogSpotlightCard({ catalog, onBookmark, router }: {
   );
 }
 
-function ExpandedItemModal({ item, onClose, onLike, onClickThrough, router }: {
+// ─── ExpandedItemModal ────────────────────────────────────────────────────────
+
+function ExpandedItemModal({ item, onClose, onLike, onClickThrough, router, onNavigateAway }: {
   item: SearchItem;
   onClose: () => void;
   onLike: (id: string, liked: boolean) => void;
   onClickThrough: (item: SearchItem, e: React.MouseEvent) => void;
   router: ReturnType<typeof useRouter>;
+  onNavigateAway: () => void;
 }) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -288,10 +316,7 @@ function ExpandedItemModal({ item, onClose, onLike, onClickThrough, router }: {
         </button>
         <div className="bg-white border-2 border-white overflow-hidden">
           <div className="grid md:grid-cols-2 gap-0">
-            <div
-              className="aspect-square bg-black/5 overflow-hidden cursor-pointer"
-              onClick={(e) => onClickThrough(item, e)}
-            >
+            <div className="aspect-square bg-black/5 overflow-hidden cursor-pointer" onClick={(e) => onClickThrough(item, e)}>
               <img src={item.image_url} alt={item.title} className="w-full h-full object-contain" />
             </div>
             <div className="p-4 md:p-8 space-y-3 md:space-y-5 flex flex-col justify-between">
@@ -343,7 +368,7 @@ function ExpandedItemModal({ item, onClose, onLike, onClickThrough, router }: {
                   </button>
                 )}
                 <button
-                  onClick={() => router.push(`/${item.catalog.owner.username}/${item.catalog.slug}`)}
+                  onClick={() => { onNavigateAway(); router.push(`/${item.catalog.owner.username}/${item.catalog.slug}`); }}
                   className="w-full py-2.5 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-xs tracking-[0.4em] font-black"
                   style={{ fontFamily: "Bebas Neue, sans-serif" }}
                 >
@@ -358,14 +383,13 @@ function ExpandedItemModal({ item, onClose, onLike, onClickThrough, router }: {
   );
 }
 
-// ─── Search Overlay ────────────────────────────────────────────────────────────
+// ─── SearchOverlay ────────────────────────────────────────────────────────────
 
-function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireLogin }: {
+function SearchOverlay({ onClose, currentUserId, router, onNavigateAway }: {
   onClose: () => void;
   currentUserId: string | null;
-  isOnboarded: boolean;
   router: ReturnType<typeof useRouter>;
-  onRequireLogin: () => void;
+  onNavigateAway: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -376,10 +400,12 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
 
   useEffect(() => {
     inputRef.current?.focus();
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { if (expandedItem) setExpandedItem(null); else onClose(); }
+    };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, expandedItem]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -389,22 +415,20 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
 
   async function runSearch(q: string) {
     setLoading(true);
-    const smartFilters = parseSmartQuery(q);
-
     try {
       const [itemsResult, catalogsResult, profilesResult] = await Promise.all([
-        // Items
+        // Catalog items
         (async () => {
-          let dbq = supabase
+          const { data } = await supabase
             .from("catalog_items")
-            .select(`id,title,image_url,product_url,price,seller,like_count,is_monetized,category,brand,primary_color,colors,style_tags,material,pattern,season,gender,price_tier,created_at,catalogs!inner(id,name,slug,visibility,profiles!inner(username))`)
+            .select(`id,title,image_url,product_url,price,seller,like_count,is_monetized,category,brand,primary_color,style_tags,created_at,catalogs!inner(id,name,slug,visibility,profiles!inner(username))`)
             .eq("catalogs.visibility", "public")
-            .or(`title.ilike.%${q}%,brand.ilike.%${q}%,seller.ilike.%${q}%,category.ilike.%${q}%,material.ilike.%${q}%`)
+            .or(`title.ilike.%${q}%,brand.ilike.%${q}%,seller.ilike.%${q}%,category.ilike.%${q}%`)
             .limit(20);
-          const { data } = await dbq;
           return (data || []).map((item: any) => ({
             ...item,
             is_liked: false,
+            item_type: "catalog_item" as GridItemType,
             catalog: { id: item.catalogs.id, name: item.catalogs.name, slug: item.catalogs.slug, owner: { username: item.catalogs.profiles.username } },
           }));
         })(),
@@ -421,44 +445,51 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
             owner: Array.isArray(c.profiles) ? c.profiles[0] : c.profiles,
           }));
         })(),
-        // Profiles
+        // Profiles — FIX: explicit column select so follower_count is never undefined
         (async () => {
           const { data } = await supabase
             .from("profiles")
-            .select("*")
+            .select("id,username,full_name,avatar_url,bio,follower_count,is_onboarded,is_verified,standing,badges")
             .eq("is_onboarded", true)
             .or(`username.ilike.%${q}%,full_name.ilike.%${q}%`)
-            .limit(6);
-          return (data || []).filter((p: any) => p.username).map((p: any) => ({
-            id: p.id, username: p.username, full_name: p.full_name,
-            avatar_url: p.avatar_url, bio: p.bio, follower_count: p.follower_count || 0,
-            is_following: false, is_verified: p.is_verified || false,
-          }));
+            .limit(8);
+          return (data || [])
+            .filter((p: any) => p.username)
+            .map((p: any) => ({
+              id: p.id,
+              username: p.username,
+              full_name: p.full_name ?? null,
+              avatar_url: p.avatar_url ?? null,
+              bio: p.bio ?? null,
+              follower_count: typeof p.follower_count === "number" ? p.follower_count : 0,
+              is_following: false,
+              is_verified: p.is_verified ?? false,
+              standing: p.standing ?? undefined,
+              badges: p.badges ?? [],
+            }));
         })(),
       ]);
-
       setResults({ items: itemsResult, catalogs: catalogsResult, profiles: profilesResult });
     } finally {
       setLoading(false);
     }
   }
 
-  async function trackClick(itemId: string) {
-    try {
-      await fetch("/api/track-click", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemId, itemType: "catalog", userId: currentUserId }) });
-    } catch {}
-  }
-
   function handleItemClick(item: SearchItem, e: React.MouseEvent) {
     e.stopPropagation();
-    if (item.product_url) { trackClick(item.id); window.open(item.product_url, "_blank"); }
+    if (item.item_type === "feed_post" && item.feed_post_id) {
+      onNavigateAway(); router.push(`/feed/${item.feed_post_id}`); onClose();
+    } else if (item.product_url) {
+      try { fetch("/api/track-click", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemId: item.id, itemType: "catalog", userId: currentUserId }) }); } catch {}
+      window.open(item.product_url, "_blank");
+    }
   }
 
   const hasResults = results.items.length > 0 || results.catalogs.length > 0 || results.profiles.length > 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-white flex flex-col">
-      {/* Search Header */}
+      {/* Header — no border on icon, just clean */}
       <div className="border-b-2 border-black flex items-center px-6 md:px-10 gap-4 h-16 md:h-20 flex-shrink-0">
         <span className="text-2xl md:text-3xl opacity-30 select-none">⌕</span>
         <input
@@ -467,7 +498,7 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="SEARCH ITEMS, CATALOGS, CREATORS..."
-          className="flex-1 bg-transparent text-sm md:text-base tracking-wider placeholder-black/30 focus:outline-none"
+          className="flex-1 bg-transparent tracking-wider placeholder-black/30 focus:outline-none"
           style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: "16px" }}
         />
         {loading && (
@@ -484,7 +515,6 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
         </button>
       </div>
 
-      {/* Results */}
       <div className="flex-1 overflow-y-auto">
         {!query.trim() ? (
           <div className="flex items-center justify-center h-full opacity-20">
@@ -496,7 +526,6 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
           </div>
         ) : (
           <div className="px-6 md:px-10 py-6 space-y-8">
-            {/* Items */}
             {results.items.length > 0 && (
               <section>
                 <div className="text-[10px] tracking-[0.4em] opacity-40 mb-4 font-black border-b border-black/10 pb-2" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
@@ -504,18 +533,11 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                   {results.items.map((item) => (
-                    <ItemCard
-                      key={item.id}
-                      item={item}
-                      onLike={() => {}}
-                      onExpand={setExpandedItem}
-                      onClickThrough={handleItemClick}
-                    />
+                    <ItemCard key={item.id} item={item} onLike={() => {}} onExpand={setExpandedItem} onClickThrough={handleItemClick} />
                   ))}
                 </div>
               </section>
             )}
-            {/* Catalogs */}
             {results.catalogs.length > 0 && (
               <section>
                 <div className="text-[10px] tracking-[0.4em] opacity-40 mb-4 font-black border-b border-black/10 pb-2" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
@@ -526,7 +548,7 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
                     <div
                       key={catalog.id}
                       className="border border-black/10 hover:border-black transition-all cursor-pointer p-3 flex items-center gap-3"
-                      onClick={() => { router.push(`/${catalog.owner?.username}/${catalog.slug}`); onClose(); }}
+                      onClick={() => { onNavigateAway(); router.push(`/${catalog.owner?.username}/${catalog.slug}`); onClose(); }}
                     >
                       <div className="w-14 h-14 bg-black/5 flex-shrink-0 overflow-hidden">
                         {catalog.image_url ? <img src={catalog.image_url} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-2xl opacity-10">✦</div>}
@@ -540,7 +562,6 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
                 </div>
               </section>
             )}
-            {/* Profiles */}
             {results.profiles.length > 0 && (
               <section>
                 <div className="text-[10px] tracking-[0.4em] opacity-40 mb-4 font-black border-b border-black/10 pb-2" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
@@ -552,17 +573,17 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
                       key={profile.id}
                       className="border border-black/10 hover:border-black transition-all cursor-pointer p-3 flex items-center gap-3"
                       style={{ borderRadius: "50px" }}
-                      onClick={() => { router.push(`/${profile.username}`); onClose(); }}
+                      onClick={() => { onNavigateAway(); router.push(`/${profile.username}`); onClose(); }}
                     >
                       <div className="w-10 h-10 rounded-full border border-black overflow-hidden flex-shrink-0">
                         {profile.avatar_url ? <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-black/5" />}
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="font-black tracking-tighter text-sm" style={{ fontFamily: "Archivo Black, sans-serif" }}>@{profile.username}</p>
                         {profile.full_name && <p className="text-[10px] opacity-50 truncate">{profile.full_name}</p>}
                       </div>
-                      <div className="ml-auto text-[10px] opacity-40 tracking-wider flex-shrink-0" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
-                        {profile.follower_count} FOLLOWERS
+                      <div className="text-[10px] opacity-40 tracking-wider flex-shrink-0" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
+                        {profile.follower_count.toLocaleString()} FOLLOWERS
                       </div>
                     </div>
                   ))}
@@ -573,7 +594,6 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
         )}
       </div>
 
-      {/* Expanded item inside search */}
       {expandedItem && (
         <ExpandedItemModal
           item={expandedItem}
@@ -581,6 +601,7 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
           onLike={() => {}}
           onClickThrough={handleItemClick}
           router={router}
+          onNavigateAway={onNavigateAway}
         />
       )}
     </div>
@@ -591,9 +612,10 @@ function SearchOverlay({ onClose, currentUserId, isOnboarded, router, onRequireL
 
 function DiscoverContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
-  const [mode, setMode] = useState<DiscoverMode>("trending");
+  // Restore state from cache on mount
+  const [mode, setMode] = useState<DiscoverMode>(scrollCache.mode);
+  const [selectedCategory, setSelectedCategory] = useState(scrollCache.category);
   const [items, setItems] = useState<SearchItem[]>([]);
   const [catalogs, setCatalogs] = useState<SearchCatalog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -602,10 +624,8 @@ function DiscoverContent() {
   const [expandedItem, setExpandedItem] = useState<SearchItem | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [showLoginMessage, setShowLoginMessage] = useState(false);
-
-  // Filters (items only)
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [showFilters, setShowFilters] = useState(false);
+  const didRestoreScroll = useRef(false);
+  const isFirstLoad = useRef(true);
 
   const categories = [
     { value: "all", label: "ALL" }, { value: "tops", label: "TOPS" },
@@ -615,8 +635,31 @@ function DiscoverContent() {
     { value: "activewear", label: "ACTIVEWEAR" }, { value: "jewelry", label: "JEWELRY" },
   ];
 
+  // Save scroll position continuously
+  useEffect(() => {
+    const onScroll = () => { scrollCache.position = window.scrollY; };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Also save mode/category whenever they change
+  useEffect(() => { scrollCache.mode = mode; }, [mode]);
+  useEffect(() => { scrollCache.category = selectedCategory; }, [selectedCategory]);
+
   useEffect(() => { loadCurrentUser(); }, []);
   useEffect(() => { loadContent(); }, [mode, currentUserId, selectedCategory]);
+
+  // Restore scroll after initial content load only
+  useEffect(() => {
+    if (!loading && isFirstLoad.current && scrollCache.position > 0) {
+      isFirstLoad.current = false;
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollCache.position, behavior: "instant" as ScrollBehavior });
+      });
+    } else if (!loading) {
+      isFirstLoad.current = false;
+    }
+  }, [loading]);
 
   async function loadCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -638,45 +681,128 @@ function DiscoverContent() {
 
   async function loadItems() {
     try {
-      let q = supabase
+      // ── Catalog items ──────────────────────────────────────────────────────
+      let catalogQ = supabase
         .from("catalog_items")
-        .select(`id,title,image_url,product_url,price,seller,like_count,is_monetized,category,brand,primary_color,style_tags,created_at,catalogs!inner(id,name,slug,visibility,profiles!inner(username))`)
+        .select(`id,title,image_url,product_url,price,seller,like_count,is_monetized,category,brand,primary_color,style_tags,created_at,catalogs!inner(id,name,slug,visibility,profiles!inner(id,username))`)
         .eq("catalogs.visibility", "public");
 
-      if (selectedCategory !== "all") q = q.eq("category", selectedCategory);
+      if (selectedCategory !== "all") catalogQ = catalogQ.eq("category", selectedCategory);
+
+      // ── Feed post items ────────────────────────────────────────────────────
+      // Always fetch recent feed items to sprinkle into grid
+      let feedQ = supabase
+        .from("feed_post_items")
+        .select(`id,title,image_url,product_url,price,seller,like_count,created_at,feed_post_id`);
 
       if (mode === "trending") {
-        q = q.order("like_count", { ascending: false }).limit(40);
+        catalogQ = catalogQ.order("like_count", { ascending: false }).limit(40);
+        feedQ = feedQ.order("like_count", { ascending: false }).limit(8);
       } else if (mode === "new") {
-        q = q.order("created_at", { ascending: false }).limit(40);
-      } else if (mode === "following" && currentUserId) {
-        // Get followed user IDs
+        catalogQ = catalogQ.order("created_at", { ascending: false }).limit(40);
+        feedQ = feedQ.order("created_at", { ascending: false }).limit(8);
+      } else if (mode === "following") {
+        if (!currentUserId) { setItems([]); return; }
+
         const { data: followData } = await supabase
-          .from("follows").select("following_id").eq("follower_id", currentUserId);
+          .from("follows")
+          .select("following_id")
+          .eq("follower_id", currentUserId);
+
         const followedIds = (followData || []).map((f: any) => f.following_id);
         if (followedIds.length === 0) { setItems([]); return; }
-        q = q.in("catalogs.profiles.id", followedIds).order("created_at", { ascending: false }).limit(40);
-      } else if (mode === "following" && !currentUserId) {
-        setItems([]); return;
+
+        // Get all catalog IDs owned by followed users, then filter items by those catalogs
+        const { data: followedCatalogs } = await supabase
+          .from("catalogs")
+          .select("id")
+          .in("owner_id", followedIds)
+          .eq("visibility", "public");
+
+        const followedCatalogIds = (followedCatalogs || []).map((c: any) => c.id);
+
+        if (followedCatalogIds.length > 0) {
+          catalogQ = catalogQ
+            .in("catalog_id", followedCatalogIds)
+            .order("created_at", { ascending: false })
+            .limit(40);
+        } else {
+          // No catalogs from followed users
+          setItems([]);
+          return;
+        }
+
+        // Feed posts from followed users
+        const { data: followedPosts } = await supabase
+          .from("feed_posts")
+          .select("id")
+          .in("user_id", followedIds);
+
+        const followedPostIds = (followedPosts || []).map((p: any) => p.id);
+        if (followedPostIds.length > 0) {
+          feedQ = feedQ
+            .in("feed_post_id", followedPostIds)
+            .order("created_at", { ascending: false })
+            .limit(8);
+        } else {
+          feedQ = feedQ.limit(0); // no feed posts
+        }
       }
 
-      const { data, error } = await q;
-      if (error) throw error;
+      const [catalogResult, feedResult] = await Promise.all([catalogQ, feedQ]);
 
-      // Get liked items
+      if (catalogResult.error) console.error("Catalog items error:", catalogResult.error);
+
+      // ── Get liked IDs ──────────────────────────────────────────────────────
       let likedIds = new Set<string>();
       if (currentUserId) {
         const { data: liked } = await supabase.from("liked_items").select("item_id").eq("user_id", currentUserId);
         (liked || []).forEach((l: any) => likedIds.add(l.item_id));
       }
 
-      setItems((data || []).map((item: any) => ({
+      const formattedCatalog: SearchItem[] = (catalogResult.data || []).map((item: any) => ({
         ...item,
         is_liked: likedIds.has(item.id),
-        catalog: { id: item.catalogs.id, name: item.catalogs.name, slug: item.catalogs.slug, owner: { username: item.catalogs.profiles.username } },
-      })));
+        item_type: "catalog_item" as GridItemType,
+        catalog: {
+          id: item.catalogs.id,
+          name: item.catalogs.name,
+          slug: item.catalogs.slug,
+          owner: { username: item.catalogs.profiles.username },
+        },
+      }));
+
+      const formattedFeed: SearchItem[] = (feedResult.data || []).map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        image_url: item.image_url,
+        product_url: item.product_url,
+        price: item.price,
+        seller: item.seller,
+        like_count: item.like_count || 0,
+        is_liked: false,
+        is_monetized: false,
+        created_at: item.created_at,
+        item_type: "feed_post" as GridItemType,
+        feed_post_id: item.feed_post_id,
+        catalog: { id: "feed", name: "Feed Post", slug: "feed", owner: { username: "" } },
+      }));
+
+      // Scatter feed posts: 1 every ~8 catalog items
+      const merged: SearchItem[] = [];
+      let feedIdx = 0;
+      const FEED_INTERVAL = 8;
+      for (let i = 0; i < formattedCatalog.length; i++) {
+        if (i > 0 && i % FEED_INTERVAL === 0 && feedIdx < formattedFeed.length) {
+          merged.push(formattedFeed[feedIdx++]);
+        }
+        merged.push(formattedCatalog[i]);
+      }
+      while (feedIdx < formattedFeed.length) merged.push(formattedFeed[feedIdx++]);
+
+      setItems(merged);
     } catch (err) {
-      console.error(err);
+      console.error("loadItems error:", err);
       setItems([]);
     }
   }
@@ -696,17 +822,20 @@ function DiscoverContent() {
         const { data: bookmarked } = await supabase.from("bookmarked_catalogs").select("catalog_id").eq("user_id", currentUserId);
         (bookmarked || []).forEach((b: any) => bookmarkedIds.add(b.catalog_id));
       }
-
       const withCounts = await Promise.all((data || []).map(async (c: any) => {
         const { count } = await supabase.from("catalog_items").select("*", { count: "exact", head: true }).eq("catalog_id", c.id);
         return { ...c, is_bookmarked: bookmarkedIds.has(c.id), item_count: count || 0, owner: Array.isArray(c.profiles) ? c.profiles[0] : c.profiles };
       }));
-
       setCatalogs(withCounts);
     } catch (err) {
-      console.error(err);
-      setCatalogs([]);
+      console.error(err); setCatalogs([]);
     }
+  }
+
+  function saveScrollState() {
+    scrollCache.position = window.scrollY;
+    scrollCache.mode = mode;
+    scrollCache.category = selectedCategory;
   }
 
   async function trackClick(itemId: string, itemType: "catalog" | "feed") {
@@ -717,8 +846,11 @@ function DiscoverContent() {
 
   function handleItemClick(item: SearchItem, e: React.MouseEvent) {
     e.stopPropagation();
-    if (item.product_url) {
-      trackClick(item.id, item.catalog.id === "feed" ? "feed" : "catalog");
+    if (item.item_type === "feed_post" && item.feed_post_id) {
+      saveScrollState();
+      router.push(`/feed/${item.feed_post_id}`);
+    } else if (item.product_url) {
+      trackClick(item.id, "catalog");
       window.open(item.product_url, "_blank");
     }
   }
@@ -733,7 +865,8 @@ function DiscoverContent() {
       } else {
         await supabase.from(table).insert({ user_id: currentUserId, item_id: itemId });
       }
-      const update = (item: SearchItem) => item.id === itemId ? { ...item, is_liked: !currentlyLiked, like_count: item.like_count + (currentlyLiked ? -1 : 1) } : item;
+      const update = (item: SearchItem) =>
+        item.id === itemId ? { ...item, is_liked: !currentlyLiked, like_count: item.like_count + (currentlyLiked ? -1 : 1) } : item;
       setItems((prev) => prev.map(update));
       if (expandedItem?.id === itemId) setExpandedItem((prev) => prev ? update(prev) : null);
     } catch (err) { console.error(err); }
@@ -747,11 +880,12 @@ function DiscoverContent() {
       } else {
         await supabase.from("bookmarked_catalogs").insert({ user_id: currentUserId, catalog_id: catalogId });
       }
-      setCatalogs((prev) => prev.map((c) => c.id === catalogId ? { ...c, is_bookmarked: !currentlyBookmarked, bookmark_count: c.bookmark_count + (currentlyBookmarked ? -1 : 1) } : c));
+      setCatalogs((prev) => prev.map((c) =>
+        c.id === catalogId ? { ...c, is_bookmarked: !currentlyBookmarked, bookmark_count: c.bookmark_count + (currentlyBookmarked ? -1 : 1) } : c
+      ));
     } catch (err) { console.error(err); }
   }
 
-  // Build mixed grid: inject catalog spotlight cards every N items
   function buildMixedGrid() {
     if (items.length === 0) return null;
     const SPOTLIGHT_INTERVAL = 8;
@@ -759,21 +893,21 @@ function DiscoverContent() {
     let catalogIdx = 0;
 
     for (let i = 0; i < items.length; i++) {
-      // Insert catalog spotlight every SPOTLIGHT_INTERVAL items
       if (i > 0 && i % SPOTLIGHT_INTERVAL === 0 && catalogIdx < catalogs.length) {
         grid.push(
           <CatalogSpotlightCard
-            key={`catalog-${catalogs[catalogIdx].id}`}
+            key={`spotlight-${catalogs[catalogIdx].id}`}
             catalog={catalogs[catalogIdx]}
             onBookmark={toggleBookmark}
             router={router}
+            onNavigateAway={saveScrollState}
           />
         );
         catalogIdx++;
       }
       grid.push(
         <ItemCard
-          key={items[i].id}
+          key={`${items[i].item_type}-${items[i].id}`}
           item={items[i]}
           onLike={toggleLike}
           onExpand={setExpandedItem}
@@ -785,10 +919,21 @@ function DiscoverContent() {
   }
 
   const modeLabels: Record<DiscoverMode, string> = {
-    trending: "TRENDING",
-    new: "NEW DROPS",
-    following: "FOLLOWING",
+    trending: "TRENDING", new: "NEW DROPS", following: "FOLLOWING",
   };
+
+  function handleModeChange(m: DiscoverMode) {
+    // Reset scroll when intentionally switching tabs
+    scrollCache.position = 0;
+    isFirstLoad.current = true;
+    setMode(m);
+  }
+
+  function handleCategoryChange(cat: string) {
+    scrollCache.position = 0;
+    isFirstLoad.current = true;
+    setSelectedCategory(cat);
+  }
 
   return (
     <>
@@ -801,38 +946,30 @@ function DiscoverContent() {
         {/* ── Header ── */}
         <div className="border-b border-black/15 px-6 md:px-10 pt-6 pb-0 md:pt-10">
           <div className="max-w-7xl mx-auto">
-            {/* Top row: title + search button */}
             <div className="flex items-end justify-between mb-6">
-              <h1
-                className="text-4xl md:text-6xl font-black tracking-tighter leading-none"
-                style={{ fontFamily: "Archivo Black, sans-serif" }}
-              >
+              <h1 className="text-4xl md:text-6xl font-black tracking-tighter leading-none" style={{ fontFamily: "Archivo Black, sans-serif" }}>
                 DISCOVER
               </h1>
+              {/* FIX: no border/box on search button — just icon */}
               <button
                 onClick={() => setSearchOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 border-2 border-black hover:bg-black hover:text-white transition-all group"
+                className="flex items-center gap-2 hover:opacity-40 transition-opacity pb-1"
               >
-                <span className="text-lg leading-none group-hover:text-white">⌕</span>
-                <span
-                  className="text-xs tracking-[0.3em] font-black hidden md:inline"
-                  style={{ fontFamily: "Bebas Neue, sans-serif" }}
-                >
+                <span className="text-2xl leading-none">⌕</span>
+                <span className="text-xs tracking-[0.3em] font-black hidden md:inline opacity-50" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
                   SEARCH
                 </span>
               </button>
             </div>
 
             {/* Mode tabs */}
-            <div className="flex gap-0 border-b-0">
+            <div className="flex gap-0">
               {(["trending", "new", "following"] as DiscoverMode[]).map((m) => (
                 <button
                   key={m}
-                  onClick={() => setMode(m)}
+                  onClick={() => handleModeChange(m)}
                   className={`px-5 py-3 text-xs tracking-[0.3em] font-black border-b-2 transition-all ${
-                    mode === m
-                      ? "border-black text-black"
-                      : "border-transparent text-black/30 hover:text-black/60 hover:border-black/20"
+                    mode === m ? "border-black text-black" : "border-transparent text-black/30 hover:text-black/60 hover:border-black/20"
                   }`}
                   style={{ fontFamily: "Bebas Neue, sans-serif" }}
                 >
@@ -843,14 +980,14 @@ function DiscoverContent() {
           </div>
         </div>
 
-        {/* ── Category filter chips ── */}
+        {/* ── Category chips ── */}
         <div className="border-b border-black/10 overflow-x-auto">
           <div className="max-w-7xl mx-auto px-6 md:px-10">
             <div className="flex gap-2 py-3 min-w-max">
               {categories.map((cat) => (
                 <button
                   key={cat.value}
-                  onClick={() => setSelectedCategory(cat.value)}
+                  onClick={() => handleCategoryChange(cat.value)}
                   className={`px-3 py-1 text-[10px] tracking-wider font-black border transition-all whitespace-nowrap ${
                     selectedCategory === cat.value
                       ? "bg-black text-white border-black"
@@ -870,31 +1007,21 @@ function DiscoverContent() {
           <div className="max-w-7xl mx-auto">
             {loading ? (
               <div className="text-center py-32">
-                <p className="text-xs tracking-[0.5em] opacity-30 animate-pulse" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
-                  LOADING...
-                </p>
+                <p className="text-xs tracking-[0.5em] opacity-30 animate-pulse" style={{ fontFamily: "Bebas Neue, sans-serif" }}>LOADING...</p>
               </div>
             ) : items.length === 0 ? (
               <div className="text-center py-32">
                 {mode === "following" && !currentUserId ? (
                   <div className="space-y-3">
                     <p className="text-2xl tracking-wider opacity-30" style={{ fontFamily: "Bebas Neue, sans-serif" }}>LOG IN TO SEE YOUR FEED</p>
-                    <button
-                      onClick={() => router.push("/login")}
-                      className="px-6 py-2.5 bg-black text-white text-xs tracking-[0.3em] font-black hover:bg-white hover:text-black border-2 border-black transition-all"
-                      style={{ fontFamily: "Bebas Neue, sans-serif" }}
-                    >
+                    <button onClick={() => router.push("/login")} className="px-6 py-2.5 bg-black text-white text-xs tracking-[0.3em] font-black hover:bg-white hover:text-black border-2 border-black transition-all" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
                       LOG IN
                     </button>
                   </div>
                 ) : mode === "following" ? (
                   <div className="space-y-3">
                     <p className="text-2xl tracking-wider opacity-30" style={{ fontFamily: "Bebas Neue, sans-serif" }}>FOLLOW CREATORS TO SEE THEIR PIECES</p>
-                    <button
-                      onClick={() => setMode("trending")}
-                      className="px-6 py-2.5 bg-black text-white text-xs tracking-[0.3em] font-black border-2 border-black hover:bg-white hover:text-black transition-all"
-                      style={{ fontFamily: "Bebas Neue, sans-serif" }}
-                    >
+                    <button onClick={() => handleModeChange("trending")} className="px-6 py-2.5 bg-black text-white text-xs tracking-[0.3em] font-black border-2 border-black hover:bg-white hover:text-black transition-all" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
                       BROWSE TRENDING
                     </button>
                   </div>
@@ -904,14 +1031,11 @@ function DiscoverContent() {
               </div>
             ) : (
               <>
-                {/* Result count + mode label */}
                 <div className="flex items-center justify-between mb-5">
                   <p className="text-[10px] tracking-[0.4em] opacity-30 font-black" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
-                    {modeLabels[mode]} — {items.length} ITEMS
+                    {modeLabels[mode]} — {items.filter(i => i.item_type === "catalog_item").length} ITEMS
                   </p>
                 </div>
-
-                {/* Mixed grid */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
                   {buildMixedGrid()}
                 </div>
@@ -920,7 +1044,6 @@ function DiscoverContent() {
           </div>
         </div>
 
-        {/* ── Modals ── */}
         {expandedItem && (
           <ExpandedItemModal
             item={expandedItem}
@@ -928,6 +1051,7 @@ function DiscoverContent() {
             onLike={toggleLike}
             onClickThrough={handleItemClick}
             router={router}
+            onNavigateAway={saveScrollState}
           />
         )}
 
@@ -935,9 +1059,8 @@ function DiscoverContent() {
           <SearchOverlay
             onClose={() => setSearchOpen(false)}
             currentUserId={currentUserId}
-            isOnboarded={isOnboarded}
             router={router}
-            onRequireLogin={() => setShowLoginMessage(true)}
+            onNavigateAway={saveScrollState}
           />
         )}
 
