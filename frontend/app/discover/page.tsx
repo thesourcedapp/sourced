@@ -556,7 +556,7 @@ function SearchOverlay({
         .map((p: any) => ({
           id: p.id, username: p.username, full_name: p.full_name ?? null,
           avatar_url: p.avatar_url ?? null,
-          follower_count: searchFollowerCounts[p.id] ?? num(p.follower_count),
+          follower_count: searchFollowerCounts[p.id] ?? 0,
           is_following: false, is_verified: !!p.is_verified,
         }))
         .sort((a: any, b: any) => b.follower_count - a.follower_count)
@@ -798,7 +798,6 @@ function DiscoverContent() {
       const activeMode = currentMode ?? mode;
       if (activeMode === "following") {
         // ── Step 1: who does the user follow ───────────────────────────────
-        console.log("[FOLLOWING] userId:", userId);
         if (!userId) { console.log("[FOLLOWING] no userId, bailing"); setItems([]); return; }
 
         const { data: followRows, error: followErr } = await supabase
@@ -806,11 +805,9 @@ function DiscoverContent() {
           .select("following_id")
           .eq("follower_id", userId);
 
-        console.log("[FOLLOWING] followRows:", followRows, "error:", followErr);
         if (followErr) throw followErr;
 
         const followedIds: string[] = (followRows || []).map((r: any) => r.following_id);
-        console.log("[FOLLOWING] followedIds:", followedIds);
         if (followedIds.length === 0) { console.log("[FOLLOWING] no followed users"); setItems([]); return; }
 
         // ── Step 2: get catalog IDs owned by followed users ─────────────────
@@ -820,18 +817,15 @@ function DiscoverContent() {
           .in("owner_id", followedIds)
           .eq("visibility", "public");
 
-        console.log("[FOLLOWING] ownedCats:", ownedCats, "error:", catErr);
         if (catErr) throw catErr;
         const ownedCatIds: string[] = (ownedCats || []).map((c: any) => c.id);
-        console.log("[FOLLOWING] ownedCatIds:", ownedCatIds);
 
         // ── Step 3: get feed post IDs from followed users ───────────────────
         const { data: ownedPosts, error: postErr } = await supabase
           .from("feed_posts")
           .select("id")
-          .in("user_id", followedIds);
+          .in("owner_id", followedIds);
 
-        console.log("[FOLLOWING] ownedPosts:", ownedPosts, "error:", postErr);
         if (postErr) throw postErr;
         const ownedPostIds: string[] = (ownedPosts || []).map((p: any) => p.id);
 
@@ -847,8 +841,6 @@ function DiscoverContent() {
           const { data, error } = await q;
           console.log("[FOLLOWING] catalogItems:", data?.length, "error:", error);
           catalogItems = data || [];
-        } else {
-          console.log("[FOLLOWING] no ownedCatIds, skipping catalog items");
         }
 
         // ── Step 5: fetch feed post items by feed_post_id — NO join filters ─
@@ -1006,7 +998,7 @@ function DiscoverContent() {
       // Get popular creators NOT already followed — count followers from followers table directly
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("id,username,full_name,avatar_url,follower_count,is_onboarded,is_verified")
+        .select("id,username,full_name,avatar_url,is_onboarded,is_verified")
         .eq("is_onboarded", true)
         .limit(50);
 
@@ -1029,7 +1021,7 @@ function DiscoverContent() {
         .map((p: any) => ({
           id: p.id, username: p.username, full_name: p.full_name ?? null,
           avatar_url: p.avatar_url ?? null,
-          follower_count: realFollowerCounts[p.id] ?? num(p.follower_count),
+          follower_count: realFollowerCounts[p.id] ?? 0,
           is_following: false, is_verified: !!p.is_verified,
         }))
         .sort((a, b) => b.follower_count - a.follower_count)
