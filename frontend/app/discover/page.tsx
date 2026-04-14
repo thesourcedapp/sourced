@@ -456,42 +456,37 @@ function SearchOverlay({
         // ── Catalogs ──────────────────────────────────────────────────────────
         supabase
           .from("catalogs")
-          .select("id,name,description,image_url,bookmark_count,slug,owner_id,profiles!catalogs_owner_id_fkey(username,avatar_url)")
+          .select("id,name,description,image_url,bookmark_count,slug,owner_id")
           .eq("visibility", "public")
           .or(`name.ilike.%${query}%,description.ilike.%${query}%`)
           .limit(6),
 
-        // ── Profiles: by username (always safe) ───────────────────────────────
+        // ── Profiles: select * exactly like the working original, filter client-side
         supabase
           .from("profiles")
-          .select("id,username,full_name,avatar_url,follower_count,is_onboarded,is_verified")
-          .eq("is_onboarded", true)
-          .ilike("username", `%${query}%`)
-          .order("follower_count", { ascending: false })
-          .limit(8),
+          .select("*")
+          .limit(50),
 
-        // ── Profiles: by full_name (guard null first) ─────────────────────────
-        supabase
-          .from("profiles")
-          .select("id,username,full_name,avatar_url,follower_count,is_onboarded,is_verified")
-          .eq("is_onboarded", true)
-          .not("full_name", "is", null)
-          .ilike("full_name", `%${query}%`)
-          .order("follower_count", { ascending: false })
-          .limit(8),
+        // placeholder so Promise.all indices stay aligned
+        Promise.resolve({ data: [], error: null }),
       ]);
 
-      // Enrich catalog items: fetch catalog name/slug/owner for the catalog_ids we got
+      // Enrich catalog items: two plain queries — no join hints
       const catalogIds = [...new Set((itemsRes.data || []).map((i: any) => i.catalog_id).filter(Boolean))];
       let catalogMap: Record<string, { name: string; slug: string; owner_username: string }> = {};
       if (catalogIds.length > 0) {
         const { data: catalogRows } = await supabase
           .from("catalogs")
-          .select("id,name,slug,profiles!catalogs_owner_id_fkey(username)")
+          .select("id,name,slug,owner_id")
           .in("id", catalogIds);
+        const ownerIds2 = [...new Set((catalogRows || []).map((c: any) => c.owner_id).filter(Boolean))];
+        let ownerMap2: Record<string, string> = {};
+        if (ownerIds2.length > 0) {
+          const { data: ownerRows2 } = await supabase.from("profiles").select("id,username").in("id", ownerIds2);
+          (ownerRows2 || []).forEach((p: any) => { ownerMap2[p.id] = p.username ?? ""; });
+        }
         (catalogRows || []).forEach((c: any) => {
-          const p = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles;
-          catalogMap[c.id] = { name: c.name, slug: c.slug, owner_username: p?.username ?? "" };
+          catalogMap[c.id] = { name: c.name, slug: c.slug, owner_username: ownerMap2[c.owner_id] ?? "" };
         });
       }
 
@@ -518,30 +513,41 @@ function SearchOverlay({
         };
       });
 
+      // Enrich catalog search results with owner usernames
+      const catSearchOwnerIds = [...new Set((catalogsRes.data || []).map((c: any) => c.owner_id).filter(Boolean))];
+      let catSearchOwnerMap: Record<string, { username: string; avatar_url: string | null }> = {};
+      if (catSearchOwnerIds.length > 0) {
+        const { data: catSearchOwners } = await supabase.from("profiles").select("id,username,avatar_url").in("id", catSearchOwnerIds);
+        (catSearchOwners || []).forEach((p: any) => { catSearchOwnerMap[p.id] = { username: p.username ?? "", avatar_url: p.avatar_url ?? null }; });
+      }
       const catalogs: SpotlightCatalog[] = (catalogsRes.data || []).map((c: any) => {
-        const p = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles;
+        const owner = catSearchOwnerMap[c.owner_id] ?? { username: "", avatar_url: null };
         return {
           id: c.id, name: c.name, description: c.description, image_url: c.image_url,
           bookmark_count: num(c.bookmark_count), is_bookmarked: false, item_count: 0,
-          slug: c.slug, owner_username: p?.username ?? "", owner_avatar: p?.avatar_url ?? null,
+          slug: c.slug, owner_username: owner.username, owner_avatar: owner.avatar_url,
         };
       });
 
-      // Merge + dedup profiles
-      const seen = new Set<string>();
-      const profiles: RecommendedProfile[] = [];
-      for (const p of [...(profilesByUser.data || []), ...(profilesByName.data || [])]) {
-        if (!seen.has(p.id) && p.username) {
-          seen.add(p.id);
-          profiles.push({
-            id: p.id, username: p.username, full_name: p.full_name ?? null,
-            avatar_url: p.avatar_url ?? null, follower_count: num(p.follower_count),
-            is_following: false, is_verified: !!p.is_verified,
-          });
-        }
-      }
+      // Filter + sort profiles client-side (same approach as working original)
+      const allProfiles = (profilesByUser.data || [])
+        .filter((p: any) => p.is_onboarded === true && p.username)
+        .filter((p: any) => {
+          const q = query.toLowerCase();
+          return (
+            p.username?.toLowerCase().includes(q) ||
+            p.full_name?.toLowerCase().includes(q) ||
+            p.bio?.toLowerCase().includes(q)
+          );
+        });
+      allProfiles.sort((a: any, b: any) => (b.follower_count || 0) - (a.follower_count || 0));
+      const profiles: RecommendedProfile[] = allProfiles.slice(0, 8).map((p: any) => ({
+        id: p.id, username: p.username, full_name: p.full_name ?? null,
+        avatar_url: p.avatar_url ?? null, follower_count: num(p.follower_count),
+        is_following: false, is_verified: !!p.is_verified,
+      }));
 
-      setResults({ items, catalogs, profiles: profiles.slice(0, 8) });
+      setResults({ items, catalogs, profiles });
     } finally {
       setSearching(false);
     }
@@ -758,8 +764,10 @@ function DiscoverContent() {
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
+    // Capture userId at call-time to avoid stale closure
+    const userId = currentUserId;
     try {
-      await Promise.all([fetchItems(), fetchSpotlights(), mode === "following" ? fetchFollowRecs() : Promise.resolve()]);
+      await Promise.all([fetchItems(userId), fetchSpotlights(userId), mode === "following" ? fetchFollowRecs(userId) : Promise.resolve()]);
     } finally {
       setLoading(false);
       loadingRef.current = false;
@@ -767,19 +775,19 @@ function DiscoverContent() {
   }
 
   // ─── fetchItems ────────────────────────────────────────────────────────────
-  async function fetchItems() {
+  async function fetchItems(userId: string | null) {
     try {
       let catalogItems: any[] = [];
       let feedItems: any[] = [];
 
       if (mode === "following") {
         // ── Step 1: who does the user follow ───────────────────────────────
-        if (!currentUserId) { setItems([]); return; }
+        if (!userId) { setItems([]); return; }
 
         const { data: followRows, error: followErr } = await supabase
           .from("follows")
           .select("following_id")
-          .eq("follower_id", currentUserId);
+          .eq("follower_id", userId);
 
         if (followErr) throw followErr;
 
@@ -851,27 +859,32 @@ function DiscoverContent() {
         feedItems = feedRes.data || [];
       }
 
-      // ── Enrich: fetch catalog info for all catalog_ids in one query ────────
+      // ── Enrich: catalog info + owner usernames via two plain queries ─────────
       const catalogIds = [...new Set(catalogItems.map((i: any) => i.catalog_id).filter(Boolean))];
       let catalogInfoMap: Record<string, { name: string; slug: string; owner_username: string }> = {};
       if (catalogIds.length > 0) {
         const { data: catInfoRows } = await supabase
           .from("catalogs")
-          .select("id,name,slug,profiles!catalogs_owner_id_fkey(username)")
+          .select("id,name,slug,owner_id")
           .in("id", catalogIds);
+        const ownerIds = [...new Set((catInfoRows || []).map((c: any) => c.owner_id).filter(Boolean))];
+        let ownerMap: Record<string, string> = {};
+        if (ownerIds.length > 0) {
+          const { data: ownerRows } = await supabase.from("profiles").select("id,username").in("id", ownerIds);
+          (ownerRows || []).forEach((p: any) => { ownerMap[p.id] = p.username ?? ""; });
+        }
         (catInfoRows || []).forEach((c: any) => {
-          const p = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles;
-          catalogInfoMap[c.id] = { name: c.name, slug: c.slug, owner_username: p?.username ?? "" };
+          catalogInfoMap[c.id] = { name: c.name, slug: c.slug, owner_username: ownerMap[c.owner_id] ?? "" };
         });
       }
 
       // ── Liked IDs ──────────────────────────────────────────────────────────
       let likedIds = new Set<string>();
-      if (currentUserId) {
+      if (userId) {
         const { data: liked } = await supabase
           .from("liked_items")
           .select("item_id")
-          .eq("user_id", currentUserId);
+          .eq("user_id", userId);
         (liked || []).forEach((l: any) => likedIds.add(l.item_id));
       }
 
@@ -916,29 +929,37 @@ function DiscoverContent() {
   }
 
   // ─── fetchSpotlights ───────────────────────────────────────────────────────
-  async function fetchSpotlights() {
+  async function fetchSpotlights(userId: string | null) {
     try {
       const { data } = await supabase
         .from("catalogs")
-        .select("id,name,description,image_url,bookmark_count,slug,profiles!catalogs_owner_id_fkey(username,avatar_url)")
+        .select("id,name,description,image_url,bookmark_count,slug,owner_id")
         .eq("visibility", "public")
         .order("bookmark_count", { ascending: false })
         .limit(8);
 
       let bookmarkedIds = new Set<string>();
-      if (currentUserId) {
-        const { data: bm } = await supabase.from("bookmarked_catalogs").select("catalog_id").eq("user_id", currentUserId);
+      if (userId) {
+        const { data: bm } = await supabase.from("bookmarked_catalogs").select("catalog_id").eq("user_id", userId);
         (bm || []).forEach((b: any) => bookmarkedIds.add(b.catalog_id));
+      }
+
+      // Fetch owner usernames for spotlights in one batch
+      const spotOwnerIds = [...new Set((data || []).map((c: any) => c.owner_id).filter(Boolean))];
+      let spotOwnerMap: Record<string, { username: string; avatar_url: string | null }> = {};
+      if (spotOwnerIds.length > 0) {
+        const { data: spotOwners } = await supabase.from("profiles").select("id,username,avatar_url").in("id", spotOwnerIds);
+        (spotOwners || []).forEach((p: any) => { spotOwnerMap[p.id] = { username: p.username ?? "", avatar_url: p.avatar_url ?? null }; });
       }
 
       const enriched = await Promise.all((data || []).map(async (c: any) => {
         const { count } = await supabase.from("catalog_items").select("*", { count: "exact", head: true }).eq("catalog_id", c.id);
-        const p = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles;
+        const owner = spotOwnerMap[c.owner_id] ?? { username: "", avatar_url: null };
         return {
           id: c.id, name: c.name, description: c.description, image_url: c.image_url,
           bookmark_count: num(c.bookmark_count), is_bookmarked: bookmarkedIds.has(c.id),
           item_count: count || 0, slug: c.slug,
-          owner_username: p?.username ?? "", owner_avatar: p?.avatar_url ?? null,
+          owner_username: owner.username, owner_avatar: owner.avatar_url,
         };
       }));
       setSpotlightCatalogs(enriched);
@@ -946,16 +967,16 @@ function DiscoverContent() {
   }
 
   // ─── fetchFollowRecs ───────────────────────────────────────────────────────
-  async function fetchFollowRecs() {
-    if (!currentUserId) { setFollowRecs([]); return; }
+  async function fetchFollowRecs(userId: string | null) {
+    if (!userId) { setFollowRecs([]); return; }
     try {
       // Get who user already follows
       const { data: followRows } = await supabase
         .from("follows")
         .select("following_id")
-        .eq("follower_id", currentUserId);
+        .eq("follower_id", userId);
       const alreadyFollowing = new Set((followRows || []).map((r: any) => r.following_id));
-      alreadyFollowing.add(currentUserId); // exclude self
+      alreadyFollowing.add(userId); // exclude self
 
       // Get popular creators NOT already followed
       const { data: profiles } = await supabase
