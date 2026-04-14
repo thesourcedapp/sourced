@@ -798,17 +798,20 @@ function DiscoverContent() {
       const activeMode = currentMode ?? mode;
       if (activeMode === "following") {
         // ── Step 1: who does the user follow ───────────────────────────────
-        if (!userId) { setItems([]); return; }
+        console.log("[FOLLOWING] userId:", userId);
+        if (!userId) { console.log("[FOLLOWING] no userId, bailing"); setItems([]); return; }
 
         const { data: followRows, error: followErr } = await supabase
           .from("followers")
           .select("following_id")
           .eq("follower_id", userId);
 
+        console.log("[FOLLOWING] followRows:", followRows, "error:", followErr);
         if (followErr) throw followErr;
 
         const followedIds: string[] = (followRows || []).map((r: any) => r.following_id);
-        if (followedIds.length === 0) { setItems([]); return; }
+        console.log("[FOLLOWING] followedIds:", followedIds);
+        if (followedIds.length === 0) { console.log("[FOLLOWING] no followed users"); setItems([]); return; }
 
         // ── Step 2: get catalog IDs owned by followed users ─────────────────
         const { data: ownedCats, error: catErr } = await supabase
@@ -817,8 +820,10 @@ function DiscoverContent() {
           .in("owner_id", followedIds)
           .eq("visibility", "public");
 
+        console.log("[FOLLOWING] ownedCats:", ownedCats, "error:", catErr);
         if (catErr) throw catErr;
         const ownedCatIds: string[] = (ownedCats || []).map((c: any) => c.id);
+        console.log("[FOLLOWING] ownedCatIds:", ownedCatIds);
 
         // ── Step 3: get feed post IDs from followed users ───────────────────
         const { data: ownedPosts, error: postErr } = await supabase
@@ -826,6 +831,7 @@ function DiscoverContent() {
           .select("id")
           .in("user_id", followedIds);
 
+        console.log("[FOLLOWING] ownedPosts:", ownedPosts, "error:", postErr);
         if (postErr) throw postErr;
         const ownedPostIds: string[] = (ownedPosts || []).map((p: any) => p.id);
 
@@ -838,8 +844,11 @@ function DiscoverContent() {
             .order("created_at", { ascending: false })
             .limit(50);
           if (category !== "all") q = q.eq("category", category);
-          const { data } = await q;
+          const { data, error } = await q;
+          console.log("[FOLLOWING] catalogItems:", data?.length, "error:", error);
           catalogItems = data || [];
+        } else {
+          console.log("[FOLLOWING] no ownedCatIds, skipping catalog items");
         }
 
         // ── Step 5: fetch feed post items by feed_post_id — NO join filters ─
