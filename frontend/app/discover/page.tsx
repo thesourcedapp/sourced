@@ -625,7 +625,7 @@ function SearchOverlay({
   const hasResults = results.items.length > 0 || results.catalogs.length > 0 || results.profiles.length > 0;
 
   return (
-    <div className="absolute inset-0 z-[200] bg-white flex flex-col">
+    <div className="absolute inset-0 z-[200] bg-white flex flex-col" onTouchMove={(e) => e.stopPropagation()}>
       {/* Search input */}
       <div className="border-b-2 border-black flex items-center px-5 md:px-10 gap-3 h-16 flex-shrink-0">
         <span className="text-xl opacity-30 select-none flex-shrink-0">⌕</span>
@@ -657,7 +657,7 @@ function SearchOverlay({
             <p className="text-3xl tracking-[0.2em]" style={{ fontFamily: "Bebas Neue, sans-serif" }}>NO RESULTS</p>
           </div>
         ) : (
-          <div className="px-5 md:px-10 py-6 pb-32 space-y-8 max-w-5xl mx-auto">
+          <div className="px-5 md:px-10 py-6 pb-32 space-y-8 max-w-5xl mx-auto min-h-full">
 
             {/* Profiles */}
             {results.profiles.length > 0 && (
