@@ -1040,11 +1040,16 @@ export default function CatalogDetailPage() {
                       {/* ── FTC DISCLOSURE BADGE (grid) ── */}
                       {item.is_monetized && (
                         <div
-                          className="absolute top-2 right-2 px-1.5 py-0.5 bg-white/90 text-black text-[7px] tracking-widest font-black border border-black/20 z-10"
-                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                          className="absolute top-0 left-0 z-10"
                           title="Affiliate link — we may earn a commission at no cost to you"
                         >
-                          #AD
+                          <div
+                            className="bg-black text-white px-2 py-0.5 flex items-center gap-1"
+                            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                          >
+                            <span className="text-[9px] tracking-[0.3em] opacity-60">AFFILIATED</span>
+                            <span className="text-[10px] tracking-widest">$</span>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1101,26 +1106,26 @@ export default function CatalogDetailPage() {
                       {/* ── FTC DISCLOSURE BADGE (compact thumbnail) ── */}
                       {item.is_monetized && (
                         <div
-                          className="absolute top-0 right-0 px-1 bg-white/90 text-black text-[6px] tracking-widest font-black border-b border-l border-black/20"
+                          className="absolute bottom-0 left-0 bg-black text-white px-1 py-0.5"
                           style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                           title="Affiliate link — we may earn a commission at no cost to you"
                         >
-                          #AD
+                          <span className="text-[7px] tracking-widest">$</span>
                         </div>
                       )}
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      {/* Title + inline #AD label for compact text row */}
+                      {/* Title + inline $ label for compact text row */}
                       <div className="flex items-center gap-1.5">
                         <h3 className="text-xs md:text-sm font-black tracking-wide uppercase truncate" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
                         {item.is_monetized && (
                           <span
-                            className="flex-shrink-0 px-1 py-0.5 bg-black/8 text-black text-[7px] tracking-widest font-black border border-black/20"
+                            className="flex-shrink-0 px-1.5 py-0.5 bg-black text-white text-[7px] tracking-widest"
                             style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                             title="Affiliate link — we may earn a commission at no cost to you"
                           >
-                            #AD
+                            $
                           </span>
                         )}
                       </div>
@@ -1333,9 +1338,20 @@ export default function CatalogDetailPage() {
 
                       {/* ── FTC DISCLOSURE (expanded modal) ── */}
                       {expandedItem.is_monetized && (
-                        <p className="text-[9px] tracking-[0.25em] opacity-40 mt-1" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                          #AD · AFFILIATE LINK — WE MAY EARN A COMMISSION AT NO COST TO YOU
-                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span
+                            className="px-2 py-0.5 bg-black text-white text-[9px] tracking-[0.4em]"
+                            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                          >
+                            $
+                          </span>
+                          <span
+                            className="text-[9px] tracking-[0.2em] opacity-40"
+                            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                          >
+                            AFFILIATE LINK — WE MAY EARN A COMMISSION
+                          </span>
+                        </div>
                       )}
                     </div>
 
