@@ -306,13 +306,10 @@ function ItemModal({
   onRequireLogin: () => void;
 }) {
   useEffect(() => {
-    document.body.style.overflow = "hidden";
+    // Don't touch document.body.overflow — page uses its own scroll container
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
-    return () => {
-      document.body.style.overflow = "";
-      window.removeEventListener("keydown", h);
-    };
+    return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
   function handleLike() {
@@ -321,80 +318,104 @@ function ItemModal({
   }
 
   return (
+    // Backdrop — fixed so it truly covers viewport and can't be scrolled behind
     <div
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/85 backdrop-blur-sm"
+      className="fixed inset-0 z-[500] flex items-end md:items-center justify-center"
+      style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
       onClick={onClose}
     >
+      {/* Sheet — compact bottom sheet on mobile, centered card on desktop */}
       <div
-        className="relative w-full md:max-w-2xl bg-white"
+        className="relative w-full md:w-auto md:min-w-[400px] md:max-w-lg bg-white shadow-2xl"
+        style={{ maxHeight: "65vh", borderRadius: "14px 14px 0 0" }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Drag handle hint — mobile only */}
+        <div className="flex justify-center pt-2.5 pb-1 md:hidden">
+          <div className="w-9 h-1 bg-black/15 rounded-full" />
+        </div>
+
+        {/* Close button — always visible, top right */}
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-10 w-7 h-7 flex items-center justify-center bg-black/5 hover:bg-black/10 transition-colors text-xs font-black"
+          className="absolute top-2.5 right-3 z-10 w-7 h-7 flex items-center justify-center bg-black/8 hover:bg-black/15 transition-colors text-xs font-black rounded-full"
           style={{ fontFamily: "Bebas Neue, sans-serif" }}
         >
           ✕
         </button>
-        <div className="flex flex-col md:flex-row">
-          {/* Image */}
-          <div className="w-full md:w-64 aspect-square flex-shrink-0 bg-black/5">
-            <img src={item.image_url} alt={item.title} className="w-full h-full object-contain" />
+
+        {/* Content — side by side: small image left, info right */}
+        <div className="flex gap-0 overflow-hidden" style={{ maxHeight: "calc(65vh - 28px)" }}>
+          {/* Image — small fixed square, never dominates */}
+          <div className="w-24 h-24 md:w-40 md:h-40 flex-shrink-0 bg-black/5 self-start m-3 mr-0">
+            <img
+              src={item.image_url}
+              alt={item.title}
+              className="w-full h-full object-cover"
+            />
           </div>
-          {/* Info */}
-          <div className="flex-1 p-5 flex flex-col justify-between min-h-0">
-            <div className="space-y-2 mb-4">
-              <div>
-                <h2 className="text-lg md:text-2xl font-black tracking-tighter leading-tight" style={{ fontFamily: "Archivo Black, sans-serif" }}>
-                  {item.title}
-                </h2>
-                {item.is_monetized && (
-                  <p className="text-[8px] tracking-[0.3em] opacity-30 mt-0.5" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
-                    $ AFFILIATED — CREATOR EARNS COMMISSION
-                  </p>
-                )}
-              </div>
-              {item.brand && <p className="text-[10px] tracking-wider opacity-50 uppercase">Brand: {item.brand}</p>}
-              {item.seller && <p className="text-[10px] tracking-wider opacity-50 uppercase">Seller: {item.seller}</p>}
-              {item.price && (
-                <p className="text-xl font-black" style={{ fontFamily: "Bebas Neue, sans-serif" }}>${item.price}</p>
-              )}
-              {item.style_tags && item.style_tags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {item.style_tags.slice(0, 5).map((tag, i) => (
-                    <span key={i} className="px-1.5 py-0.5 bg-black/5 text-[8px] tracking-wider border border-black/10" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
-                      {tag}
-                    </span>
-                  ))}
-                </div>
+
+          {/* Info — scrollable interior so nothing ever gets cut off */}
+          <div className="flex-1 p-3 overflow-y-auto flex flex-col gap-2" style={{ WebkitOverflowScrolling: "touch" }}>
+            <div>
+              <h2 className="text-sm md:text-lg font-black tracking-tighter leading-tight pr-6" style={{ fontFamily: "Archivo Black, sans-serif" }}>
+                {item.title}
+              </h2>
+              {item.is_monetized && (
+                <p className="text-[7px] tracking-[0.3em] opacity-30 mt-0.5" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
+                  $ AFFILIATED
+                </p>
               )}
             </div>
-            <div className="space-y-2">
+
+            <div className="space-y-0.5">
+              {item.brand && <p className="text-[9px] tracking-wider opacity-40 uppercase">Brand: {item.brand}</p>}
+              {item.seller && <p className="text-[9px] tracking-wider opacity-40 uppercase">Seller: {item.seller}</p>}
+            </div>
+
+            {item.price && (
+              <p className="text-base font-black" style={{ fontFamily: "Bebas Neue, sans-serif" }}>${item.price}</p>
+            )}
+
+            {item.style_tags && item.style_tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {item.style_tags.slice(0, 4).map((tag, i) => (
+                  <span key={i} className="px-1.5 py-0.5 bg-black/5 text-[7px] tracking-wider border border-black/10" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex flex-col gap-1.5 pt-1 pb-2">
               <button
                 onClick={handleLike}
-                className={`w-full py-2.5 border-2 text-[10px] tracking-[0.3em] font-black transition-all ${
-                  item.is_liked ? "bg-black text-white border-black" : "border-black hover:bg-black hover:text-white"
+                className={`w-full py-2 border text-[9px] tracking-[0.25em] font-black transition-all ${
+                  item.is_liked ? "bg-black text-white border-black" : "border-black/30 hover:border-black hover:bg-black/5"
                 }`}
                 style={{ fontFamily: "Bebas Neue, sans-serif" }}
               >
-                {item.is_liked ? "♥ LIKED" : "♡ LIKE"} ({item.like_count})
+                {item.is_liked ? `♥ LIKED (${item.like_count})` : `♡ LIKE (${item.like_count})`}
               </button>
+
               {item.product_url && (
                 <button
                   onClick={() => {
                     try { fetch("/api/track-click", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemId: item.id, itemType: "catalog", userId: currentUserId }) }); } catch {}
                     window.open(item.product_url!, "_blank");
                   }}
-                  className="w-full py-2.5 bg-black text-white hover:bg-white hover:text-black border-2 border-black transition-all text-[10px] tracking-[0.3em] font-black"
+                  className="w-full py-2 bg-black text-white hover:bg-white hover:text-black border border-black transition-all text-[9px] tracking-[0.25em] font-black"
                   style={{ fontFamily: "Bebas Neue, sans-serif" }}
                 >
                   VIEW PRODUCT ↗
                 </button>
               )}
+
               {item.catalog_slug && item.owner_username && (
                 <button
                   onClick={() => { onClose(); onNavigate(`/${item.owner_username}/${item.catalog_slug}`); }}
-                  className="w-full py-2 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-[9px] tracking-[0.3em] font-black"
+                  className="w-full py-1.5 border border-black/15 hover:border-black/40 transition-all text-[8px] tracking-[0.2em] font-black opacity-60 hover:opacity-100"
                   style={{ fontFamily: "Bebas Neue, sans-serif" }}
                 >
                   IN: {item.catalog_name}
@@ -444,14 +465,21 @@ function SearchOverlay({
     setSearching(true);
     try {
       // Fire all queries in parallel — completely independent, no joins that can conflict
-      const [itemsRes, catalogsRes, profilesByUser, profilesByName] = await Promise.all([
+      const [itemsRes, feedItemsRes, catalogsRes, profilesByUser, profilesByName] = await Promise.all([
 
-        // ── Items: simple text search on own columns, then soft-join catalog data ──
+        // ── Catalog items ──────────────────────────────────────────────────────
         supabase
           .from("catalog_items")
           .select("id,title,image_url,product_url,price,seller,like_count,is_monetized,brand,style_tags,created_at,catalog_id")
           .or(`title.ilike.%${query}%,brand.ilike.%${query}%,seller.ilike.%${query}%,category.ilike.%${query}%`)
-          .limit(24),
+          .limit(20),
+
+        // ── Feed post items ────────────────────────────────────────────────────
+        supabase
+          .from("feed_post_items")
+          .select("id,title,image_url,product_url,price,seller,like_count,created_at,feed_post_id")
+          .or(`title.ilike.%${query}%,brand.ilike.%${query}%,seller.ilike.%${query}%`)
+          .limit(6),
 
         // ── Catalogs ──────────────────────────────────────────────────────────
         supabase
@@ -467,7 +495,7 @@ function SearchOverlay({
           .select("*")
           .limit(50),
 
-        // placeholder so Promise.all indices stay aligned
+        // placeholder (unused second profiles slot kept for index alignment)
         Promise.resolve({ data: [], error: null }),
       ]);
 
@@ -490,7 +518,7 @@ function SearchOverlay({
         });
       }
 
-      const items: GridItem[] = (itemsRes.data || []).map((item: any) => {
+      const catalogItemsMapped: GridItem[] = (itemsRes.data || []).map((item: any) => {
         const cat = catalogMap[item.catalog_id] ?? {};
         return {
           id: item.id,
@@ -512,6 +540,24 @@ function SearchOverlay({
           type: "catalog_item",
         };
       });
+
+      // Feed post items — typed as feed_post so handleItemClick routes to /post/:id
+      const feedItemsMapped: GridItem[] = (feedItemsRes.data || []).map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        image_url: item.image_url,
+        product_url: item.product_url,
+        price: item.price,
+        seller: item.seller,
+        like_count: num(item.like_count),
+        is_liked: false,
+        is_monetized: false,
+        created_at: item.created_at,
+        feed_post_id: item.feed_post_id,
+        type: "feed_post" as const,
+      }));
+
+      const items: GridItem[] = [...catalogItemsMapped, ...feedItemsMapped];
 
       // Enrich catalog search results with owner usernames
       const catSearchOwnerIds = [...new Set((catalogsRes.data || []).map((c: any) => c.owner_id).filter(Boolean))];
@@ -570,7 +616,7 @@ function SearchOverlay({
 
   function handleItemClick(item: GridItem) {
     if (item.type === "feed_post") {
-      if (item.feed_post_id) { onNavigate(`/feed/${item.feed_post_id}`); onClose(); }
+      if (item.feed_post_id) { onNavigate(`/post/${item.feed_post_id}`); onClose(); }
       return;
     }
     setExpandedItem(item);
@@ -601,7 +647,7 @@ function SearchOverlay({
       </div>
 
       {/* Results */}
-      <div className="flex-1 overflow-y-auto overscroll-contain">
+      <div className="flex-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: "touch" }}>
         {!q.trim() ? (
           <div className="flex items-center justify-center h-full opacity-15">
             <p className="text-4xl tracking-[0.2em]" style={{ fontFamily: "Bebas Neue, sans-serif" }}>TYPE TO SEARCH</p>
@@ -611,7 +657,7 @@ function SearchOverlay({
             <p className="text-3xl tracking-[0.2em]" style={{ fontFamily: "Bebas Neue, sans-serif" }}>NO RESULTS</p>
           </div>
         ) : (
-          <div className="px-5 md:px-10 py-6 space-y-8 max-w-5xl mx-auto">
+          <div className="px-5 md:px-10 py-6 pb-32 space-y-8 max-w-5xl mx-auto">
 
             {/* Profiles */}
             {results.profiles.length > 0 && (
@@ -1266,11 +1312,10 @@ function DiscoverContent() {
 
   function handleItemClick(item: GridItem) {
     if (item.type === "feed_post") {
-      // Always navigate to the post — never open the expand modal for feed items
+      // Route to /post/:id — same as profile page
       if (item.feed_post_id) {
-        navigate(`/feed/${item.feed_post_id}`);
+        navigate(`/post/${item.feed_post_id}`);
       }
-      // If no feed_post_id for some reason, do nothing rather than opening modal
       return;
     }
     setExpandedItem(item);
@@ -1341,7 +1386,7 @@ function DiscoverContent() {
       */}
       <div
         ref={scrollRef}
-        className="h-screen overflow-y-auto overscroll-none bg-white text-black relative"
+        className={`h-screen overscroll-none bg-white text-black relative ${expandedItem ? "overflow-hidden" : "overflow-y-auto"}`}
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         {/* ── Sticky header ── */}
