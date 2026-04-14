@@ -18,6 +18,7 @@ type SearchItem = {
   seller: string | null;
   like_count: number;
   is_liked: boolean;
+  is_monetized?: boolean; // ← NEW
   category?: string;
   brand?: string;
   primary_color?: string;
@@ -389,6 +390,7 @@ function DiscoverContent() {
         price,
         seller,
         like_count,
+        is_monetized,
         category,
         subcategory,
         brand,
@@ -558,6 +560,7 @@ function DiscoverContent() {
     let formattedFeedItems = feedResult.data.map((item: any) => ({
       ...item,
       is_liked: likedItemIds.has(item.id),
+      is_monetized: false, // feed items are never monetized
       catalog: {
         id: 'feed',
         name: 'Feed Post',
@@ -1161,7 +1164,18 @@ async function toggleLike(itemId: string, currentlyLiked: boolean) {
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
                         {items.map((item) => (
                           <div key={item.id} className="border border-black/20 hover:border-black transition-all">
-                            <div className="aspect-square bg-white overflow-hidden cursor-pointer" onClick={(e) => handleItemClick(item, e)}> <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                            {/* Added relative + badge, kept original onClick intact */}
+                            <div className="aspect-square bg-white overflow-hidden cursor-pointer relative" onClick={(e) => handleItemClick(item, e)}>
+                              <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                              {/* ── FTC DISCLOSURE BADGE ── */}
+                              {item.is_monetized && (
+                                <div
+                                  className="absolute top-2 right-2 z-10 w-5 h-5 bg-black/20 backdrop-blur-sm flex items-center justify-center"
+                                  title="Affiliate link — we may earn a commission at no cost to you"
+                                >
+                                  <span className="text-[10px] font-black text-white" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>$</span>
+                                </div>
+                              )}
                             </div>
 
                             <div className="p-3 bg-white border-t border-black/20">
@@ -1375,7 +1389,16 @@ async function toggleLike(itemId: string, currentlyLiked: boolean) {
                   </div>
 
                   <div className="p-4 md:p-8 space-y-3 md:space-y-6">
-                    <h2 className="text-xl md:text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{expandedItem.title}</h2>
+                    {/* Title + FTC disclosure */}
+                    <div>
+                      <h2 className="text-xl md:text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{expandedItem.title}</h2>
+                      {/* ── FTC DISCLOSURE (expanded modal) ── */}
+                      {expandedItem.is_monetized && (
+                        <p className="text-[9px] tracking-[0.3em] opacity-40 mt-1.5" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                          $ THIS IS AN AFFILIATED ITEM
+                        </p>
+                      )}
+                    </div>
 
                     {expandedItem.brand && (
                       <p className="text-xs md:text-sm tracking-wider opacity-60">BRAND: {expandedItem.brand}</p>
