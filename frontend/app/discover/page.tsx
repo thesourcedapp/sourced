@@ -540,12 +540,27 @@ function SearchOverlay({
             p.bio?.toLowerCase().includes(q)
           );
         });
-      allProfiles.sort((a: any, b: any) => (b.follower_count || 0) - (a.follower_count || 0));
-      const profiles: RecommendedProfile[] = allProfiles.slice(0, 8).map((p: any) => ({
-        id: p.id, username: p.username, full_name: p.full_name ?? null,
-        avatar_url: p.avatar_url ?? null, follower_count: num(p.follower_count),
-        is_following: false, is_verified: !!p.is_verified,
-      }));
+      // Get real follower counts from followers table
+      const searchProfileIds = allProfiles.map((p: any) => p.id);
+      let searchFollowerCounts: Record<string, number> = {};
+      if (searchProfileIds.length > 0) {
+        const { data: sfRows } = await supabase
+          .from("followers")
+          .select("following_id")
+          .in("following_id", searchProfileIds);
+        (sfRows || []).forEach((r: any) => {
+          searchFollowerCounts[r.following_id] = (searchFollowerCounts[r.following_id] || 0) + 1;
+        });
+      }
+      const profiles: RecommendedProfile[] = allProfiles
+        .map((p: any) => ({
+          id: p.id, username: p.username, full_name: p.full_name ?? null,
+          avatar_url: p.avatar_url ?? null,
+          follower_count: searchFollowerCounts[p.id] ?? num(p.follower_count),
+          is_following: false, is_verified: !!p.is_verified,
+        }))
+        .sort((a: any, b: any) => b.follower_count - a.follower_count)
+        .slice(0, 8);
 
       setResults({ items, catalogs, profiles });
     } finally {
@@ -785,7 +800,7 @@ function DiscoverContent() {
         if (!userId) { setItems([]); return; }
 
         const { data: followRows, error: followErr } = await supabase
-          .from("follows")
+          .from("followers")
           .select("following_id")
           .eq("follower_id", userId);
 
@@ -972,28 +987,43 @@ function DiscoverContent() {
     try {
       // Get who user already follows
       const { data: followRows } = await supabase
-        .from("follows")
+        .from("followers")
         .select("following_id")
         .eq("follower_id", userId);
       const alreadyFollowing = new Set((followRows || []).map((r: any) => r.following_id));
       alreadyFollowing.add(userId); // exclude self
 
-      // Get popular creators NOT already followed
+      // Get popular creators NOT already followed — count followers from followers table directly
       const { data: profiles } = await supabase
         .from("profiles")
         .select("id,username,full_name,avatar_url,follower_count,is_onboarded,is_verified")
         .eq("is_onboarded", true)
-        .order("follower_count", { ascending: false })
-        .limit(20);
+        .limit(50);
 
-      const recs: RecommendedProfile[] = (profiles || [])
-        .filter((p: any) => p.username && !alreadyFollowing.has(p.id))
-        .slice(0, 8)
+      const candidates = (profiles || []).filter((p: any) => p.username && !alreadyFollowing.has(p.id));
+
+      // Get real follower counts from followers table for each candidate
+      const candidateIds = candidates.map((p: any) => p.id);
+      let realFollowerCounts: Record<string, number> = {};
+      if (candidateIds.length > 0) {
+        const { data: followerRows } = await supabase
+          .from("followers")
+          .select("following_id")
+          .in("following_id", candidateIds);
+        (followerRows || []).forEach((r: any) => {
+          realFollowerCounts[r.following_id] = (realFollowerCounts[r.following_id] || 0) + 1;
+        });
+      }
+
+      const recs: RecommendedProfile[] = candidates
         .map((p: any) => ({
           id: p.id, username: p.username, full_name: p.full_name ?? null,
-          avatar_url: p.avatar_url ?? null, follower_count: num(p.follower_count),
+          avatar_url: p.avatar_url ?? null,
+          follower_count: realFollowerCounts[p.id] ?? num(p.follower_count),
           is_following: false, is_verified: !!p.is_verified,
-        }));
+        }))
+        .sort((a, b) => b.follower_count - a.follower_count)
+        .slice(0, 8);
 
       setFollowRecs(recs);
     } catch (err) { console.error("fetchFollowRecs error:", err); }
@@ -1045,9 +1075,9 @@ function DiscoverContent() {
     if (!currentUserId || !isOnboarded) { setShowLoginPrompt(true); return; }
     try {
       if (currently) {
-        await supabase.from("follows").delete().eq("follower_id", currentUserId).eq("following_id", profileId);
+        await supabase.from("followers").delete().eq("follower_id", currentUserId).eq("following_id", profileId);
       } else {
-        await supabase.from("follows").insert({ follower_id: currentUserId, following_id: profileId });
+        await supabase.from("followers").insert({ follower_id: currentUserId, following_id: profileId });
       }
       setFollowRecs((prev) => prev.map((p) =>
         p.id === profileId ? { ...p, is_following: !currently } : p
