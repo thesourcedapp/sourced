@@ -65,6 +65,7 @@ class FeedItem(BaseModel):
     seller: Optional[str]
     like_count: int
     is_liked: bool
+    is_monetized: bool = False  # ← NEW
 
 
 class FeedOwner(BaseModel):
@@ -284,9 +285,9 @@ async def get_next_feed_post(request: FeedRequest):
             is_liked = bool(liked_response.data) if liked_response else False
             is_saved = bool(saved_response.data) if saved_response else False
 
-        # Get items for this post
+        # ← Added is_monetized to select
         items_response = sb.table('feed_post_items').select(
-            'id, title, image_url, product_url, price, seller, like_count').eq('feed_post_id',
+            'id, title, image_url, product_url, price, seller, like_count, is_monetized').eq('feed_post_id',
                                                                                selected_post['id']).execute()
 
         # Get liked items for current user
@@ -298,6 +299,7 @@ async def get_next_feed_post(request: FeedRequest):
             if liked_items_response and liked_items_response.data:
                 liked_item_ids = {like['item_id'] for like in liked_items_response.data}
 
+        # ← Added is_monetized to FeedItem constructor
         items = [
             FeedItem(
                 id=item['id'],
@@ -307,7 +309,8 @@ async def get_next_feed_post(request: FeedRequest):
                 price=item.get('price'),
                 seller=item.get('seller'),
                 like_count=item.get('like_count', 0),
-                is_liked=item['id'] in liked_item_ids
+                is_liked=item['id'] in liked_item_ids,
+                is_monetized=item.get('is_monetized', False)  # ← NEW
             )
             for item in (items_response.data if items_response and items_response.data else [])
         ]
