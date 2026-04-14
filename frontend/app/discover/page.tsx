@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type DiscoverMode = "trending" | "new" | "following";
+type DiscoverMode = "trending" | "new" | "following" | "creators";
 
 type GridItem = {
   id: string;
@@ -579,7 +579,7 @@ function SearchOverlay({
   const hasResults = results.items.length > 0 || results.catalogs.length > 0 || results.profiles.length > 0;
 
   return (
-    <div className="fixed inset-0 z-[200] bg-white flex flex-col" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+    <div className="absolute inset-0 z-[200] bg-white flex flex-col">
       {/* Search input */}
       <div className="border-b-2 border-black flex items-center px-5 md:px-10 gap-3 h-16 flex-shrink-0">
         <span className="text-xl opacity-30 select-none flex-shrink-0">⌕</span>
@@ -702,6 +702,110 @@ function SearchOverlay({
   );
 }
 
+
+// ─── CreatorCard ──────────────────────────────────────────────────────────────
+
+type CreatorProfile = {
+  id: string;
+  username: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  follower_count: number;
+  catalog_count: number;
+  post_count: number;
+  is_following: boolean;
+  is_verified: boolean;
+};
+
+function CreatorCard({
+  creator,
+  currentUserId,
+  isOnboarded,
+  onFollow,
+  onNavigate,
+}: {
+  creator: CreatorProfile;
+  currentUserId: string | null;
+  isOnboarded: boolean;
+  onFollow: (id: string, following: boolean) => void;
+  onNavigate: (username: string) => void;
+}) {
+  return (
+    <div
+      className="group border border-black/10 hover:border-black transition-all duration-150 cursor-pointer bg-white overflow-hidden"
+      onClick={() => onNavigate(creator.username)}
+    >
+      {/* Avatar square — full bleed */}
+      <div className="aspect-square bg-black/5 overflow-hidden relative">
+        {creator.avatar_url ? (
+          <img
+            src={creator.avatar_url}
+            alt={creator.username}
+            className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-black/5">
+            <span className="text-5xl opacity-10">👤</span>
+          </div>
+        )}
+        {/* Verified badge */}
+        {creator.is_verified && (
+          <div className="absolute top-2 right-2 w-5 h-5 bg-black flex items-center justify-center">
+            <span className="text-white text-[9px]">✓</span>
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="p-3">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="min-w-0">
+            <p className="text-sm font-black tracking-tighter leading-tight truncate" style={{ fontFamily: "Archivo Black, sans-serif" }}>
+              @{creator.username}
+            </p>
+            {creator.full_name && (
+              <p className="text-[9px] opacity-40 truncate mt-0.5">{creator.full_name}</p>
+            )}
+          </div>
+          {currentUserId && currentUserId !== creator.id && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isOnboarded) return;
+                onFollow(creator.id, creator.is_following);
+              }}
+              className={`flex-shrink-0 px-2.5 py-1 text-[8px] tracking-wider font-black border transition-all ${
+                creator.is_following
+                  ? "bg-black text-white border-black"
+                  : "border-black/30 hover:border-black hover:bg-black/5"
+              }`}
+              style={{ fontFamily: "Bebas Neue, sans-serif" }}
+            >
+              {creator.is_following ? "FOLLOWING" : "FOLLOW"}
+            </button>
+          )}
+        </div>
+
+        {/* Stats row */}
+        <div className="flex items-center gap-0 border-t border-black/8 pt-2 mt-2">
+          <div className="flex-1 text-center border-r border-black/8">
+            <p className="text-xs font-black leading-none" style={{ fontFamily: "Bebas Neue, sans-serif" }}>{creator.follower_count.toLocaleString()}</p>
+            <p className="text-[7px] tracking-wider opacity-30 mt-0.5" style={{ fontFamily: "Bebas Neue, sans-serif" }}>FOLLOWERS</p>
+          </div>
+          <div className="flex-1 text-center border-r border-black/8">
+            <p className="text-xs font-black leading-none" style={{ fontFamily: "Bebas Neue, sans-serif" }}>{creator.catalog_count}</p>
+            <p className="text-[7px] tracking-wider opacity-30 mt-0.5" style={{ fontFamily: "Bebas Neue, sans-serif" }}>CATALOGS</p>
+          </div>
+          <div className="flex-1 text-center">
+            <p className="text-xs font-black leading-none" style={{ fontFamily: "Bebas Neue, sans-serif" }}>{creator.post_count}</p>
+            <p className="text-[7px] tracking-wider opacity-30 mt-0.5" style={{ fontFamily: "Bebas Neue, sans-serif" }}>POSTS</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 function DiscoverContent() {
@@ -712,6 +816,7 @@ function DiscoverContent() {
   const [items, setItems] = useState<GridItem[]>([]);
   const [spotlightCatalogs, setSpotlightCatalogs] = useState<SpotlightCatalog[]>([]);
   const [followRecs, setFollowRecs] = useState<RecommendedProfile[]>([]);
+  const [creators, setCreators] = useState<CreatorProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
@@ -780,9 +885,10 @@ function DiscoverContent() {
     const userId = overrideUserId !== undefined ? overrideUserId : currentUserId;
     try {
       await Promise.all([
-        fetchItems(userId, mode),
+        mode !== "creators" ? fetchItems(userId, mode) : Promise.resolve(),
         fetchSpotlights(userId),
         mode === "following" ? fetchFollowRecs(userId) : Promise.resolve(),
+        mode === "creators" ? fetchCreators(userId) : Promise.resolve(),
       ]);
     } finally {
       setLoading(false);
@@ -945,6 +1051,74 @@ function DiscoverContent() {
     }
   }
 
+  // ─── fetchCreators ────────────────────────────────────────────────────────
+  async function fetchCreators(userId: string | null) {
+    try {
+      // Get all onboarded profiles
+      const { data: profileRows } = await supabase
+        .from("profiles")
+        .select("id,username,full_name,avatar_url,is_onboarded,is_verified")
+        .eq("is_onboarded", true)
+        .not("username", "is", null)
+        .limit(60);
+
+      if (!profileRows || profileRows.length === 0) { setCreators([]); return; }
+
+      const profileIds = profileRows.map((p: any) => p.id);
+
+      // Get real follower counts, catalog counts, post counts in parallel
+      const [followerRows, catalogRows, postRows, followingRows] = await Promise.all([
+        supabase.from("followers").select("following_id").in("following_id", profileIds),
+        supabase.from("catalogs").select("id,owner_id").in("owner_id", profileIds).eq("visibility", "public"),
+        supabase.from("feed_posts").select("id,owner_id").in("owner_id", profileIds),
+        userId
+          ? supabase.from("followers").select("following_id").eq("follower_id", userId)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      // Build count maps
+      const followerCounts: Record<string, number> = {};
+      (followerRows.data || []).forEach((r: any) => {
+        followerCounts[r.following_id] = (followerCounts[r.following_id] || 0) + 1;
+      });
+
+      const catalogCounts: Record<string, number> = {};
+      (catalogRows.data || []).forEach((r: any) => {
+        catalogCounts[r.owner_id] = (catalogCounts[r.owner_id] || 0) + 1;
+      });
+
+      const postCounts: Record<string, number> = {};
+      (postRows.data || []).forEach((r: any) => {
+        postCounts[r.owner_id] = (postCounts[r.owner_id] || 0) + 1;
+      });
+
+      const followingSet = new Set(
+        ((followingRows as any).data || []).map((r: any) => r.following_id)
+      );
+
+      const result: CreatorProfile[] = profileRows
+        .map((p: any) => ({
+          id: p.id,
+          username: p.username,
+          full_name: p.full_name ?? null,
+          avatar_url: p.avatar_url ?? null,
+          follower_count: followerCounts[p.id] ?? 0,
+          catalog_count: catalogCounts[p.id] ?? 0,
+          post_count: postCounts[p.id] ?? 0,
+          is_following: followingSet.has(p.id),
+          is_verified: !!p.is_verified,
+        }))
+        // Only show creators with at least 1 catalog or post
+        .filter((c) => c.catalog_count > 0 || c.post_count > 0)
+        .sort((a, b) => b.follower_count - a.follower_count);
+
+      setCreators(result);
+    } catch (err) {
+      console.error("fetchCreators error:", err);
+      setCreators([]);
+    }
+  }
+
   // ─── fetchSpotlights ───────────────────────────────────────────────────────
   async function fetchSpotlights(userId: string | null) {
     try {
@@ -1084,6 +1258,9 @@ function DiscoverContent() {
       setFollowRecs((prev) => prev.map((p) =>
         p.id === profileId ? { ...p, is_following: !currently } : p
       ));
+      setCreators((prev) => prev.map((c) =>
+        c.id === profileId ? { ...c, is_following: !currently } : c
+      ));
     } catch (err) { console.error(err); }
   }
 
@@ -1148,7 +1325,7 @@ function DiscoverContent() {
     return nodes;
   }
 
-  const modeLabel: Record<DiscoverMode, string> = { trending: "TRENDING", new: "NEW DROPS", following: "FOLLOWING" };
+  const modeLabel: Record<DiscoverMode, string> = { trending: "TRENDING", new: "NEW DROPS", following: "FOLLOWING", creators: "CREATORS" };
 
   return (
     <>
@@ -1164,7 +1341,7 @@ function DiscoverContent() {
       */}
       <div
         ref={scrollRef}
-        className="h-screen overflow-y-auto overscroll-none bg-white text-black"
+        className="h-screen overflow-y-auto overscroll-none bg-white text-black relative"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         {/* ── Sticky header ── */}
@@ -1185,7 +1362,7 @@ function DiscoverContent() {
 
           {/* Mode tabs */}
           <div className="flex px-5 md:px-10 gap-0 border-t border-black/8">
-            {(["trending", "new", "following"] as DiscoverMode[]).map((m) => (
+            {(["trending", "new", "following", "creators"] as DiscoverMode[]).map((m) => (
               <button
                 key={m}
                 onClick={() => changeMode(m)}
@@ -1199,8 +1376,8 @@ function DiscoverContent() {
             ))}
           </div>
 
-          {/* Category chips */}
-          <div className="border-t border-black/8 overflow-x-auto scrollbar-none">
+          {/* Category chips — hidden on creators tab */}
+          <div className={`border-t border-black/8 overflow-x-auto scrollbar-none ${mode === "creators" ? "hidden" : ""}`}>
             <div className="flex gap-1.5 px-5 md:px-10 py-2 min-w-max">
               {categories.map((cat) => (
                 <button
@@ -1226,6 +1403,33 @@ function DiscoverContent() {
           {loading ? (
             <div className="flex items-center justify-center py-32">
               <p className="text-[10px] tracking-[0.5em] opacity-20 animate-pulse" style={{ fontFamily: "Bebas Neue, sans-serif" }}>LOADING</p>
+            </div>
+
+          ) : mode === "creators" ? (
+            <div className="py-4">
+              <div className="flex items-baseline justify-between mb-5">
+                <p className="text-[9px] tracking-[0.4em] opacity-25 font-black" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
+                  CREATORS — {creators.length}
+                </p>
+              </div>
+              {creators.length === 0 ? (
+                <div className="flex items-center justify-center py-32">
+                  <p className="text-2xl tracking-wider opacity-20" style={{ fontFamily: "Bebas Neue, sans-serif" }}>NO CREATORS YET</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+                  {creators.map((creator) => (
+                    <CreatorCard
+                      key={creator.id}
+                      creator={creator}
+                      currentUserId={currentUserId}
+                      isOnboarded={isOnboarded}
+                      onFollow={(id, following) => toggleFollow(id, following)}
+                      onNavigate={(username) => navigate(`/${username}`)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
           ) : mode === "following" && !currentUserId ? (
