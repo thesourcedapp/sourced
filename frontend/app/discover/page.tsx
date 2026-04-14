@@ -588,7 +588,7 @@ function SearchOverlay({
           type="text"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="SEARCH ITEMS, CATALOGS, CREATORS..."
+          placeholder="SEARCH"
           className="flex-1 bg-transparent tracking-wider placeholder-black/25 focus:outline-none"
           style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: "16px" }}
         />
@@ -720,7 +720,6 @@ function DiscoverContent() {
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const restoredScroll = useRef(false);
-  const loadingRef = useRef(false);
 
   const categories = [
     { v: "all", l: "ALL" }, { v: "tops", l: "TOPS" }, { v: "bottoms", l: "BOTTOMS" },
@@ -766,36 +765,38 @@ function DiscoverContent() {
     loadData();
   }, [mode, category]);
 
-  // Also reload when auth resolves (currentUserId goes from null to a value)
-  const prevUserIdRef = useRef<string | null>(null);
+  // Reload when auth resolves — pass userId directly so fetchItems gets it immediately
+  const prevUserIdRef = useRef<string | null>("UNSET");
   useEffect(() => {
     if (currentUserId !== prevUserIdRef.current) {
       prevUserIdRef.current = currentUserId;
-      loadData();
+      loadData(currentUserId);
     }
   }, [currentUserId]);
 
-  async function loadData() {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
+  async function loadData(overrideUserId?: string | null) {
     setLoading(true);
-    // Capture userId at call-time to avoid stale closure
-    const userId = currentUserId;
+    // Use overrideUserId if provided (auth-triggered), otherwise use current state
+    const userId = overrideUserId !== undefined ? overrideUserId : currentUserId;
     try {
-      await Promise.all([fetchItems(userId), fetchSpotlights(userId), mode === "following" ? fetchFollowRecs(userId) : Promise.resolve()]);
+      await Promise.all([
+        fetchItems(userId, mode),
+        fetchSpotlights(userId),
+        mode === "following" ? fetchFollowRecs(userId) : Promise.resolve(),
+      ]);
     } finally {
       setLoading(false);
-      loadingRef.current = false;
     }
   }
 
   // ─── fetchItems ────────────────────────────────────────────────────────────
-  async function fetchItems(userId: string | null) {
+  async function fetchItems(userId: string | null, currentMode?: DiscoverMode) {
     try {
       let catalogItems: any[] = [];
       let feedItems: any[] = [];
 
-      if (mode === "following") {
+      const activeMode = currentMode ?? mode;
+      if (activeMode === "following") {
         // ── Step 1: who does the user follow ───────────────────────────────
         if (!userId) { setItems([]); return; }
 
