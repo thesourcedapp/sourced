@@ -569,17 +569,17 @@ function SearchOverlay({
   }
 
   function handleItemClick(item: GridItem) {
-    if (item.type === "feed_post" && item.feed_post_id) {
-      onNavigate(`/feed/${item.feed_post_id}`); onClose();
-    } else {
-      setExpandedItem(item);
+    if (item.type === "feed_post") {
+      if (item.feed_post_id) { onNavigate(`/feed/${item.feed_post_id}`); onClose(); }
+      return;
     }
+    setExpandedItem(item);
   }
 
   const hasResults = results.items.length > 0 || results.catalogs.length > 0 || results.profiles.length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 bg-white flex flex-col">
+    <div className="fixed inset-0 z-[200] bg-white flex flex-col" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       {/* Search input */}
       <div className="border-b-2 border-black flex items-center px-5 md:px-10 gap-3 h-16 flex-shrink-0">
         <span className="text-xl opacity-30 select-none flex-shrink-0">⌕</span>
@@ -1088,11 +1088,15 @@ function DiscoverContent() {
   }
 
   function handleItemClick(item: GridItem) {
-    if (item.type === "feed_post" && item.feed_post_id) {
-      navigate(`/feed/${item.feed_post_id}`);
-    } else {
-      setExpandedItem(item);
+    if (item.type === "feed_post") {
+      // Always navigate to the post — never open the expand modal for feed items
+      if (item.feed_post_id) {
+        navigate(`/feed/${item.feed_post_id}`);
+      }
+      // If no feed_post_id for some reason, do nothing rather than opening modal
+      return;
     }
+    setExpandedItem(item);
   }
 
   function changeMode(m: DiscoverMode) {
@@ -1175,7 +1179,7 @@ function DiscoverContent() {
               className="flex items-center gap-1.5 pb-3 hover:opacity-40 transition-opacity"
             >
               <span className="text-xl leading-none">⌕</span>
-              <span className="text-[10px] tracking-[0.3em] font-black hidden md:inline opacity-40" style={{ fontFamily: "Bebas Neue, sans-serif" }}>SEARCH</span>
+              <span className="text-[10px] tracking-[0.3em] font-black opacity-40" style={{ fontFamily: "Bebas Neue, sans-serif" }}>SEARCH</span>
             </button>
           </div>
 
