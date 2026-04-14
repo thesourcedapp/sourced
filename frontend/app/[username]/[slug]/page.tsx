@@ -35,7 +35,8 @@ type CatalogItem = {
   primary_color?: string;
   style_tags?: string[];
   click_count?: number;
-  unique_click_count?: number; // Add this line
+  unique_click_count?: number;
+  is_monetized?: boolean; // ← NEW
 };
 
 type SortOption = 'recent' | 'oldest' | 'most_liked' | 'title';
@@ -272,37 +273,37 @@ export default function CatalogDetailPage() {
   }
 
   // Track click function
-async function trackClick(itemId: string) {
-  console.log('🔵 trackClick called with itemId:', itemId);
-  try {
-    console.log('🔵 Making fetch request to /api/track-click');
-    const response = await fetch('/api/track-click', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        itemId,
-        itemType: 'catalog',
-        userId: currentUserId // Add this line
-      }),
-    });
+  async function trackClick(itemId: string) {
+    console.log('🔵 trackClick called with itemId:', itemId);
+    try {
+      console.log('🔵 Making fetch request to /api/track-click');
+      const response = await fetch('/api/track-click', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          itemId,
+          itemType: 'catalog',
+          userId: currentUserId
+        }),
+      });
 
-    console.log('🔵 Response status:', response.status);
-    const data = await response.json();
-    console.log('🔵 Response data:', data);
+      console.log('🔵 Response status:', response.status);
+      const data = await response.json();
+      console.log('🔵 Response data:', data);
 
-    if (!response.ok) {
-      console.error('❌ Tracking failed:', data);
-    } else {
-      console.log('✅ Click tracked successfully:', data);
-      console.log(`   Total clicks: ${data.total_clicks}, Unique clicks: ${data.unique_clicks}`);
+      if (!response.ok) {
+        console.error('❌ Tracking failed:', data);
+      } else {
+        console.log('✅ Click tracked successfully:', data);
+        console.log(`   Total clicks: ${data.total_clicks}, Unique clicks: ${data.unique_clicks}`);
+      }
+    } catch (error) {
+      console.error('❌ Error tracking click:', error);
+      // Don't block navigation if tracking fails
     }
-  } catch (error) {
-    console.error('❌ Error tracking click:', error);
-    // Don't block navigation if tracking fails
   }
-}
 
   // Handle item click with tracking
   function handleItemClick(item: CatalogItem, e?: React.MouseEvent) {
@@ -526,7 +527,6 @@ async function trackClick(itemId: string) {
       else if (uploadMethod === 'url' && itemImageUrl) {
         setCreatingStatus('Saving image to storage...');
         try {
-          // Fetch the external image
           const response = await fetch(itemImageUrl);
 
           if (!response.ok) {
@@ -534,11 +534,7 @@ async function trackClick(itemId: string) {
           }
 
           const blob = await response.blob();
-
-          // Create a file from the blob
           const file = new File([blob], `item-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
-
-          // Upload to our bucket
           const uploadResult = await uploadImageToStorage(file, currentUserId);
 
           if (!uploadResult.url) {
@@ -576,7 +572,6 @@ async function trackClick(itemId: string) {
         user_id: currentUserId
       };
 
-      // Call backend API with AI categorization
       const response = await fetch(`https://sourced-5ovn.onrender.com/create-catalog-item`, {
         method: 'POST',
         headers: {
@@ -594,7 +589,6 @@ async function trackClick(itemId: string) {
       }
 
       if (!response.ok) {
-        // If it's a duplicate error (item already exists), consider it success
         if (result.detail && result.detail.includes('duplicate') || result.detail.includes('already exists')) {
           console.log('Item already exists, treating as success');
           resetAddItemForm();
@@ -618,7 +612,6 @@ async function trackClick(itemId: string) {
 
       let errorMessage = error.message || 'Failed to add item';
 
-      // Better error handling for common issues
       if (errorMessage.includes('fetch')) {
         errorMessage = 'Cannot connect to server. Make sure backend is running.';
       } else if (errorMessage.includes('Network')) {
@@ -693,9 +686,7 @@ async function trackClick(itemId: string) {
     try {
       let finalImageUrl = catalog.image_url;
 
-      // Handle image update
       if (editCatalogMethod === 'file' && editCatalogFile) {
-        // Upload new image
         const uploadResult = await uploadImageToStorage(editCatalogFile, currentUserId);
 
         if (!uploadResult.url) {
@@ -710,7 +701,6 @@ async function trackClick(itemId: string) {
         finalImageUrl = editCatalogImageUrl;
       }
 
-      // Update catalog in database
       const { error } = await supabase
         .from('catalogs')
         .update({
@@ -722,7 +712,6 @@ async function trackClick(itemId: string) {
 
       if (error) throw error;
 
-      // Reload catalog
       await loadCatalog();
       setShowEditCatalogModal(false);
 
@@ -741,12 +730,10 @@ async function trackClick(itemId: string) {
 
   const totalLikes = items.reduce((sum, item) => sum + item.like_count, 0);
 
-  // Generate share metadata with dynamic OG image
   const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
   const shareTitle = catalog ? `Sourced - ${catalog.name}` : 'Sourced';
   const shareDescription = `${catalog?.name || 'Catalog'} on Sourced`;
 
-  // Generate dynamic OG image URL
   const ogImageUrl = catalog
     ? `/api/og/catalog?catalog=${encodeURIComponent(catalog.name)}&username=${encodeURIComponent(catalog.owner.username)}&items=${items.length}${catalog.image_url ? `&image=${encodeURIComponent(catalog.image_url)}` : ''}`
     : 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -902,55 +889,34 @@ async function trackClick(itemId: string) {
                     onClick={async () => {
                       try {
                         if (navigator.share) {
-                          // Try to share with image for Instagram/Snapchat
                           if (catalog?.image_url && navigator.canShare) {
                             try {
-                              console.log('🖼️ Attempting to share with image:', catalog.image_url);
-
-                              // Fetch the image
                               const response = await fetch(catalog.image_url, {
                                 mode: 'cors',
                                 credentials: 'omit'
                               });
-                              console.log('✅ Image fetched, status:', response.status);
-
                               const blob = await response.blob();
-                              console.log('✅ Blob created, type:', blob.type, 'size:', blob.size);
-
                               const file = new File([blob], `${catalog.name.replace(/[^a-z0-9]/gi, '-')}.jpg`, {
                                 type: 'image/jpeg'
                               });
-                              console.log('✅ File created:', file.name);
-
-                              // Check if we can share files
                               const canShareFiles = navigator.canShare({ files: [file] });
-                              console.log('📤 Can share files?', canShareFiles);
-
                               if (canShareFiles) {
-                                console.log('🚀 Sharing with image...');
                                 await navigator.share({
                                   files: [file],
                                   title: shareTitle,
                                   text: shareDescription,
                                   url: window.location.href,
                                 });
-                                console.log('✅ Share completed!');
                                 return;
-                              } else {
-                                console.log('❌ Cannot share files on this platform');
                               }
                             } catch (imageError) {
                               console.error('❌ Image share failed:', imageError);
                             }
                           }
-
-                          // Fallback to URL-only share
-                          console.log('📤 Sharing URL only...');
                           await navigator.share({
                             url: window.location.href,
                           });
                         } else {
-                          // Desktop fallback
                           await navigator.clipboard.writeText(window.location.href);
                           alert('Link copied to clipboard!');
                         }
@@ -1065,11 +1031,25 @@ async function trackClick(itemId: string) {
                       onClick={() => handleItemClick(item)}
                     >
                       <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+
+                      {/* Like count badge */}
                       {item.like_count > 0 && (
                         <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/80 text-white text-[8px] tracking-wider font-black">♥ {item.like_count}</div>
                       )}
+
+                      {/* ── FTC DISCLOSURE BADGE (grid) ── */}
+                      {item.is_monetized && (
+                        <div
+                          className="absolute top-2 right-2 px-1.5 py-0.5 bg-white/90 text-black text-[7px] tracking-widest font-black border border-black/20 z-10"
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                          title="Affiliate link — we may earn a commission at no cost to you"
+                        >
+                          #AD
+                        </div>
+                      )}
                     </div>
 
+                    {/* Desktop item info */}
                     <div className="p-3 bg-white border-t border-black/20 cursor-pointer hover:bg-black/5 transition-all hidden md:block" onClick={() => setExpandedItem(item)}>
                       <h3 className="text-xs font-black tracking-wide uppercase leading-tight truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
                       <div className="flex items-center justify-between text-[10px] tracking-wider opacity-60 mb-2">
@@ -1079,6 +1059,7 @@ async function trackClick(itemId: string) {
                       <button onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.is_liked); }} className="w-full py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs">{item.is_liked ? '♥' : '♡'} LIKE</button>
                     </div>
 
+                    {/* Mobile item info */}
                     <div className="md:hidden bg-white border-t border-black/20">
                       <div className="p-3">
                         <h3 className="text-xs font-black tracking-wide uppercase leading-tight truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
@@ -1096,6 +1077,7 @@ async function trackClick(itemId: string) {
                 ))}
               </div>
             ) : (
+              // ── COMPACT LIST VIEW ──
               <div className="space-y-2">
                 {filteredItems.map((item) => (
                   <div
@@ -1112,14 +1094,36 @@ async function trackClick(itemId: string) {
                     )}
 
                     <div
-                      className="w-12 h-12 md:w-16 md:h-16 bg-black/5 flex-shrink-0 cursor-pointer"
+                      className="w-12 h-12 md:w-16 md:h-16 bg-black/5 flex-shrink-0 cursor-pointer relative"
                       onClick={() => handleItemClick(item)}
                     >
                       <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                      {/* ── FTC DISCLOSURE BADGE (compact thumbnail) ── */}
+                      {item.is_monetized && (
+                        <div
+                          className="absolute top-0 right-0 px-1 bg-white/90 text-black text-[6px] tracking-widest font-black border-b border-l border-black/20"
+                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                          title="Affiliate link — we may earn a commission at no cost to you"
+                        >
+                          #AD
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-xs md:text-sm font-black tracking-wide uppercase truncate" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
+                      {/* Title + inline #AD label for compact text row */}
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="text-xs md:text-sm font-black tracking-wide uppercase truncate" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
+                        {item.is_monetized && (
+                          <span
+                            className="flex-shrink-0 px-1 py-0.5 bg-black/8 text-black text-[7px] tracking-widest font-black border border-black/20"
+                            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                            title="Affiliate link — we may earn a commission at no cost to you"
+                          >
+                            #AD
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-3 text-[10px] opacity-60">
                         {item.seller && <span>{item.seller}</span>}
                         {item.price && <span>${item.price}</span>}
@@ -1308,7 +1312,7 @@ async function trackClick(itemId: string) {
           </div>
         )}
 
-        {/* Expanded Item Modal */}
+        {/* ── EXPANDED ITEM MODAL ── */}
         {expandedItem && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md" onClick={() => setExpandedItem(null)}>
             <div className="relative w-full max-w-sm md:max-w-3xl max-h-[85vh] md:max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
@@ -1324,7 +1328,17 @@ async function trackClick(itemId: string) {
                   </div>
 
                   <div className="p-4 md:p-8 space-y-3 md:space-y-6">
-                    <h2 className="text-xl md:text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{expandedItem.title}</h2>
+                    <div>
+                      <h2 className="text-xl md:text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{expandedItem.title}</h2>
+
+                      {/* ── FTC DISCLOSURE (expanded modal) ── */}
+                      {expandedItem.is_monetized && (
+                        <p className="text-[9px] tracking-[0.25em] opacity-40 mt-1" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                          #AD · AFFILIATE LINK — WE MAY EARN A COMMISSION AT NO COST TO YOU
+                        </p>
+                      )}
+                    </div>
+
                     {expandedItem.seller && <p className="text-xs md:text-sm tracking-wider opacity-60">SELLER: {expandedItem.seller}</p>}
                     {expandedItem.price && <p className="text-lg md:text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>${expandedItem.price}</p>}
 
