@@ -1040,10 +1040,10 @@ export default function CatalogDetailPage() {
                       {/* ── FTC DISCLOSURE BADGE (grid) ── */}
                       {item.is_monetized && (
                         <div
-                          className="absolute top-2 right-2 z-10 w-5 h-5 bg-white/90 flex items-center justify-center"
+                          className="absolute top-2 right-2 z-10 w-5 h-5 bg-black/20 backdrop-blur-sm flex items-center justify-center"
                           title="Affiliate link — we may earn a commission at no cost to you"
                         >
-                          <span className="text-[10px] font-black text-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>$</span>
+                          <span className="text-[10px] font-black text-white" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>$</span>
                         </div>
                       )}
                     </div>
@@ -1100,10 +1100,10 @@ export default function CatalogDetailPage() {
                       {/* ── FTC DISCLOSURE BADGE (compact thumbnail) ── */}
                       {item.is_monetized && (
                         <div
-                          className="absolute top-0 right-0 w-4 h-4 bg-white/90 flex items-center justify-center"
+                          className="absolute top-0 right-0 w-4 h-4 bg-black/20 backdrop-blur-sm flex items-center justify-center"
                           title="Affiliate link — we may earn a commission at no cost to you"
                         >
-                          <span className="text-[8px] font-black text-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>$</span>
+                          <span className="text-[8px] font-black text-white" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>$</span>
                         </div>
                       )}
                     </div>
@@ -1323,14 +1323,12 @@ export default function CatalogDetailPage() {
                   </div>
 
                   <div className="p-4 md:p-8 space-y-3 md:space-y-6">
-                    <div className="flex items-start gap-2">
+                    <div>
                       <h2 className="text-xl md:text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{expandedItem.title}</h2>
                       {expandedItem.is_monetized && (
-                        <span
-                          className="mt-1 flex-shrink-0 text-sm font-black text-black/30"
-                          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-                          title="Affiliate link — we may earn a commission at no cost to you"
-                        >$</span>
+                        <p className="text-[9px] tracking-[0.3em] opacity-40 mt-1.5" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                          $ THIS IS AN AFFILIATED ITEM
+                        </p>
                       )}
                     </div>
 
