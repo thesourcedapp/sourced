@@ -625,7 +625,7 @@ function SearchOverlay({
   const hasResults = results.items.length > 0 || results.catalogs.length > 0 || results.profiles.length > 0;
 
   return (
-    <div className="absolute inset-0 z-[200] bg-white flex flex-col" onTouchMove={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[200] bg-white flex flex-col">
       {/* Search input */}
       <div className="border-b-2 border-black flex items-center px-5 md:px-10 gap-3 h-16 flex-shrink-0">
         <span className="text-xl opacity-30 select-none flex-shrink-0">⌕</span>
@@ -1386,7 +1386,7 @@ function DiscoverContent() {
       */}
       <div
         ref={scrollRef}
-        className={`h-screen overscroll-none bg-white text-black relative ${expandedItem ? "overflow-hidden" : "overflow-y-auto"}`}
+        className={`h-screen overscroll-none bg-white text-black relative ${expandedItem || searchOpen ? "overflow-hidden" : "overflow-y-auto"}`}
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         {/* ── Sticky header ── */}
