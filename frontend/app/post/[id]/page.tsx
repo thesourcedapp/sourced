@@ -30,6 +30,7 @@ type FeedPost = {
     seller: string | null;
     like_count: number;
     is_liked: boolean;
+    is_monetized?: boolean; // ← NEW
   }>;
 };
 
@@ -46,7 +47,6 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
   const [postId, setPostId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Unwrap params Promise
     params.then(({ id }) => {
       setPostId(id);
     });
@@ -60,7 +60,6 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
 
   useEffect(() => {
     if (postId && currentUserId !== undefined) {
-      // Wait for auth to be checked (currentUserId can be null for guests, but not undefined)
       loadPost();
     }
   }, [postId, currentUserId]);
@@ -96,7 +95,6 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
         return;
       }
 
-      // Check if current user liked this post
       let isLiked = false;
       let isSaved = false;
       if (currentUserId) {
@@ -117,13 +115,12 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
         isSaved = !!savedData;
       }
 
-      // Get items for this post
+      // ← Added is_monetized to the select
       const { data: itemsData } = await supabase
         .from('feed_post_items')
-        .select('id, title, image_url, product_url, price, seller, like_count')
+        .select('id, title, image_url, product_url, price, seller, like_count, is_monetized')
         .eq('feed_post_id', postId);
 
-      // Get liked items for current user
       let likedItemIds: Set<string> = new Set();
       if (currentUserId && itemsData) {
         const itemIds = itemsData.map(item => item.id);
@@ -477,13 +474,23 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
                           >
                             <img src={item.image_url} alt={item.title} className="w-full h-full object-cover hover:scale-105 transition-transform" />
 
+                            {/* ── FTC DISCLOSURE BADGE ── */}
+                            {item.is_monetized && (
+                              <div
+                                className="absolute top-2 right-2 w-5 h-5 bg-white/20 backdrop-blur-sm flex items-center justify-center z-10"
+                                title="Affiliate link — we may earn a commission at no cost to you"
+                              >
+                                <span className="text-[10px] font-black text-white" style={{ fontFamily: 'Bebas Neue' }}>$</span>
+                              </div>
+                            )}
+
                             {/* Like Button Overlay */}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 toggleItemLike(item.id, item.is_liked);
                               }}
-                              className="absolute top-2 right-2 w-8 h-8 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
+                              className="absolute top-2 left-2 w-8 h-8 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
                             >
                               <svg
                                 className="w-4 h-4 text-white"
@@ -507,6 +514,13 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
                               {item.title}
                             </h3>
 
+                            {/* ── FTC DISCLOSURE TEXT (item card) ── */}
+                            {item.is_monetized && (
+                              <p className="text-[8px] tracking-[0.2em] text-white/30 mb-2" style={{ fontFamily: 'Bebas Neue' }}>
+                                $ AFFILIATED ITEM
+                              </p>
+                            )}
+
                             <div className="flex items-center justify-between mb-3">
                               {item.price && (
                                 <p className="text-base font-black text-white" style={{ fontFamily: 'Archivo Black' }}>
@@ -514,7 +528,6 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
                                 </p>
                               )}
 
-                              {/* Like Count */}
                               {item.like_count > 0 && (
                                 <div className="flex items-center gap-1">
                                   <svg className="w-3 h-3 text-white/60" fill="currentColor" viewBox="0 0 24 24">
@@ -626,7 +639,6 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
               </svg>
             </button>
 
-            {/* Save/Bookmark Button */}
             <button
               onClick={toggleSave}
               className="ml-auto flex items-center gap-2 text-white hover:scale-110 active:scale-95 transition-transform"

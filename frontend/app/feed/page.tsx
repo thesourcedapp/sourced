@@ -30,6 +30,7 @@ type FeedPost = {
     seller: string | null;
     like_count: number;
     is_liked: boolean;
+    is_monetized?: boolean; // ← NEW
   }>;
 };
 
@@ -304,7 +305,6 @@ export default function FeedPage() {
         )
       );
 
-      // TypeScript now knows postToShow is FeedPost (not null) because we returned early if null
       const validPost = postToShow as FeedPost;
 
       setIsAnimating(true);
@@ -792,13 +792,23 @@ export default function FeedPage() {
                           >
                             <img src={item.image_url} alt={item.title} className="w-full h-full object-cover hover:scale-105 transition-transform" />
 
+                            {/* ── FTC DISCLOSURE BADGE ── */}
+                            {item.is_monetized && (
+                              <div
+                                className="absolute top-2 right-2 w-5 h-5 bg-white/20 backdrop-blur-sm flex items-center justify-center z-10"
+                                title="Affiliate link — we may earn a commission at no cost to you"
+                              >
+                                <span className="text-[10px] font-black text-white" style={{ fontFamily: 'Bebas Neue' }}>$</span>
+                              </div>
+                            )}
+
                             {/* Like Button Overlay */}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 toggleItemLike(item.id, item.is_liked);
                               }}
-                              className="absolute top-2 right-2 w-8 h-8 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
+                              className="absolute top-2 left-2 w-8 h-8 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
                             >
                               <svg
                                 className="w-4 h-4 text-white"
