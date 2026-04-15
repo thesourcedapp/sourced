@@ -27,29 +27,33 @@ const TUTORIAL_STEPS = [
   {
     step: 1,
     icon: '✦',
-    title: 'NAME YOUR CATALOG',
-    body: 'Give it a theme that means something. "Rick Season", "Quiet Luxury Summer", "Off-White Archive". The name sets the vibe.',
+    title: 'Name your catalog',
+    body: 'Think of it like naming a playlist — the name is the whole vibe. Something like "Rick Season", "Quiet Luxury Summer", or "Off-White Archive" hits different than just "My Clothes".',
+    example: 'Example: A catalog called "Tokyo Layering" already tells people exactly what they're walking into.',
     hint: null,
   },
   {
     step: 2,
     icon: '◈',
-    title: 'ADD A COVER IMAGE',
-    body: 'Upload from your camera roll or paste an image link. Use images you own or have rights to — your own photos, product shots, mood imagery.',
-    hint: '⚖ DO NOT USE BRAND EDITORIAL PHOTOS OR COPYRIGHTED IMAGERY YOU DON\'T OWN.',
+    title: 'Add a cover image',
+    body: 'This is the first thing people see. Upload something from your camera roll or paste an image link. Use photos you took yourself, product shots you screenshotted, or mood imagery you have rights to.',
+    example: 'Pro tip: A flat lay of your own pieces, or a screenshot of a product page you're referencing, works perfectly.',
+    hint: '⚖ Heads up: don't use brand campaign photography or editorial images you didn't take — you don't own those.',
   },
   {
     step: 3,
     icon: '◆',
-    title: 'ADD ITEMS',
-    body: 'Open your catalog and start building. Paste a product link and image, set a title and price. Each item can link out to where people can buy it.',
+    title: 'Add items to it',
+    body: 'Once your catalog is created, open it and start dropping pieces. For each item you add: paste the product link, drop an image, give it a name and price. That's it.',
+    example: 'Example: Found a Rick jacket on Grailed? Paste the link, screenshot the product image, call it "SS23 Leather Intarsia" and set the price. Done.',
     hint: null,
   },
   {
     step: 4,
     icon: '●',
-    title: 'GO PUBLIC & EARN',
-    body: 'Set it public so the community discovers it. Link to affiliate partner brands and earn a commission every time someone shops through your catalog.',
+    title: 'Go public and get paid',
+    body: 'Flip it to public and your catalog shows up on Discover for everyone to find. When you link items to affiliate partner brands, you earn a commission every time someone clicks through and buys.',
+    example: 'Real talk: a well-curated catalog of 10 pieces you actually cop from gets more traction than 100 random drops.',
     hint: null,
   },
 ];
@@ -781,15 +785,15 @@ export default function CatalogsPage() {
               {TUTORIAL_STEPS.map((_, i) => (
                 <div
                   key={i}
-                  className={`flex-1 h-0.5 transition-all duration-300 ${i <= tutorialStep ? 'bg-black' : 'bg-black/15'}`}
+                  className={`flex-1 h-1 transition-all duration-300 ${i <= tutorialStep ? 'bg-black' : 'bg-black/12'}`}
                 />
               ))}
             </div>
 
             <div className="p-6 md:p-8">
               {/* Step */}
-              <p className="text-[10px] tracking-[0.4em] font-black text-black/40 mb-4" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                STEP {TUTORIAL_STEPS[tutorialStep].step} OF {TUTORIAL_STEPS.length}
+              <p className="text-xs tracking-[0.3em] font-black text-black mb-5" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                {TUTORIAL_STEPS[tutorialStep].step} / {TUTORIAL_STEPS.length}
               </p>
 
               {/* Icon */}
@@ -798,36 +802,46 @@ export default function CatalogsPage() {
               </div>
 
               {/* Title */}
-              <h2 className="text-2xl md:text-3xl font-black tracking-tighter mb-3 leading-tight" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+              <h2 className="text-3xl md:text-4xl font-black tracking-tighter mb-4 leading-tight" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
                 {TUTORIAL_STEPS[tutorialStep].title}
               </h2>
 
               {/* Body */}
-              <p className="text-sm font-black tracking-wide leading-relaxed mb-4 text-black/70" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+              <p className="text-base leading-relaxed mb-3 text-black" style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontWeight: 400 }}>
                 {TUTORIAL_STEPS[tutorialStep].body}
               </p>
 
+              {/* Example */}
+              {'example' in TUTORIAL_STEPS[tutorialStep] && (TUTORIAL_STEPS[tutorialStep] as any).example && (
+                <div className="bg-black text-white p-3 mb-3">
+                  <p className="text-[10px] tracking-[0.2em] font-black mb-1" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>FOR EXAMPLE</p>
+                  <p className="text-sm leading-relaxed" style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontWeight: 400 }}>
+                    {(TUTORIAL_STEPS[tutorialStep] as any).example}
+                  </p>
+                </div>
+              )}
+
               {/* Legal hint */}
               {TUTORIAL_STEPS[tutorialStep].hint && (
-                <div className="border-2 border-black/15 p-3 mb-4">
-                  <p className="text-[10px] tracking-wider font-black leading-relaxed text-black/60" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                <div className="border-2 border-black p-3 mb-3">
+                  <p className="text-xs leading-relaxed text-black" style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontWeight: 500 }}>
                     {TUTORIAL_STEPS[tutorialStep].hint}
                   </p>
                 </div>
               )}
 
               {/* Buttons */}
-              <div className="flex gap-3">
+              <div className="flex gap-3 mt-2">
                 <button
                   onClick={dismissTutorial}
-                  className="px-5 py-3 border-2 border-black text-xs tracking-wider font-black hover:bg-black hover:text-white transition-all"
+                  className="px-5 py-3.5 border-2 border-black text-xs tracking-[0.2em] font-black hover:bg-black hover:text-white transition-all"
                   style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                 >
                   SKIP
                 </button>
                 <button
                   onClick={nextTutorialStep}
-                  className="flex-1 py-3 bg-black text-white hover:bg-white hover:text-black border-2 border-black transition-all text-xs tracking-wider font-black"
+                  className="flex-1 py-3.5 bg-black text-white hover:bg-white hover:text-black border-2 border-black transition-all text-xs tracking-[0.2em] font-black"
                   style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                 >
                   {tutorialStep < TUTORIAL_STEPS.length - 1 ? 'NEXT →' : 'CREATE MY FIRST CATALOG →'}
@@ -840,15 +854,11 @@ export default function CatalogsPage() {
 
       {/* ── CREATE MODAL ─────────────────────────────────────────────────────── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4" style={{ background: 'rgba(0,0,0,0.88)' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.88)' }}>
           <div
-            className="w-full md:max-w-md bg-white md:border-2 md:border-black overflow-y-auto"
-            style={{ borderRadius: '16px 16px 0 0', maxHeight: '90vh' }}
+            className="w-full max-w-md bg-white border-2 border-black overflow-y-auto"
+            style={{ maxHeight: '85vh', borderRadius: '0' }}
           >
-            {/* Drag handle */}
-            <div className="flex justify-center pt-3 pb-1 md:hidden">
-              <div className="w-10 h-1 bg-black/20 rounded-full" />
-            </div>
 
             <div className="p-6 md:p-8 space-y-5">
               {/* Header */}
@@ -998,8 +1008,8 @@ export default function CatalogsPage() {
                   </p>
                 </div>
 
-                {/* Actions — extra bottom padding so mobile nav doesn't cover */}
-                <div className="flex gap-3 pt-2 pb-8 md:pb-2">
+                {/* Actions */}
+                <div className="flex gap-3 pt-2 pb-2">
                   <button
                     type="button"
                     onClick={() => { setShowCreateModal(false); resetCreateForm(); }}
