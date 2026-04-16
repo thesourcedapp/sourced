@@ -17,7 +17,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 type Props = {
-  params: { username: string; slug: string };
+  params: Promise<{ username: string; slug: string }>;
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -31,11 +31,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 
   try {
-    const slug = params.slug;
+    // Next.js 15: params is a Promise and must be awaited
+    const { username, slug } = await params;
 
-    console.log("[OG] fetching catalog for slug:", slug);
-    console.log("[OG] SUPABASE_URL defined:", !!SUPABASE_URL);
-    console.log("[OG] SUPABASE_KEY defined:", !!SUPABASE_KEY);
+    console.log("[OG] slug:", slug);
+    console.log("[OG] username:", username);
+    console.log("[OG] SUPABASE_URL:", SUPABASE_URL?.slice(0, 30) ?? "MISSING");
+    console.log("[OG] SUPABASE_KEY length:", SUPABASE_KEY?.length ?? 0);
 
     // Use raw fetch against Supabase REST API — no client needed, no imports that can fail
     const res = await fetch(
@@ -72,7 +74,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       }
     );
 
-    let ownerName = params.username.replace("@", "");
+    let ownerName = username.replace("@", "");
     if (ownerRes.ok) {
       const owners = await ownerRes.json();
       if (owners?.[0]?.username) ownerName = owners[0].username;
@@ -143,6 +145,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
-export default function Page() {
+export default async function Page({ params }: Props) {
+  // params awaited here too for consistency with Next.js 15
+  await params;
   return <CatalogDetailPage />;
 }
