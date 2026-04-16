@@ -16,7 +16,7 @@ export default function CreateHub() {
 
   async function checkAuth() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push('/signin'); return; }
+    if (!user) { setLoading(false); return; }
     setIsAuthenticated(true);
 
     // Fetch profile — username + tutorial flag
@@ -57,7 +57,31 @@ export default function CreateHub() {
     );
   }
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated) {
+    return (
+      <>
+        <style jsx global>{`@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');`}</style>
+        <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 pb-32">
+          <p className="text-[10px] tracking-[0.4em] font-black mb-4 text-black/30" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+            SOURCED
+          </p>
+          <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-center mb-4 leading-tight" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+            YOU MUST BE LOGGED IN TO USE THIS FEATURE
+          </h1>
+          <p className="text-sm font-black tracking-wider text-black/40 text-center mb-8" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+            SIGN IN TO CREATE CATALOGS AND FEED POSTS
+          </p>
+          <button
+            onClick={() => router.push('/signin')}
+            className="px-10 py-3.5 bg-black text-white hover:bg-white hover:text-black border-2 border-black transition-all text-xs tracking-[0.2em] font-black"
+            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+          >
+            SIGN IN →
+          </button>
+        </div>
+      </>
+    );
+  }
 
 
   return (
