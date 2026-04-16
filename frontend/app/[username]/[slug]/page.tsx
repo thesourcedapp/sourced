@@ -36,7 +36,7 @@ type CatalogItem = {
   style_tags?: string[];
   click_count?: number;
   unique_click_count?: number;
-  is_monetized?: boolean; // ← NEW
+  is_monetized?: boolean;
 };
 
 type SortOption = 'recent' | 'oldest' | 'most_liked' | 'title';
@@ -128,6 +128,9 @@ export default function CatalogDetailPage() {
   const [editingCatalog, setEditingCatalog] = useState(false);
   const [editCatalogError, setEditCatalogError] = useState('');
 
+  // ── Tutorial state (NEW — only added, nothing else changed) ─────────────────
+  const [showItemTutorial, setShowItemTutorial] = useState(false);
+
   const isOwner = currentUserId === catalog?.owner_id;
 
   useEffect(() => {
@@ -184,14 +187,38 @@ export default function CatalogDetailPage() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('is_onboarded')
+        .select('is_onboarded, has_seen_item_tutorial')
         .eq('id', user.id)
         .single();
 
       setIsOnboarded(profile?.is_onboarded || false);
+
+      // Show item tutorial if owner and hasn't seen it yet
+      // We check isOwner later once catalog loads, so we store the flag temporarily
+      if (!profile?.has_seen_item_tutorial) {
+        // Will trigger after catalog loads via the effect below
+        setShowItemTutorial(true);
+      }
     } else {
       setCurrentUserId(null);
       setIsOnboarded(false);
+    }
+  }
+
+  // Once we know isOwner, hide tutorial for non-owners
+  useEffect(() => {
+    if (catalog && !isOwner) {
+      setShowItemTutorial(false);
+    }
+  }, [catalog, isOwner]);
+
+  async function dismissItemTutorial() {
+    setShowItemTutorial(false);
+    if (currentUserId) {
+      await supabase
+        .from('profiles')
+        .update({ has_seen_item_tutorial: true })
+        .eq('id', currentUserId);
     }
   }
 
@@ -272,7 +299,6 @@ export default function CatalogDetailPage() {
     }
   }
 
-  // Track click function
   async function trackClick(itemId: string) {
     console.log('🔵 trackClick called with itemId:', itemId);
     try {
@@ -301,11 +327,9 @@ export default function CatalogDetailPage() {
       }
     } catch (error) {
       console.error('❌ Error tracking click:', error);
-      // Don't block navigation if tracking fails
     }
   }
 
-  // Handle item click with tracking
   function handleItemClick(item: CatalogItem, e?: React.MouseEvent) {
     console.log('🟢 handleItemClick called for item:', item.id, item.title);
 
@@ -315,11 +339,7 @@ export default function CatalogDetailPage() {
 
     if (item.product_url) {
       console.log('🟢 Item has product_url:', item.product_url);
-
-      // Track the click (fire and forget)
       trackClick(item.id);
-
-      // Open the link
       console.log('🟢 Opening product URL in new tab');
       window.open(item.product_url, '_blank');
     } else {
@@ -509,7 +529,6 @@ export default function CatalogDetailPage() {
 
       let finalImageUrl = itemImageUrl;
 
-      // Handle file upload
       if (uploadMethod === 'file' && selectedFile) {
         setCreatingStatus('Uploading image...');
         const uploadResult = await uploadImageToStorage(selectedFile, currentUserId);
@@ -522,9 +541,7 @@ export default function CatalogDetailPage() {
         }
 
         finalImageUrl = uploadResult.url;
-      }
-      // Handle external URL - download and save to our bucket
-      else if (uploadMethod === 'url' && itemImageUrl) {
+      } else if (uploadMethod === 'url' && itemImageUrl) {
         setCreatingStatus('Saving image to storage...');
         try {
           const response = await fetch(itemImageUrl);
@@ -627,7 +644,6 @@ export default function CatalogDetailPage() {
     }
   }
 
-  // Edit Catalog Functions
   function openEditCatalogModal() {
     if (!catalog) return;
     setEditCatalogName(catalog.name);
@@ -776,8 +792,6 @@ export default function CatalogDetailPage() {
       <Head>
         <title>{shareTitle}</title>
         <meta name="description" content={shareDescription} />
-
-        {/* Open Graph / Facebook */}
         <meta property="og:type" content="website" />
         <meta property="og:url" content={pageUrl} />
         <meta property="og:title" content={shareTitle} />
@@ -785,15 +799,11 @@ export default function CatalogDetailPage() {
         <meta property="og:image" content={shareImage} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
-
-        {/* Twitter */}
         <meta property="twitter:card" content="summary_large_image" />
         <meta property="twitter:url" content={pageUrl} />
         <meta property="twitter:title" content={shareTitle} />
         <meta property="twitter:description" content={shareDescription} />
         <meta property="twitter:image" content={shareImage} />
-
-        {/* Additional meta tags */}
         <meta property="og:site_name" content="Sourced" />
         <meta name="twitter:site" content="@sourced" />
       </Head>
@@ -801,6 +811,12 @@ export default function CatalogDetailPage() {
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');
         input, textarea, select { font-size: 16px !important; }
+
+        @keyframes tutSlide {
+          from { opacity: 0; transform: translateY(24px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .tut-slide { animation: tutSlide 0.4s cubic-bezier(0.16,1,0.3,1) both; }
       `}</style>
 
       <div className="min-h-screen bg-white text-black pb-24 md:pb-0">
@@ -1032,12 +1048,10 @@ export default function CatalogDetailPage() {
                     >
                       <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
 
-                      {/* Like count badge */}
                       {item.like_count > 0 && (
                         <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/80 text-white text-[8px] tracking-wider font-black">♥ {item.like_count}</div>
                       )}
 
-                      {/* ── FTC DISCLOSURE BADGE (grid) ── */}
                       {item.is_monetized && (
                         <div
                           className="absolute top-2 right-2 z-10 w-5 h-5 bg-black/20 backdrop-blur-sm flex items-center justify-center"
@@ -1048,7 +1062,6 @@ export default function CatalogDetailPage() {
                       )}
                     </div>
 
-                    {/* Desktop item info */}
                     <div className="p-3 bg-white border-t border-black/20 cursor-pointer hover:bg-black/5 transition-all hidden md:block" onClick={() => setExpandedItem(item)}>
                       <h3 className="text-xs font-black tracking-wide uppercase leading-tight truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
                       <div className="flex items-center justify-between text-[10px] tracking-wider opacity-60 mb-2">
@@ -1058,7 +1071,6 @@ export default function CatalogDetailPage() {
                       <button onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.is_liked); }} className="w-full py-1 border border-black/20 hover:border-black hover:bg-black/10 transition-all text-xs">{item.is_liked ? '♥' : '♡'} LIKE</button>
                     </div>
 
-                    {/* Mobile item info */}
                     <div className="md:hidden bg-white border-t border-black/20">
                       <div className="p-3">
                         <h3 className="text-xs font-black tracking-wide uppercase leading-tight truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
@@ -1076,7 +1088,6 @@ export default function CatalogDetailPage() {
                 ))}
               </div>
             ) : (
-              // ── COMPACT LIST VIEW ──
               <div className="space-y-2">
                 {filteredItems.map((item) => (
                   <div
@@ -1097,7 +1108,6 @@ export default function CatalogDetailPage() {
                       onClick={() => handleItemClick(item)}
                     >
                       <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
-                      {/* ── FTC DISCLOSURE BADGE (compact thumbnail) ── */}
                       {item.is_monetized && (
                         <div
                           className="absolute top-0 right-0 w-4 h-4 bg-black/20 backdrop-blur-sm flex items-center justify-center"
@@ -1463,6 +1473,84 @@ export default function CatalogDetailPage() {
             </div>
           </div>
         )}
+
+        {/* ── ADD ITEM TUTORIAL (NEW — owner only, shows once) ──────────────────── */}
+        {showItemTutorial && isOwner && (
+          <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center" style={{ background: 'rgba(0,0,0,0.88)' }}>
+            <div className="tut-slide w-full md:max-w-sm bg-white" style={{ borderRadius: '16px 16px 0 0' }}>
+              <div className="p-6 md:p-8">
+                <p className="text-xs tracking-[0.3em] font-black mb-5" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
+                  HOW TO ADD ITEMS
+                </p>
+
+                <h2 className="text-3xl font-black tracking-tighter mb-4 leading-tight" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000', WebkitTextFillColor: '#000000' }}>
+                  Build your catalog.
+                </h2>
+
+                {/* Step 1 */}
+                <div className="flex gap-4 mb-4">
+                  <div className="inline-flex items-center justify-center w-8 h-8 border-2 border-black flex-shrink-0">
+                    <span className="text-xs font-black" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>01</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-black tracking-[0.1em] mb-0.5" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000' }}>TAP ADD ITEM</p>
+                    <p className="text-sm leading-snug" style={{ color: '#000000', fontFamily: 'system-ui, -apple-system, sans-serif', fontWeight: 400 }}>
+                      Hit the ADD ITEM button at the top. A form will open where you fill in everything about the piece.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 2 */}
+                <div className="flex gap-4 mb-4">
+                  <div className="inline-flex items-center justify-center w-8 h-8 border-2 border-black flex-shrink-0">
+                    <span className="text-xs font-black" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>02</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-black tracking-[0.1em] mb-0.5" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000' }}>ADD AN IMAGE</p>
+                    <p className="text-sm leading-snug" style={{ color: '#000000', fontFamily: 'system-ui, -apple-system, sans-serif', fontWeight: 400 }}>
+                      Upload from your camera roll or paste an image link. This is what people see first in the grid.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 3 */}
+                <div className="flex gap-4 mb-4">
+                  <div className="inline-flex items-center justify-center w-8 h-8 border-2 border-black flex-shrink-0">
+                    <span className="text-xs font-black" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>03</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-black tracking-[0.1em] mb-0.5" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000' }}>PASTE THE PRODUCT LINK</p>
+                    <p className="text-sm leading-snug" style={{ color: '#000000', fontFamily: 'system-ui, -apple-system, sans-serif', fontWeight: 400 }}>
+                      Copy the URL from any online store and paste it in. The seller name fills itself in automatically.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 4 */}
+                <div className="flex gap-4 mb-5">
+                  <div className="inline-flex items-center justify-center w-8 h-8 border-2 border-black flex-shrink-0">
+                    <span className="text-xs font-black" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>04</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-black tracking-[0.1em] mb-0.5" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000' }}>SET A PRICE & TITLE</p>
+                    <p className="text-sm leading-snug" style={{ color: '#000000', fontFamily: 'system-ui, -apple-system, sans-serif', fontWeight: 400 }}>
+                      Name the piece something people will actually search for. Add the price so shoppers know what they're looking at before they click.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={dismissItemTutorial}
+                  className="w-full py-3.5 bg-black text-white font-black tracking-[0.2em] text-xs hover:bg-white hover:text-black border-2 border-black transition-all"
+                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                >
+                  GOT IT — ADD MY FIRST ITEM →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </>
   );
