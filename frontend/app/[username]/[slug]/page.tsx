@@ -7,7 +7,7 @@
 // The "use client" directive must NOT be in this file.
 
 import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server"; // your server-side supabase client
+import { createClient } from "@supabase/supabase-js";
 import CatalogDetailPage from "./CatalogDetailPage"; // rename your existing file to this
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.thesourcedapp.com";
@@ -23,7 +23,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const username = params.username.replace("@", "");
   const slug     = params.slug;
 
-  const supabase = createClient();
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   // Fetch just what we need for the OG tags
   const { data: catalog } = await supabase
