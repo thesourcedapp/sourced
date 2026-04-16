@@ -26,7 +26,7 @@ type ViewMode = 'grid' | 'list';
 const TUTORIAL_STEPS = [
   {
     step: 1,
-    icon: '✦',
+    icon: null,
     title: 'Name your catalog',
     body: 'Think of it like naming a playlist — the name is the whole vibe. Something like "Rick Season", "Quiet Luxury Summer", or "Off-White Archive" hits different than just "My Clothes".',
     example: 'Example: A catalog called "Tokyo Layering" already tells people exactly what they\'re walking into.',
@@ -34,7 +34,7 @@ const TUTORIAL_STEPS = [
   },
   {
     step: 2,
-    icon: '◈',
+    icon: null,
     title: 'Add a cover image',
     body: 'This is the first thing people see. Upload something from your camera roll or paste an image link. Use photos you took yourself, product shots you screenshotted, or mood imagery you have rights to.',
     example: 'Pro tip: A flat lay of your own pieces, or a screenshot of a product page you\'re referencing, works perfectly.',
@@ -42,7 +42,7 @@ const TUTORIAL_STEPS = [
   },
   {
     step: 3,
-    icon: '◆',
+    icon: null,
     title: 'Add items to it',
     body: 'Once your catalog is created, open it and start dropping pieces. For each item: paste the product link, drop an image, give it a name and price. You can add items from any online store.',
     example: 'Example: Found a jacket on any retailer\'s site? Copy the product link, screenshot the product image, name it something clean like "SS23 Leather Jacket" and set the price. Done.',
@@ -50,7 +50,7 @@ const TUTORIAL_STEPS = [
   },
   {
     step: 4,
-    icon: '●',
+    icon: null,
     title: 'Go public and get paid',
     body: 'Flip it to public and your catalog shows up on Discover. Creators who qualify for verification — based on having engaging posts and well-curated catalogs — earn per click on their items, plus a commission every time someone buys through their links.',
     example: 'Real talk: creators with verified status earn on every click and every purchase. The path there is simple — post consistently, curate well, and build an audience that trusts your taste.',
@@ -778,10 +778,10 @@ export default function CatalogsPage() {
 
       {/* ── TUTORIAL MODAL ──────────────────────────────────────────────────── */}
       {showTutorial && (
-        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center" style={{ background: 'rgba(0,0,0,0.88)' }}>
-          <div className="tutorial-in w-full md:max-w-sm bg-white" style={{ borderRadius: '16px 16px 0 0' }}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center px-4 pb-28 pt-4 md:p-4" style={{ background: 'rgba(0,0,0,0.88)' }}>
+          <div className="tutorial-in w-full max-w-sm bg-white border-2 border-black">
             {/* Progress bar */}
-            <div className="flex gap-1 p-5 pb-0">
+            <div className="flex gap-1 px-6 pt-6 pb-0">
               {TUTORIAL_STEPS.map((_, i) => (
                 <div
                   key={i}
@@ -796,9 +796,11 @@ export default function CatalogsPage() {
                 {TUTORIAL_STEPS[tutorialStep].step} / {TUTORIAL_STEPS.length}
               </p>
 
-              {/* Icon */}
-              <div className="text-4xl mb-4 font-black" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
-                {TUTORIAL_STEPS[tutorialStep].icon}
+              {/* Step number badge */}
+              <div className="inline-flex items-center justify-center w-10 h-10 border-2 border-black mb-4">
+                <span className="text-sm font-black" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
+                  0{TUTORIAL_STEPS[tutorialStep].step}
+                </span>
               </div>
 
               {/* Title */}
