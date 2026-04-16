@@ -887,46 +887,24 @@ export default function CatalogDetailPage() {
                     onClick={async () => {
                       try {
                         if (navigator.share) {
-                          if (catalog?.image_url && navigator.canShare) {
-                            try {
-                              const response = await fetch(catalog.image_url, {
-                                mode: 'cors',
-                                credentials: 'omit'
-                              });
-                              const blob = await response.blob();
-                              const file = new File([blob], `${catalog.name.replace(/[^a-z0-9]/gi, '-')}.jpg`, {
-                                type: 'image/jpeg'
-                              });
-                              const canShareFiles = navigator.canShare({ files: [file] });
-                              if (canShareFiles) {
-                                await navigator.share({
-                                  files: [file],
-                                  title: shareTitle,
-                                  text: shareDescription,
-                                  url: window.location.href,
-                                });
-                                return;
-                              }
-                            } catch (imageError) {
-                              console.error('❌ Image share failed:', imageError);
-                            }
-                          }
+                          // Just share the URL — the OG image handles the rich preview
+                          // on the recipient's end. Fetching the cover image directly
+                          // fails for CORS-restricted hosts (Pinterest, etc.)
                           await navigator.share({
+                            title: shareTitle,
+                            text: shareDescription,
                             url: window.location.href,
                           });
                         } else {
                           await navigator.clipboard.writeText(window.location.href);
-                          alert('Link copied to clipboard!');
+                          alert('Link copied!');
                         }
                       } catch (err) {
-                        console.error('❌ Share error:', err);
                         if (err instanceof Error && err.name !== 'AbortError') {
                           try {
                             await navigator.clipboard.writeText(window.location.href);
-                            alert('Link copied to clipboard!');
-                          } catch {
-                            console.error('Failed to copy link');
-                          }
+                            alert('Link copied!');
+                          } catch {}
                         }
                       }
                     }}
