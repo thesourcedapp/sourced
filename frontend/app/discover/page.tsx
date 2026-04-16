@@ -161,7 +161,7 @@ function ItemCard({
         {item.is_monetized && (
           <div
             className="absolute top-2 right-2 w-5 h-5 bg-black/25 backdrop-blur-sm flex items-center justify-center"
-            title="Affiliate — creator earns commission"
+            title="This item earns the creator a commission"
           >
             <span className="text-[9px] font-black text-white" style={{ fontFamily: "Bebas Neue, sans-serif" }}>$</span>
           </div>
@@ -362,8 +362,8 @@ function ItemModal({
                 {item.title}
               </h2>
               {item.is_monetized && (
-                <p className="text-[7px] tracking-[0.3em] opacity-30 mt-0.5" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
-                  $ AFFILIATED
+                <p className="text-[9px] tracking-[0.2em] font-black mt-1" style={{ fontFamily: "Bebas Neue, sans-serif", color: '#000000' }}>
+                  $ CREATOR EARNS A COMMISSION ON THIS ITEM
                 </p>
               )}
             </div>
@@ -1443,7 +1443,7 @@ function DiscoverContent() {
         </div>
 
         {/* ── Content ── */}
-        <div className="px-5 md:px-10 py-5 max-w-7xl mx-auto">
+        <div className="px-5 md:px-10 py-5 pb-32 max-w-7xl mx-auto">
 
           {loading ? (
             <div className="flex items-center justify-center py-32">
