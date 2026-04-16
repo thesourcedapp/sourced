@@ -10,7 +10,6 @@ export default function CreateHub() {
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
-  const [showCatalogGuide, setShowCatalogGuide] = useState(false);
   const [username, setUsername] = useState<string>('');
 
   useEffect(() => { checkAuth(); }, []);
@@ -60,12 +59,6 @@ export default function CreateHub() {
 
   if (!isAuthenticated) return null;
 
-  const HOW_IT_WORKS = [
-    { n: '01', title: 'NAME YOUR CATALOG', body: 'Give it a theme — "Rick Season", "Quiet Luxury Summer", "Off-White Archive". Name it like it means something.' },
-    { n: '02', title: 'ADD A COVER IMAGE', body: 'Upload from your camera roll or paste a link. Use images you own or have rights to. No brand editorial or copyrighted photography.' },
-    { n: '03', title: 'ADD ITEMS', body: 'Open your catalog and start building. Paste a product link and image, set a title and price. Every item can link out to where people can buy it.' },
-    { n: '04', title: 'GO PUBLIC & EARN', body: 'Set it public so the community discovers it. Link to affiliate partner brands and earn a commission every time someone clicks through and buys.' },
-  ];
 
   return (
     <>
@@ -138,7 +131,7 @@ export default function CreateHub() {
                 style={{
                   background: '#000',
                   borderRadius: '16px',
-                  aspectRatio: '1.586 / 1', /* standard credit card ratio */
+                  aspectRatio: '1.586 / 1',
                   padding: '28px',
                   boxShadow: '0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)',
                 }}
@@ -220,44 +213,6 @@ export default function CreateHub() {
                 </div>
               </button>
 
-              {/* How it works toggle */}
-              <div className="mt-2">
-                <button
-                  onClick={() => setShowCatalogGuide(v => !v)}
-                  className="text-[10px] font-black tracking-[0.3em] hover:opacity-60 transition-opacity flex items-center gap-1.5 px-1"
-                  style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000' }}
-                >
-                  {showCatalogGuide ? '▼' : '▶'} HOW CATALOGS WORK
-                </button>
-
-                {showCatalogGuide && (
-                  <div className="mt-3 space-y-3 px-1">
-                    {HOW_IT_WORKS.map((step) => (
-                      <div key={step.n} className="flex gap-4">
-                        <span
-                          className="text-xl font-black flex-shrink-0 w-7"
-                          style={{ fontFamily: 'Bebas Neue, sans-serif', color: 'rgba(0,0,0,0.15)' }}
-                        >
-                          {step.n}
-                        </span>
-                        <div>
-                          <p className="text-xs font-black tracking-[0.15em] mb-0.5" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000' }}>
-                            {step.title}
-                          </p>
-                          <p className="text-xs leading-relaxed" style={{ color: 'rgba(0,0,0,0.55)' }}>
-                            {step.body}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="border border-black/10 p-3 mt-1">
-                      <p className="text-[8px] font-black tracking-wider leading-relaxed" style={{ fontFamily: 'Bebas Neue, sans-serif', color: 'rgba(0,0,0,0.4)' }}>
-                        ⚖ CONTENT POLICY — ONLY UPLOAD IMAGES YOU OWN OR HAVE RIGHTS TO. SOURCED COMPLIES WITH DMCA AND WILL REMOVE INFRINGING CONTENT ON REQUEST.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* ── FEED POST CARD ── */}
