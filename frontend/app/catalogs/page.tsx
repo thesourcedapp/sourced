@@ -694,7 +694,7 @@ export default function CatalogsPage() {
                         className={`w-full py-2 text-[10px] md:text-xs tracking-wider font-black transition-all ${
                           catalog.visibility === 'public'
                             ? 'bg-black text-white hover:bg-black/85'
-                            : 'border-2 border-black/20 hover:border-black hover:bg-black/5'
+                            : 'border-2 border-black text-black hover:bg-black hover:text-white'
                         }`}
                         style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                       >
@@ -854,20 +854,20 @@ export default function CatalogsPage() {
 
       {/* ── CREATE MODAL ─────────────────────────────────────────────────────── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.88)' }}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center px-4 pt-4 pb-28 md:p-4" style={{ background: 'rgba(0,0,0,0.88)' }}>
           <div
             className="w-full max-w-md bg-white border-2 border-black overflow-y-auto"
-            style={{ maxHeight: '85vh', borderRadius: '0' }}
+            style={{ maxHeight: '80vh', borderRadius: '0', color: '#000000' }}
           >
 
             <div className="p-6 md:p-8 space-y-5">
               {/* Header */}
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-3xl md:text-4xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                  <h2 className="text-3xl md:text-4xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000', WebkitTextFillColor: '#000000' }}>
                     NEW CATALOG
                   </h2>
-                  <p className="text-xs font-black tracking-[0.2em] text-black/50 mt-1" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                  <p className="text-xs font-black tracking-[0.2em] mt-1" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                     GIVE IT A NAME AND A VIBE
                   </p>
                 </div>
@@ -884,7 +884,7 @@ export default function CatalogsPage() {
 
                 {/* Name */}
                 <div>
-                  <label className="block text-xs tracking-[0.25em] font-black mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                  <label className="block text-xs tracking-[0.25em] font-black mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                     NAME *
                   </label>
                   <input
@@ -893,14 +893,14 @@ export default function CatalogsPage() {
                     onChange={(e) => setCatalogName(e.target.value)}
                     placeholder="Summer Collection"
                     className="w-full px-0 py-2 border-b-2 border-black/20 focus:border-black focus:outline-none transition-all text-sm font-black"
-                    style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}
                     required
                   />
                 </div>
 
                 {/* Description */}
                 <div>
-                  <label className="block text-xs tracking-[0.25em] font-black mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                  <label className="block text-xs tracking-[0.25em] font-black mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                     DESCRIPTION
                   </label>
                   <textarea
@@ -908,12 +908,13 @@ export default function CatalogsPage() {
                     onChange={(e) => setCatalogDescription(e.target.value)}
                     placeholder="Optional description..."
                     className="w-full px-0 py-2 border-b-2 border-black/20 focus:border-black focus:outline-none resize-none h-20 transition-all text-sm"
+                    style={{ color: '#000000' }}
                   />
                 </div>
 
                 {/* Cover Image */}
                 <div>
-                  <label className="block text-xs tracking-[0.25em] font-black mb-3" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                  <label className="block text-xs tracking-[0.25em] font-black mb-3" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                     COVER IMAGE
                   </label>
 
@@ -921,7 +922,7 @@ export default function CatalogsPage() {
                     <button
                       type="button"
                       onClick={() => { setUploadMethod('file'); setCatalogImageUrl(''); setSelectedFile(null); setPreviewUrl(null); setImageError(''); }}
-                      className={`flex-1 py-2 text-xs tracking-wider font-black transition-all ${uploadMethod === 'file' ? 'bg-black text-white' : 'border-2 border-black/20 hover:border-black hover:bg-black/5'}`}
+                      className={`flex-1 py-2 text-xs tracking-wider font-black transition-all ${uploadMethod === 'file' ? 'bg-black text-white' : 'border-2 border-black text-black hover:bg-black hover:text-white'}`}
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       UPLOAD FILE
@@ -929,7 +930,7 @@ export default function CatalogsPage() {
                     <button
                       type="button"
                       onClick={() => { setUploadMethod('url'); setSelectedFile(null); setPreviewUrl(null); setImageError(''); }}
-                      className={`flex-1 py-2 text-xs tracking-wider font-black transition-all ${uploadMethod === 'url' ? 'bg-black text-white' : 'border-2 border-black/20 hover:border-black hover:bg-black/5'}`}
+                      className={`flex-1 py-2 text-xs tracking-wider font-black transition-all ${uploadMethod === 'url' ? 'bg-black text-white' : 'border-2 border-black text-black hover:bg-black hover:text-white'}`}
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       IMAGE URL
@@ -954,9 +955,10 @@ export default function CatalogsPage() {
                         onChange={(e) => handleImageUrlChange(e.target.value)}
                         placeholder="https://example.com/image.jpg"
                         className="w-full px-0 py-2 border-b-2 border-black/20 focus:border-black focus:outline-none transition-all text-sm"
+                        style={{ color: '#000000' }}
                       />
                       {checkingImage && (
-                        <p className="text-xs font-black tracking-wider text-black/50" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        <p className="text-xs font-black tracking-wider" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                           VERIFYING...
                         </p>
                       )}
@@ -965,7 +967,7 @@ export default function CatalogsPage() {
 
                   {/* Legal */}
                   <div className="border-2 border-black/10 p-3 mt-3">
-                    <p className="text-[9px] font-black tracking-wider leading-relaxed text-black/50" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                    <p className="text-[9px] font-black tracking-wider leading-relaxed" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                       ONLY USE IMAGES YOU OWN OR HAVE PERMISSION TO USE. DO NOT UPLOAD BRAND EDITORIAL PHOTOGRAPHY OR COPYRIGHTED ARTWORK.
                     </p>
                   </div>
@@ -980,14 +982,14 @@ export default function CatalogsPage() {
 
                 {/* Visibility */}
                 <div>
-                  <label className="block text-xs tracking-[0.25em] font-black mb-3" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                  <label className="block text-xs tracking-[0.25em] font-black mb-3" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                     VISIBILITY
                   </label>
                   <div className="flex gap-2">
                     <button
                       type="button"
                       onClick={() => setCatalogVisibility('public')}
-                      className={`flex-1 py-2.5 text-xs tracking-wider font-black transition-all ${catalogVisibility === 'public' ? 'bg-black text-white' : 'border-2 border-black/20 hover:border-black hover:bg-black/5'}`}
+                      className={`flex-1 py-2.5 text-xs tracking-wider font-black transition-all ${catalogVisibility === 'public' ? 'bg-black text-white' : 'border-2 border-black text-black hover:bg-black hover:text-white'}`}
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       PUBLIC
@@ -995,13 +997,13 @@ export default function CatalogsPage() {
                     <button
                       type="button"
                       onClick={() => setCatalogVisibility('private')}
-                      className={`flex-1 py-2.5 text-xs tracking-wider font-black transition-all ${catalogVisibility === 'private' ? 'bg-black text-white' : 'border-2 border-black/20 hover:border-black hover:bg-black/5'}`}
+                      className={`flex-1 py-2.5 text-xs tracking-wider font-black transition-all ${catalogVisibility === 'private' ? 'bg-black text-white' : 'border-2 border-black text-black hover:bg-black hover:text-white'}`}
                       style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                     >
                       PRIVATE
                     </button>
                   </div>
-                  <p className="text-[10px] font-black tracking-wider text-black/50 mt-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                  <p className="text-[10px] font-black tracking-wider mt-2" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                     {catalogVisibility === 'public'
                       ? 'VISIBLE ON YOUR PROFILE AND DISCOVER — REQUIRED TO EARN COMMISSIONS'
                       : 'ONLY YOU CAN SEE THIS CATALOG'}
