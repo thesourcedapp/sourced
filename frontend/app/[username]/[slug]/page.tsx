@@ -28,6 +28,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   try {
     const slug = params.slug;
 
+    console.log("[OG] fetching catalog for slug:", slug);
+    console.log("[OG] SUPABASE_URL defined:", !!SUPABASE_URL);
+    console.log("[OG] SUPABASE_KEY defined:", !!SUPABASE_KEY);
+
     // Use raw fetch against Supabase REST API — no client needed, no imports that can fail
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/catalogs?slug=eq.${encodeURIComponent(slug)}&select=id,name,description,image_url,owner_id&limit=1`,
@@ -36,13 +40,18 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
           apikey: SUPABASE_KEY,
           Authorization: `Bearer ${SUPABASE_KEY}`,
         },
-        // Don't cache — always get fresh data
         cache: "no-store",
       }
     );
 
-    if (!res.ok) return fallback;
+    console.log("[OG] catalogs response status:", res.status);
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[OG] catalogs fetch failed:", res.status, text);
+      return fallback;
+    }
     const catalogs = await res.json();
+    console.log("[OG] catalogs result:", JSON.stringify(catalogs));
     if (!catalogs?.length) return fallback;
     const catalog = catalogs[0];
 
@@ -123,7 +132,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       },
     };
   } catch (err) {
-    console.error("[generateMetadata] failed:", err);
+    console.error("[generateMetadata] crashed with error:", err);
+    console.error("[generateMetadata] error message:", (err as any)?.message);
     return fallback;
   }
 }
