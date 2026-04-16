@@ -746,13 +746,20 @@ export default function CatalogDetailPage() {
 
   const totalLikes = items.reduce((sum, item) => sum + item.like_count, 0);
 
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://thesourcedapp.com';
   const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
-  const shareTitle = catalog ? `Sourced - ${catalog.name}` : 'Sourced';
-  const shareDescription = `${catalog?.name || 'Catalog'} on Sourced`;
 
+  // Title: just the catalog name — iMessage shows this as the link title
+  const shareTitle = catalog ? catalog.name : 'Sourced';
+  // Description: who made it + item count — shows below title in iMessage/WhatsApp
+  const shareDescription = catalog
+    ? `Curated by @${catalog.owner.username} · ${items.length} item${items.length !== 1 ? 's' : ''} · Shop on Sourced`
+    : 'Discover fashion catalogs on Sourced';
+
+  // MUST be absolute — Instagram, Snapchat, and WhatsApp scrapers reject relative URLs
   const ogImageUrl = catalog
-    ? `/api/og/catalog?catalog=${encodeURIComponent(catalog.name)}&username=${encodeURIComponent(catalog.owner.username)}&items=${items.length}${catalog.image_url ? `&image=${encodeURIComponent(catalog.image_url)}` : ''}`
-    : 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    ? `${baseUrl}/api/og/catalog?catalog=${encodeURIComponent(catalog.name)}&username=${encodeURIComponent(catalog.owner.username)}&items=${items.length}${catalog.image_url ? `&image=${encodeURIComponent(catalog.image_url)}` : ''}`
+    : `${baseUrl}/og-default.png`;
 
   const shareImage = ogImageUrl;
 
@@ -797,6 +804,7 @@ export default function CatalogDetailPage() {
         <meta property="og:title" content={shareTitle} />
         <meta property="og:description" content={shareDescription} />
         <meta property="og:image" content={shareImage} />
+        <meta property="og:image:secure_url" content={shareImage} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta property="og:image:type" content="image/png" />

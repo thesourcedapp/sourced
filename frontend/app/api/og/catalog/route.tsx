@@ -1,4 +1,4 @@
-// app/api/og/catalog/route.ts
+// app/api/og/catalog/route.tsx
 // Generates the preview image shown when sharing a catalog link on
 // iMessage, Instagram, Snapchat, Twitter/X, WhatsApp, etc.
 //
@@ -38,7 +38,9 @@ export async function GET(req: NextRequest) {
     // Falls back to system sans-serif if font fetch fails
   }
 
-  return new ImageResponse(
+  // Cache the generated image for 1 hour — scrapers (Instagram, Snapchat, WhatsApp)
+  // will serve the cached version rather than re-generating on every preview
+  const response = new ImageResponse(
     (
       <div
         style={{
@@ -296,4 +298,8 @@ export async function GET(req: NextRequest) {
         : [],
     }
   );
+
+  response.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
+  response.headers.set("CDN-Cache-Control", "public, s-maxage=3600");
+  return response;
 }
