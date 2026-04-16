@@ -327,12 +327,29 @@ function ItemModal({
       {/* Sheet — compact bottom sheet on mobile, centered card on desktop */}
       <div
         className="relative w-full md:w-auto md:min-w-[400px] md:max-w-lg bg-white shadow-2xl"
+        data-sheet="true"
         style={{ maxHeight: "65vh", borderRadius: "14px 14px 0 0" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Drag handle hint — mobile only */}
-        <div className="flex justify-center pt-2.5 pb-1 md:hidden">
-          <div className="w-9 h-1 bg-black/15 rounded-full" />
+        {/* Drag handle — tappable, closes on tap or swipe down */}
+        <div
+          className="flex justify-center items-center pt-2.5 pb-2 md:hidden cursor-pointer select-none"
+          onClick={onClose}
+          onTouchStart={(e) => {
+            const startY = e.touches[0].clientY;
+            const el = e.currentTarget.closest("[data-sheet]") as HTMLElement;
+            function onMove(ev: TouchEvent) {
+              if (ev.touches[0].clientY - startY > 40) { onClose(); cleanup(); }
+            }
+            function cleanup() {
+              window.removeEventListener("touchmove", onMove);
+              window.removeEventListener("touchend", cleanup);
+            }
+            window.addEventListener("touchmove", onMove);
+            window.addEventListener("touchend", cleanup);
+          }}
+        >
+          <div className="w-10 h-1.5 bg-black/20 rounded-full hover:bg-black/40 transition-colors" />
         </div>
 
         {/* Close button — always visible, top right */}
@@ -627,8 +644,8 @@ function SearchOverlay({
   return (
     <div className="fixed inset-0 z-[200] bg-white flex flex-col">
       {/* Search input */}
-      <div className="border-b-2 border-black flex items-center px-5 md:px-10 gap-3 h-16 flex-shrink-0">
-        <span className="text-xl opacity-30 select-none flex-shrink-0">⌕</span>
+      <div className="border-b-2 border-black flex items-center px-5 md:px-10 gap-3 h-20 flex-shrink-0">
+        <span className="text-2xl opacity-30 select-none flex-shrink-0">⌕</span>
         <input
           ref={inputRef}
           type="text"
@@ -636,12 +653,12 @@ function SearchOverlay({
           onChange={(e) => setQ(e.target.value)}
           placeholder="SEARCH"
           className="flex-1 bg-transparent tracking-wider placeholder-black/25 focus:outline-none"
-          style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: "16px" }}
+          style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: "22px" }}
         />
         {searching && (
-          <span className="text-[9px] tracking-[0.4em] opacity-30 animate-pulse flex-shrink-0" style={{ fontFamily: "Bebas Neue, sans-serif" }}>SEARCHING</span>
+          <span className="text-[10px] tracking-[0.4em] opacity-30 animate-pulse flex-shrink-0" style={{ fontFamily: "Bebas Neue, sans-serif" }}>SEARCHING</span>
         )}
-        <button onClick={onClose} className="text-[10px] tracking-[0.3em] opacity-40 hover:opacity-100 transition-opacity font-black flex-shrink-0" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
+        <button onClick={onClose} className="text-xs tracking-[0.3em] opacity-40 hover:opacity-100 transition-opacity font-black flex-shrink-0" style={{ fontFamily: "Bebas Neue, sans-serif" }}>
           [ESC]
         </button>
       </div>
