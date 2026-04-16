@@ -894,7 +894,7 @@ export default function CatalogsPage() {
                     value={catalogName}
                     onChange={(e) => setCatalogName(e.target.value)}
                     placeholder="Summer Collection"
-                    className="w-full px-0 py-2 border-b-2 border-black/20 focus:border-black focus:outline-none transition-all text-sm font-black"
+                    className="w-full px-0 py-2 border-b-2 border-black/20 focus:border-black focus:outline-none transition-all text-sm font-black placeholder-black/30"
                     style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}
                     required
                   />
