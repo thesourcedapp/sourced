@@ -44,16 +44,16 @@ const TUTORIAL_STEPS = [
     step: 3,
     icon: '◆',
     title: 'Add items to it',
-    body: 'Once your catalog is created, open it and start dropping pieces. For each item you add: paste the product link, drop an image, give it a name and price. That\'s it.',
-    example: 'Example: Found a Rick jacket on Grailed? Paste the link, screenshot the product image, call it "SS23 Leather Intarsia" and set the price. Done.',
+    body: 'Once your catalog is created, open it and start dropping pieces. For each item: paste the product link, drop an image, give it a name and price. You can add items from any online store.',
+    example: 'Example: Found a jacket on any retailer\'s site? Copy the product link, screenshot the product image, name it something clean like "SS23 Leather Jacket" and set the price. Done.',
     hint: null,
   },
   {
     step: 4,
     icon: '●',
     title: 'Go public and get paid',
-    body: 'Flip it to public and your catalog shows up on Discover for everyone to find. When you link items to affiliate partner brands, you earn a commission every time someone clicks through and buys.',
-    example: 'Real talk: a well-curated catalog of 10 pieces you actually cop from gets more traction than 100 random drops.',
+    body: 'Flip it to public and your catalog shows up on Discover. Creators who qualify for verification — based on having engaging posts and well-curated catalogs — earn per click on their items, plus a commission every time someone buys through their links.',
+    example: 'Real talk: creators with verified status earn on every click and every purchase. The path there is simple — post consistently, curate well, and build an audience that trusts your taste.',
     hint: null,
   },
 ];
@@ -792,17 +792,17 @@ export default function CatalogsPage() {
 
             <div className="p-6 md:p-8">
               {/* Step */}
-              <p className="text-xs tracking-[0.3em] font-black text-black mb-5" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+              <p className="text-xs tracking-[0.3em] font-black mb-5" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                 {TUTORIAL_STEPS[tutorialStep].step} / {TUTORIAL_STEPS.length}
               </p>
 
               {/* Icon */}
-              <div className="text-4xl mb-4 font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+              <div className="text-4xl mb-4 font-black" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                 {TUTORIAL_STEPS[tutorialStep].icon}
               </div>
 
               {/* Title */}
-              <h2 className="text-3xl md:text-4xl font-black tracking-tighter mb-4 leading-tight" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+              <h2 className="text-3xl md:text-4xl font-black tracking-tighter mb-4 leading-tight" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000', WebkitTextFillColor: '#000000' }}>
                 {TUTORIAL_STEPS[tutorialStep].title}
               </h2>
 
