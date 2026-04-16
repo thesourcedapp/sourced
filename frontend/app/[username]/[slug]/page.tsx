@@ -799,6 +799,9 @@ export default function CatalogDetailPage() {
         <meta property="og:image" content={shareImage} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
+        <meta property="og:image:type" content="image/png" />
+        <meta property="og:image:alt" content={catalog ? `${catalog.name} — curated by @${catalog.owner.username} on Sourced` : 'Sourced catalog'} />
+        <meta name="twitter:image:alt" content={catalog ? `${catalog.name} — curated by @${catalog.owner.username} on Sourced` : 'Sourced catalog'} />
         <meta property="twitter:card" content="summary_large_image" />
         <meta property="twitter:url" content={pageUrl} />
         <meta property="twitter:title" content={shareTitle} />
