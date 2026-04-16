@@ -11,6 +11,7 @@ export default function CreateHub() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [showCatalogGuide, setShowCatalogGuide] = useState(false);
+  const [username, setUsername] = useState<string>('');
 
   useEffect(() => { checkAuth(); }, []);
 
@@ -19,12 +20,14 @@ export default function CreateHub() {
     if (!user) { router.push('/signin'); return; }
     setIsAuthenticated(true);
 
-    // Check if first time — show tutorial if hasn't seen it
+    // Fetch profile — username + tutorial flag
     const { data: profile } = await supabase
       .from('profiles')
-      .select('has_seen_create_tutorial')
+      .select('has_seen_create_tutorial, username')
       .eq('id', user.id)
       .single();
+
+    if (profile?.username) setUsername(profile.username);
 
     if (!profile?.has_seen_create_tutorial) {
       setShowTutorial(true);
@@ -187,28 +190,16 @@ export default function CreateHub() {
                   </div>
                 </div>
 
-                {/* Middle: card "number" dots */}
-                <div style={{ position: 'absolute', bottom: '72px', left: '28px', display: 'flex', gap: '18px', alignItems: 'center' }}>
-                  {[0,1,2,3].map(g => (
-                    <div key={g} style={{ display: 'flex', gap: '4px' }}>
-                      {[0,1,2,3].map(d => (
-                        <div key={d} style={{
-                          width: g < 3 ? '5px' : '5px',
-                          height: '5px',
-                          borderRadius: '50%',
-                          background: 'rgba(255,255,255,0.35)',
-                        }} />
-                      ))}
-                    </div>
-                  ))}
-                </div>
+
 
                 {/* Bottom row: name + arrow */}
                 <div style={{ position: 'absolute', bottom: '28px', left: '28px', right: '28px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                   <div>
-                    <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '8px', letterSpacing: '0.25em', color: 'rgba(255,255,255,0.35)', marginBottom: '4px' }}>
-                      CARD TYPE
-                    </p>
+                    {username && (
+                      <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '9px', letterSpacing: '0.2em', color: 'rgba(255,255,255,0.45)', marginBottom: '4px' }}>
+                        @{username}
+                      </p>
+                    )}
                     <h2 style={{ fontFamily: 'Archivo Black, sans-serif', fontSize: '22px', color: '#fff', letterSpacing: '-0.02em', lineHeight: 1, margin: 0 }}>
                       CATALOGS
                     </h2>
@@ -323,23 +314,16 @@ export default function CreateHub() {
                   </div>
                 </div>
 
-                {/* Dots */}
-                <div style={{ position: 'absolute', bottom: '72px', left: '28px', display: 'flex', gap: '18px', alignItems: 'center' }}>
-                  {[0,1,2,3].map(g => (
-                    <div key={g} style={{ display: 'flex', gap: '4px' }}>
-                      {[0,1,2,3].map(d => (
-                        <div key={d} style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'rgba(0,0,0,0.15)' }} />
-                      ))}
-                    </div>
-                  ))}
-                </div>
+
 
                 {/* Bottom */}
                 <div style={{ position: 'absolute', bottom: '28px', left: '28px', right: '28px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                   <div>
-                    <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '8px', letterSpacing: '0.25em', color: 'rgba(0,0,0,0.3)', marginBottom: '4px' }}>
-                      CARD TYPE
-                    </p>
+                    {username && (
+                      <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '9px', letterSpacing: '0.2em', color: 'rgba(0,0,0,0.35)', marginBottom: '4px' }}>
+                        @{username}
+                      </p>
+                    )}
                     <h2 style={{ fontFamily: 'Archivo Black, sans-serif', fontSize: '22px', color: '#000', letterSpacing: '-0.02em', lineHeight: 1, margin: 0 }}>
                       FEED POST
                     </h2>
@@ -375,62 +359,44 @@ export default function CreateHub() {
 
       {/* ── FIRST-TIME TUTORIAL ───────────────────────────────────────────────── */}
       {showTutorial && (
-        <div
-          className="fixed inset-0 z-[200] flex items-end md:items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.88)' }}
-          onClick={() => setShowTutorial(false)}
-        >
-          <div
-            className="tut-in w-full max-w-sm bg-white"
-            style={{ borderRadius: '16px 16px 0 0' }}
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Handle */}
-            <div className="flex justify-center pt-3 pb-0">
-              <div style={{ width: '36px', height: '4px', borderRadius: '2px', background: 'rgba(0,0,0,0.15)' }} />
-            </div>
+        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center" style={{ background: 'rgba(0,0,0,0.88)' }}>
+          <div className="tut-in w-full md:max-w-sm bg-white" style={{ borderRadius: '16px 16px 0 0' }}>
 
-            <div className="p-6">
-              <p className="text-[10px] font-black tracking-[0.3em] mb-4" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000' }}>
+            <div className="p-6 md:p-8">
+              <p className="text-xs tracking-[0.3em] font-black mb-5" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                 QUICK RUNDOWN
               </p>
 
-              <h2 className="text-2xl font-black tracking-tighter mb-5 leading-tight" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000' }}>
+              <h2 className="text-3xl md:text-4xl font-black tracking-tighter mb-5 leading-tight" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000', WebkitTextFillColor: '#000000' }}>
                 Two ways to create on Sourced.
               </h2>
 
-              {/* Catalog explanation */}
+              {/* Catalog */}
               <div className="flex gap-4 mb-5">
-                <div style={{
-                  width: '40px', height: '40px', background: '#000', borderRadius: '8px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                }}>
-                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2}>
+                <div className="w-10 h-10 bg-black flex items-center justify-center flex-shrink-0">
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-black tracking-tight mb-1" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000' }}>CATALOG</p>
-                  <p className="text-sm leading-snug" style={{ color: 'rgba(0,0,0,0.6)', fontFamily: 'system-ui, sans-serif' }}>
-                    A themed collection of pieces you curate over time — like a digital wardrobe or wishlist. Add items with links, earn commissions when people shop through it.
+                  <p className="text-sm font-black tracking-[0.1em] mb-1" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000' }}>CATALOG</p>
+                  <p className="text-sm leading-snug" style={{ color: '#000000', fontFamily: 'system-ui, -apple-system, sans-serif', fontWeight: 400 }}>
+                    A themed collection of pieces you curate over time. Add items with product links, earn commissions when people shop through it.
                   </p>
                 </div>
               </div>
 
-              {/* Feed Post explanation */}
+              {/* Feed Post */}
               <div className="flex gap-4 mb-6">
-                <div style={{
-                  width: '40px', height: '40px', background: '#fff', border: '2px solid #000', borderRadius: '8px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                }}>
-                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="black" strokeWidth={2}>
+                <div className="w-10 h-10 border-2 border-black flex items-center justify-center flex-shrink-0">
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="black" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-black tracking-tight mb-1" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000' }}>FEED POST</p>
-                  <p className="text-sm leading-snug" style={{ color: 'rgba(0,0,0,0.6)', fontFamily: 'system-ui, sans-serif' }}>
-                    A single moment — a fit, a haul, a pickup. It goes into the community feed for everyone to see and interact with. Tag items people can shop directly from the post.
+                  <p className="text-sm font-black tracking-[0.1em] mb-1" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000' }}>FEED POST</p>
+                  <p className="text-sm leading-snug" style={{ color: '#000000', fontFamily: 'system-ui, -apple-system, sans-serif', fontWeight: 400 }}>
+                    A single moment — a fit, a haul, a pickup. Goes into the community feed. Tag items people can shop directly from the post.
                   </p>
                 </div>
               </div>
