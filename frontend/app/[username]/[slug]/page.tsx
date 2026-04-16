@@ -7,6 +7,11 @@
 import type { Metadata } from "next";
 import CatalogDetailPage from "./CatalogDetailPage";
 
+// Force dynamic rendering — never serve from cache
+// This ensures generateMetadata always runs fresh for every request
+// including scrapers from Instagram, iMessage, Facebook etc.
+export const dynamic = "force-dynamic";
+
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.thesourcedapp.com";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
