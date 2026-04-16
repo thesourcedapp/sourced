@@ -778,10 +778,10 @@ export default function CatalogsPage() {
 
       {/* ── TUTORIAL MODAL ──────────────────────────────────────────────────── */}
       {showTutorial && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center px-4 pb-28 pt-4 md:p-4" style={{ background: 'rgba(0,0,0,0.88)' }}>
-          <div className="tutorial-in w-full max-w-sm bg-white border-2 border-black">
+        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center" style={{ background: 'rgba(0,0,0,0.88)' }}>
+          <div className="tutorial-in w-full md:max-w-sm bg-white" style={{ borderRadius: '16px 16px 0 0' }}>
             {/* Progress bar */}
-            <div className="flex gap-1 px-6 pt-6 pb-0">
+            <div className="flex gap-1 p-5 pb-0">
               {TUTORIAL_STEPS.map((_, i) => (
                 <div
                   key={i}
@@ -856,17 +856,17 @@ export default function CatalogsPage() {
 
       {/* ── CREATE MODAL ─────────────────────────────────────────────────────── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center px-4 pt-4 pb-28 md:p-4" style={{ background: 'rgba(0,0,0,0.88)' }}>
+        <div className="fixed inset-0 z-[200] flex items-end justify-center px-4 md:items-center md:p-4" style={{ background: 'rgba(0,0,0,0.88)' }}>
           <div
-            className="w-full max-w-md bg-white border-2 border-black overflow-y-auto"
-            style={{ maxHeight: '80vh', borderRadius: '0', color: '#000000' }}
+            className="w-full max-w-md bg-white border-2 border-black"
+            style={{ marginBottom: '88px', color: '#000000' }}
           >
 
-            <div className="p-6 md:p-8 space-y-5">
+            <div className="p-5 space-y-4">
               {/* Header */}
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-3xl md:text-4xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000', WebkitTextFillColor: '#000000' }}>
+                  <h2 className="text-2xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif', color: '#000000', WebkitTextFillColor: '#000000' }}>
                     NEW CATALOG
                   </h2>
                   <p className="text-xs font-black tracking-[0.2em] mt-1" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
@@ -909,7 +909,7 @@ export default function CatalogsPage() {
                     value={catalogDescription}
                     onChange={(e) => setCatalogDescription(e.target.value)}
                     placeholder="Optional description..."
-                    className="w-full px-0 py-2 border-b-2 border-black/20 focus:border-black focus:outline-none resize-none h-20 transition-all text-sm"
+                    className="w-full px-0 py-2 border-b-2 border-black/20 focus:border-black focus:outline-none resize-none h-12 transition-all text-sm"
                     style={{ color: '#000000' }}
                   />
                 </div>
@@ -968,11 +968,9 @@ export default function CatalogsPage() {
                   )}
 
                   {/* Legal */}
-                  <div className="border-2 border-black/10 p-3 mt-3">
-                    <p className="text-[9px] font-black tracking-wider leading-relaxed" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
-                      ONLY USE IMAGES YOU OWN OR HAVE PERMISSION TO USE. DO NOT UPLOAD BRAND EDITORIAL PHOTOGRAPHY OR COPYRIGHTED ARTWORK.
-                    </p>
-                  </div>
+                  <p className="text-[8px] font-black tracking-wider mt-2" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
+                    ONLY USE IMAGES YOU OWN OR HAVE RIGHTS TO. NO COPYRIGHTED BRAND PHOTOGRAPHY.
+                  </p>
 
                   {previewUrl && (
                     <img src={previewUrl} alt="Preview" className="w-full aspect-square object-cover border-2 border-black/10 mt-3" />
@@ -1005,19 +1003,19 @@ export default function CatalogsPage() {
                       PRIVATE
                     </button>
                   </div>
-                  <p className="text-[10px] font-black tracking-wider mt-2" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
+                  <p className="text-[9px] font-black tracking-wider mt-1.5" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
                     {catalogVisibility === 'public'
-                      ? 'VISIBLE ON YOUR PROFILE AND DISCOVER — REQUIRED TO EARN COMMISSIONS'
+                      ? 'VISIBLE ON DISCOVER — REQUIRED TO EARN COMMISSIONS'
                       : 'ONLY YOU CAN SEE THIS CATALOG'}
                   </p>
                 </div>
 
                 {/* Actions */}
-                <div className="flex gap-3 pt-2 pb-2">
+                <div className="flex gap-3 pt-1">
                   <button
                     type="button"
                     onClick={() => { setShowCreateModal(false); resetCreateForm(); }}
-                    className="flex-1 py-4 border-2 border-black hover:bg-black hover:text-white transition-all text-xs tracking-wider font-black"
+                    className="flex-1 py-3 border-2 border-black hover:bg-black hover:text-white transition-all text-xs tracking-wider font-black"
                     style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                   >
                     CANCEL
@@ -1025,7 +1023,7 @@ export default function CatalogsPage() {
                   <button
                     type="submit"
                     disabled={creating || !catalogName.trim() || checkingImage}
-                    className="flex-1 py-4 bg-black text-white hover:bg-white hover:text-black border-2 border-black transition-all text-xs tracking-wider font-black disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="flex-1 py-3 bg-black text-white hover:bg-white hover:text-black border-2 border-black transition-all text-xs tracking-wider font-black disabled:opacity-30 disabled:cursor-not-allowed"
                     style={{ fontFamily: 'Bebas Neue, sans-serif' }}
                   >
                     {creating ? 'CREATING...' : 'CREATE →'}
