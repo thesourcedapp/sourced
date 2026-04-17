@@ -5,70 +5,56 @@ import { NextRequest } from "next/server";
 
 export const runtime = "edge";
 
-const W = 1200;
-const H = 630;
-
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const imageUrl = searchParams.get("image") ?? null;
 
-    // If there's a catalog cover image, just show that — full bleed, no text
-    // This is what appears in iMessage, Instagram, WhatsApp previews
+    // Square 1:1 — Instagram crops to square, this fills the whole space
+    // iMessage and WhatsApp also handle square well
+    const SIZE = 1200;
+
     const response = new ImageResponse(
       (
         <div
           style={{
-            width: W,
-            height: H,
+            width: SIZE,
+            height: SIZE,
             display: "flex",
             background: "#000",
-            position: "relative",
           }}
         >
           {imageUrl ? (
             <img
               src={imageUrl}
-              width={W}
-              height={H}
+              width={SIZE}
+              height={SIZE}
               style={{
-                width: W,
-                height: H,
+                width: SIZE,
+                height: SIZE,
                 objectFit: "cover",
                 objectPosition: "center",
               }}
             />
           ) : (
-            // No image fallback — just black with SOURCED text
             <div
               style={{
-                width: W,
-                height: H,
+                width: SIZE,
+                height: SIZE,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 background: "#000",
               }}
             >
-              <div
-                style={{
-                  fontSize: 72,
-                  fontWeight: 900,
-                  color: "#fff",
-                  letterSpacing: "0.2em",
-                  display: "flex",
-                }}
-              >
+              <div style={{ fontSize: 80, fontWeight: 900, color: "#fff", letterSpacing: "0.2em", display: "flex" }}>
                 SOURCED
               </div>
             </div>
           )}
         </div>
       ),
-      {
-        width: W,
-        height: H,
-      }
+      { width: SIZE, height: SIZE }
     );
 
     response.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");

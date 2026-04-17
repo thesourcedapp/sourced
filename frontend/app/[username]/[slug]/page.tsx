@@ -111,28 +111,25 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
     return {
       title,
-      description: desc,
       openGraph: {
         type: "website",
         url: pageUrl,
         siteName: "Sourced",
         title,
-        description: desc,
         images: [
           {
             url: ogImage,
             secureUrl: ogImage,
             width: 1200,
-            height: 630,
+            height: 1200,
             type: "image/png",
-            alt: `${catalog.name} — curated by @${ownerName} on Sourced`,
+            alt: catalog.name,
           },
         ],
       },
       twitter: {
         card: "summary_large_image",
         title,
-        description: desc,
         images: [ogImage],
       },
       alternates: {
