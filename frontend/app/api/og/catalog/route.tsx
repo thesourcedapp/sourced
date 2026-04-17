@@ -1,237 +1,152 @@
-// app/api/og/catalog/route.tsx
+// app/[username]/[slug]/page.tsx
+// SERVER COMPONENT — no "use client" directive
+// generateMetadata runs on the server and injects OG tags into the HTML
+// before any scraper reads the page. This is the ONLY approach that works
+// for Instagram, iMessage, WhatsApp, Snapchat etc.
 
-import { ImageResponse } from "next/og";
-import { NextRequest } from "next/server";
+import type { Metadata } from "next";
+import CatalogDetailPage from "./CatalogDetailPage";
 
-export const runtime = "edge";
+// Force dynamic rendering — never serve from cache
+// This ensures generateMetadata always runs fresh for every request
+// including scrapers from Instagram, iMessage, Facebook etc.
+export const dynamic = "force-dynamic";
 
-const W = 1200;
-const H = 630;
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.thesourcedapp.com";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export async function GET(req: NextRequest) {
+type Props = {
+  params: Promise<{ username: string; slug: string }>;
+};
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  // Fallback — never crashes, always returns something valid
+  const fallback: Metadata = {
+    title: "Sourced",
+    description: "Curated fashion catalogs on Sourced.",
+    openGraph: {
+      images: [`${BASE_URL}/og-default.png`],
+    },
+  };
+
   try {
-    const { searchParams } = new URL(req.url);
+    // Next.js 15: params is a Promise and must be awaited
+    const { username, slug } = await params;
 
-    const catalogName = searchParams.get("catalog") ?? "Untitled Catalog";
-    const username    = searchParams.get("username") ?? "";
-    const itemCount   = parseInt(searchParams.get("items") ?? "0", 10);
-    const imageUrl    = searchParams.get("image") ?? null;
+    console.log("[OG] slug:", slug);
+    console.log("[OG] username:", username);
+    console.log("[OG] SUPABASE_URL:", SUPABASE_URL?.slice(0, 30) ?? "MISSING");
+    console.log("[OG] SUPABASE_KEY length:", SUPABASE_KEY?.length ?? 0);
 
-    const response = new ImageResponse(
-      (
-        <div
-          style={{
-            width: W,
-            height: H,
-            display: "flex",
-            background: "#000",
-            position: "relative",
-            overflow: "hidden",
-          }}
-        >
-          {/* Background image — blurred/dark */}
-          {imageUrl && (
-            <img
-              src={imageUrl}
-              width={W}
-              height={H}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: W,
-                height: H,
-                objectFit: "cover",
-                opacity: 0.15,
-              }}
-            />
-          )}
-
-          {/* Dark overlay */}
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: W,
-              height: H,
-              background: "rgba(0,0,0,0.82)",
-              display: "flex",
-            }}
-          />
-
-          {/* Left accent bar */}
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: 6,
-              height: H,
-              background: "#fff",
-              display: "flex",
-            }}
-          />
-
-          {/* Right image card */}
-          {imageUrl && (
-            <img
-              src={imageUrl}
-              width={320}
-              height={H - 160}
-              style={{
-                position: "absolute",
-                top: 80,
-                right: 80,
-                width: 320,
-                height: H - 160,
-                objectFit: "cover",
-                border: "1.5px solid rgba(255,255,255,0.15)",
-              }}
-            />
-          )}
-
-          {/* Text content */}
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 72,
-              right: imageUrl ? 460 : 72,
-              height: H,
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
-            }}
-          >
-            {/* Wordmark */}
-            <div
-              style={{
-                fontSize: 12,
-                letterSpacing: "0.4em",
-                color: "rgba(255,255,255,0.3)",
-                fontWeight: 900,
-                marginBottom: 24,
-                display: "flex",
-              }}
-            >
-              SOURCED
-            </div>
-
-            {/* Catalog name */}
-            <div
-              style={{
-                fontSize: catalogName.length > 22 ? 68 : catalogName.length > 16 ? 80 : 92,
-                lineHeight: 0.9,
-                color: "#fff",
-                fontWeight: 900,
-                letterSpacing: "-0.02em",
-                marginBottom: 28,
-                display: "flex",
-                flexWrap: "wrap",
-                textTransform: "uppercase",
-              }}
-            >
-              {catalogName}
-            </div>
-
-            {/* Divider */}
-            <div
-              style={{
-                width: 44,
-                height: 3,
-                background: "#fff",
-                marginBottom: 24,
-                display: "flex",
-              }}
-            />
-
-            {/* Username */}
-            {username && (
-              <div
-                style={{
-                  fontSize: 17,
-                  color: "rgba(255,255,255,0.55)",
-                  fontWeight: 700,
-                  letterSpacing: "0.04em",
-                  marginBottom: 8,
-                  display: "flex",
-                }}
-              >
-                @{username}
-              </div>
-            )}
-
-            {/* Item count */}
-            {itemCount > 0 && (
-              <div
-                style={{
-                  fontSize: 15,
-                  color: "rgba(255,255,255,0.35)",
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  display: "flex",
-                }}
-              >
-                {itemCount} {itemCount === 1 ? "ITEM" : "ITEMS"}
-              </div>
-            )}
-
-            {/* Domain */}
-            <div
-              style={{
-                marginTop: 32,
-                fontSize: 11,
-                color: "rgba(255,255,255,0.18)",
-                fontWeight: 700,
-                letterSpacing: "0.3em",
-                display: "flex",
-              }}
-            >
-              THESOURCEDAPP.COM
-            </div>
-          </div>
-
-          {/* VIEW CATALOG badge */}
-          <div
-            style={{
-              position: "absolute",
-              bottom: 40,
-              left: 72,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              background: "rgba(255,255,255,0.07)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              padding: "8px 16px",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 10,
-                letterSpacing: "0.35em",
-                color: "rgba(255,255,255,0.45)",
-                fontWeight: 700,
-                display: "flex",
-              }}
-            >
-              VIEW CATALOG →
-            </div>
-          </div>
-        </div>
-      ),
+    // Use raw fetch against Supabase REST API — no client needed, no imports that can fail
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/catalogs?slug=eq.${encodeURIComponent(slug)}&select=id,name,description,image_url,owner_id&limit=1`,
       {
-        width: W,
-        height: H,
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        cache: "no-store",
       }
     );
 
-    response.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
-    return response;
+    console.log("[OG] catalogs response status:", res.status);
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[OG] catalogs fetch failed:", res.status, text);
+      return fallback;
+    }
+    const catalogs = await res.json();
+    console.log("[OG] catalogs result:", JSON.stringify(catalogs));
+    if (!catalogs?.length) return fallback;
+    const catalog = catalogs[0];
 
+    // Fetch owner username
+    const ownerRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${catalog.owner_id}&select=username&limit=1`,
+      {
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        cache: "no-store",
+      }
+    );
+
+    let ownerName = username.replace("@", "");
+    if (ownerRes.ok) {
+      const owners = await ownerRes.json();
+      if (owners?.[0]?.username) ownerName = owners[0].username;
+    }
+
+    // Fetch item count
+    const countRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/catalog_items?catalog_id=eq.${catalog.id}&select=id`,
+      {
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          Prefer: "count=exact",
+          "Range-Unit": "items",
+          Range: "0-0",
+        },
+        cache: "no-store",
+      }
+    );
+
+    // Parse count from Content-Range header: "0-0/42"
+    const contentRange = countRes.headers.get("content-range") ?? "";
+    const n = parseInt(contentRange.split("/")[1] ?? "0", 10) || 0;
+
+    const title = catalog.name;
+    const desc = `Curated by @${ownerName} · ${n} item${n !== 1 ? "s" : ""} · Shop on Sourced`;
+    const pageUrl = `${BASE_URL}/${ownerName}/${slug}`;
+
+    // OG image — v=2 busts any cached version of the old design
+    const ogImage = catalog.image_url
+      ? `${BASE_URL}/api/og/catalog?v=2&image=${encodeURIComponent(catalog.image_url)}`
+      : `${BASE_URL}/api/og/catalog?v=2`;
+
+    return {
+      title,
+      openGraph: {
+        type: "website",
+        url: pageUrl,
+        siteName: "Sourced",
+        title,
+        images: [
+          {
+            url: ogImage,
+            secureUrl: ogImage,
+            width: 1200,
+            height: 1200,
+            type: "image/png",
+            alt: catalog.name,
+          },
+        ],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        images: [ogImage],
+      },
+      alternates: {
+        canonical: pageUrl,
+      },
+    };
   } catch (err) {
-    console.error("[og/catalog] error:", err);
-    // Return a plain black 1x1 image on error rather than a 500
-    return new Response("OG image error", { status: 500 });
+    console.error("[generateMetadata] crashed with error:", err);
+    console.error("[generateMetadata] error message:", (err as any)?.message);
+    return fallback;
   }
+}
+
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ username: string; slug: string }>;
+}) {
+  await params;
+  return <CatalogDetailPage />;
 }

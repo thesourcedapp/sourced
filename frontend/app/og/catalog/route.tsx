@@ -1,67 +1,142 @@
-// app/api/og/catalog/route.tsx
+import { ImageResponse } from 'next/og'
+import { NextRequest } from 'next/server'
 
-import { ImageResponse } from "next/og";
-import { NextRequest } from "next/server";
+export const runtime = 'edge'
 
-export const runtime = "edge";
-
-export async function GET(req: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const imageUrl = searchParams.get("image") ?? null;
+    const { searchParams } = new URL(request.url)
 
-    // Square 1:1 — Instagram crops to square, this fills the whole space
-    // iMessage and WhatsApp also handle square well
-    const SIZE = 1200;
+    const catalogName = searchParams.get('catalog') || 'Catalog'
+    const username = searchParams.get('username') || 'user'
+    const itemCount = searchParams.get('items') || '0'
+    const catalogImage = searchParams.get('image') || null
 
-    const response = new ImageResponse(
+    return new ImageResponse(
       (
         <div
           style={{
-            width: SIZE,
-            height: SIZE,
-            display: "flex",
-            background: "#000",
+            height: '100%',
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            backgroundColor: '#000',
+            position: 'relative',
           }}
         >
-          {imageUrl ? (
+          {/* Background Image (if exists) */}
+          {catalogImage && (
             <img
-              src={imageUrl}
-              width={SIZE}
-              height={SIZE}
+              src={catalogImage}
               style={{
-                width: SIZE,
-                height: SIZE,
-                objectFit: "cover",
-                objectPosition: "center",
+                position: 'absolute',
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                opacity: 0.3,
               }}
             />
-          ) : (
-            <div
-              style={{
-                width: SIZE,
-                height: SIZE,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "#000",
-              }}
-            >
-              <div style={{ fontSize: 80, fontWeight: 900, color: "#fff", letterSpacing: "0.2em", display: "flex" }}>
+          )}
+
+          {/* Dark Overlay */}
+          <div
+            style={{
+              position: 'absolute',
+              width: '100%',
+              height: '100%',
+              background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(0,0,0,0.9))',
+            }}
+          />
+
+          {/* Content */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              height: '100%',
+              padding: '60px',
+              position: 'relative',
+              zIndex: 1,
+            }}
+          >
+            {/* Top Section */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div
+                style={{
+                  fontSize: 32,
+                  color: '#fff',
+                  opacity: 0.6,
+                  letterSpacing: '0.3em',
+                  fontWeight: 900,
+                  marginBottom: '20px',
+                }}
+              >
                 SOURCED
               </div>
             </div>
-          )}
+
+            {/* Middle Section - Catalog Name */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '20px',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 72,
+                  fontWeight: 900,
+                  color: '#fff',
+                  lineHeight: 1.1,
+                  letterSpacing: '-0.02em',
+                  maxWidth: '900px',
+                }}
+              >
+                {catalogName}
+              </div>
+            </div>
+
+            {/* Bottom Section - Stats */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 28,
+                  color: '#fff',
+                  opacity: 0.8,
+                  letterSpacing: '0.1em',
+                }}
+              >
+                @{username}
+              </div>
+              <div
+                style={{
+                  fontSize: 28,
+                  color: '#fff',
+                  opacity: 0.8,
+                  letterSpacing: '0.1em',
+                }}
+              >
+                {itemCount} ITEMS
+              </div>
+            </div>
+          </div>
         </div>
       ),
-      { width: SIZE, height: SIZE }
-    );
-
-    response.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
-    return response;
-
-  } catch (err) {
-    console.error("[og/catalog] error:", err);
-    return new Response("OG image error", { status: 500 });
+      {
+        width: 1200,
+        height: 630,
+      }
+    )
+  } catch (e) {
+    console.error(e)
+    return new Response('Failed to generate image', { status: 500 })
   }
 }
