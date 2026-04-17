@@ -103,11 +103,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const desc = `Curated by @${ownerName} · ${n} item${n !== 1 ? "s" : ""} · Shop on Sourced`;
     const pageUrl = `${BASE_URL}/${ownerName}/${slug}`;
 
-    // OG image — just pass the catalog cover image directly
-    // The /api/og/catalog route renders it full-bleed with no text overlay
+    // OG image — v=2 busts any cached version of the old design
     const ogImage = catalog.image_url
-      ? `${BASE_URL}/api/og/catalog?image=${encodeURIComponent(catalog.image_url)}`
-      : `${BASE_URL}/api/og/catalog`;
+      ? `${BASE_URL}/api/og/catalog?v=2&image=${encodeURIComponent(catalog.image_url)}`
+      : `${BASE_URL}/api/og/catalog?v=2`;
 
     return {
       title,
