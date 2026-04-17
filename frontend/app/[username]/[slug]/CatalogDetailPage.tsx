@@ -891,8 +891,6 @@ export default function CatalogDetailPage() {
                           // on the recipient's end. Fetching the cover image directly
                           // fails for CORS-restricted hosts (Pinterest, etc.)
                           await navigator.share({
-                            title: shareTitle,
-                            text: shareDescription,
                             url: window.location.href,
                           });
                         } else {

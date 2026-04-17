@@ -99,7 +99,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const contentRange = countRes.headers.get("content-range") ?? "";
     const n = parseInt(contentRange.split("/")[1] ?? "0", 10) || 0;
 
-    const title = catalog.name;
+    const title = `${catalog.name} · @${ownerName}`;
     const desc = `Curated by @${ownerName} · ${n} item${n !== 1 ? "s" : ""} · Shop on Sourced`;
     const pageUrl = `${BASE_URL}/${ownerName}/${slug}`;
 
