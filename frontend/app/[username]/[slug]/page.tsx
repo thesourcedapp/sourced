@@ -1,81 +1,156 @@
-// app/api/og/catalog/route.tsx
+// app/[username]/[slug]/page.tsx
+// SERVER COMPONENT — no "use client" directive
+// generateMetadata runs on the server and injects OG tags into the HTML
+// before any scraper reads the page. This is the ONLY approach that works
+// for Instagram, iMessage, WhatsApp, Snapchat etc.
 
-import { ImageResponse } from "next/og";
-import { NextRequest } from "next/server";
+import type { Metadata } from "next";
+import CatalogDetailPage from "./CatalogDetailPage";
 
-export const runtime = "edge";
+// Force dynamic rendering — never serve from cache
+// This ensures generateMetadata always runs fresh for every request
+// including scrapers from Instagram, iMessage, Facebook etc.
+export const dynamic = "force-dynamic";
 
-const W = 1200;
-const H = 630;
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.thesourcedapp.com";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export async function GET(req: NextRequest) {
+type Props = {
+  params: Promise<{ username: string; slug: string }>;
+};
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  // Fallback — never crashes, always returns something valid
+  const fallback: Metadata = {
+    title: "Sourced",
+    description: "Curated fashion catalogs on Sourced.",
+    openGraph: {
+      images: [`${BASE_URL}/og-default.png`],
+    },
+  };
+
   try {
-    const { searchParams } = new URL(req.url);
-    const imageUrl = searchParams.get("image") ?? null;
+    // Next.js 15: params is a Promise and must be awaited
+    const { username, slug } = await params;
 
-    // If there's a catalog cover image, just show that — full bleed, no text
-    // This is what appears in iMessage, Instagram, WhatsApp previews
-    const response = new ImageResponse(
-      (
-        <div
-          style={{
-            width: W,
-            height: H,
-            display: "flex",
-            background: "#000",
-            position: "relative",
-          }}
-        >
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              width={W}
-              height={H}
-              style={{
-                width: W,
-                height: H,
-                objectFit: "cover",
-                objectPosition: "center",
-              }}
-            />
-          ) : (
-            // No image fallback — just black with SOURCED text
-            <div
-              style={{
-                width: W,
-                height: H,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "#000",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 72,
-                  fontWeight: 900,
-                  color: "#fff",
-                  letterSpacing: "0.2em",
-                  display: "flex",
-                }}
-              >
-                SOURCED
-              </div>
-            </div>
-          )}
-        </div>
-      ),
+    console.log("[OG] slug:", slug);
+    console.log("[OG] username:", username);
+    console.log("[OG] SUPABASE_URL:", SUPABASE_URL?.slice(0, 30) ?? "MISSING");
+    console.log("[OG] SUPABASE_KEY length:", SUPABASE_KEY?.length ?? 0);
+
+    // Use raw fetch against Supabase REST API — no client needed, no imports that can fail
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/catalogs?slug=eq.${encodeURIComponent(slug)}&select=id,name,description,image_url,owner_id&limit=1`,
       {
-        width: W,
-        height: H,
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        cache: "no-store",
       }
     );
 
-    response.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
-    return response;
+    console.log("[OG] catalogs response status:", res.status);
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[OG] catalogs fetch failed:", res.status, text);
+      return fallback;
+    }
+    const catalogs = await res.json();
+    console.log("[OG] catalogs result:", JSON.stringify(catalogs));
+    if (!catalogs?.length) return fallback;
+    const catalog = catalogs[0];
 
+    // Fetch owner username
+    const ownerRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${catalog.owner_id}&select=username&limit=1`,
+      {
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        cache: "no-store",
+      }
+    );
+
+    let ownerName = username.replace("@", "");
+    if (ownerRes.ok) {
+      const owners = await ownerRes.json();
+      if (owners?.[0]?.username) ownerName = owners[0].username;
+    }
+
+    // Fetch item count
+    const countRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/catalog_items?catalog_id=eq.${catalog.id}&select=id`,
+      {
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          Prefer: "count=exact",
+          "Range-Unit": "items",
+          Range: "0-0",
+        },
+        cache: "no-store",
+      }
+    );
+
+    // Parse count from Content-Range header: "0-0/42"
+    const contentRange = countRes.headers.get("content-range") ?? "";
+    const n = parseInt(contentRange.split("/")[1] ?? "0", 10) || 0;
+
+    const title = catalog.name;
+    const desc = `Curated by @${ownerName} · ${n} item${n !== 1 ? "s" : ""} · Shop on Sourced`;
+    const pageUrl = `${BASE_URL}/${ownerName}/${slug}`;
+
+    // OG image — just pass the catalog cover image directly
+    // The /api/og/catalog route renders it full-bleed with no text overlay
+    const ogImage = catalog.image_url
+      ? `${BASE_URL}/api/og/catalog?image=${encodeURIComponent(catalog.image_url)}`
+      : `${BASE_URL}/api/og/catalog`;
+
+    return {
+      title,
+      description: desc,
+      openGraph: {
+        type: "website",
+        url: pageUrl,
+        siteName: "Sourced",
+        title,
+        description: desc,
+        images: [
+          {
+            url: ogImage,
+            secureUrl: ogImage,
+            width: 1200,
+            height: 630,
+            type: "image/png",
+            alt: `${catalog.name} — curated by @${ownerName} on Sourced`,
+          },
+        ],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description: desc,
+        images: [ogImage],
+      },
+      alternates: {
+        canonical: pageUrl,
+      },
+    };
   } catch (err) {
-    console.error("[og/catalog] error:", err);
-    return new Response("OG image error", { status: 500 });
+    console.error("[generateMetadata] crashed with error:", err);
+    console.error("[generateMetadata] error message:", (err as any)?.message);
+    return fallback;
   }
+}
+
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ username: string; slug: string }>;
+}) {
+  await params;
+  return <CatalogDetailPage />;
 }
