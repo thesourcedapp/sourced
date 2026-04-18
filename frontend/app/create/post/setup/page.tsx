@@ -159,7 +159,7 @@ export default function CreatePostPage() {
     rafRef.current = requestAnimationFrame(() => { if (imageRef.current) imageRef.current.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`; });
   }
 
-  function handleMouseUp() { setIsDragging(false); }
+  function handleMouseUp() { isDraggingRef.current = false; }
 
   function handleTouchStart(e: React.TouchEvent) {
     if (!imagePreview) return;
@@ -180,7 +180,7 @@ export default function CreatePostPage() {
     rafRef.current = requestAnimationFrame(() => { if (imageRef.current) imageRef.current.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`; });
   }
 
-  function handleTouchEnd() { setIsDragging(false); }
+  function handleTouchEnd() { isDraggingRef.current = false; }
 
   function handleItemFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
