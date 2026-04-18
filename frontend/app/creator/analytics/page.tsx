@@ -1199,9 +1199,6 @@ export default function AnalyticsPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                   {topItems.filter(i => i.isMonetized).map((item) => (
                     <div key={item.id} className="bg-white/5 border-2 border-green-500/30 overflow-hidden hover:border-green-500 transition-all">
-                      <div className="absolute top-2 right-2 z-10 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                        <span className="text-white font-black text-xs">$</span>
-                      </div>
                       <div className="aspect-square bg-white/5 overflow-hidden">
                         <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
                       </div>
