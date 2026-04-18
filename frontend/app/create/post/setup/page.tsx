@@ -62,6 +62,8 @@ export default function CreatePostPage() {
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const rafRef = useRef<number | null>(null);
+  const initialPinchDistRef = useRef<number | null>(null);
+  const initialPinchZoomRef = useRef<number>(1.2);
 
   // Post data
   const [caption, setCaption] = useState("");
@@ -117,11 +119,12 @@ export default function CreatePostPage() {
 
   async function dismissPostTutorial() {
     setShowPostTutorial(false);
-    if (currentUserId) {
+    const userId = currentUserId || (await supabase.auth.getUser()).data.user?.id;
+    if (userId) {
       await supabase
         .from('profiles')
         .update({ has_seen_post_tutorial: true })
-        .eq('id', currentUserId);
+        .eq('id', userId);
     }
   }
 
@@ -161,26 +164,58 @@ export default function CreatePostPage() {
 
   function handleMouseUp() { isDraggingRef.current = false; }
 
+  function getDistance(t1: React.Touch, t2: React.Touch) {
+    const dx = t1.clientX - t2.clientX;
+    const dy = t1.clientY - t2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
   function handleTouchStart(e: React.TouchEvent) {
     if (!imagePreview) return;
     e.preventDefault();
-    const touch = e.touches[0];
-    isDraggingRef.current = true;
-    dragStartRef.current = { x: touch.clientX - cropRef.current.x, y: touch.clientY - cropRef.current.y };
+    if (e.touches.length === 2) {
+      // Pinch start — record initial distance and zoom
+      initialPinchDistRef.current = getDistance(e.touches[0], e.touches[1]);
+      initialPinchZoomRef.current = zoom;
+      isDraggingRef.current = false;
+    } else {
+      // Single touch — pan
+      initialPinchDistRef.current = null;
+      const touch = e.touches[0];
+      isDraggingRef.current = true;
+      dragStartRef.current = { x: touch.clientX - cropRef.current.x, y: touch.clientY - cropRef.current.y };
+    }
   }
 
   function handleTouchMove(e: React.TouchEvent) {
-    if (!isDraggingRef.current) return;
     e.preventDefault();
-    const touch = e.touches[0];
-    const x = touch.clientX - dragStartRef.current.x;
-    const y = touch.clientY - dragStartRef.current.y;
-    cropRef.current = { x, y };
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => { if (imageRef.current) imageRef.current.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`; });
+    if (e.touches.length === 2 && initialPinchDistRef.current !== null) {
+      // Pinch zoom
+      const newDist = getDistance(e.touches[0], e.touches[1]);
+      const scale = newDist / initialPinchDistRef.current;
+      const newZoom = Math.min(3, Math.max(0.5, initialPinchZoomRef.current * scale));
+      setZoom(newZoom);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        if (imageRef.current) imageRef.current.style.transform = `translate(${cropRef.current.x}px, ${cropRef.current.y}px) scale(${newZoom})`;
+      });
+    } else if (isDraggingRef.current && e.touches.length === 1) {
+      // Pan
+      const touch = e.touches[0];
+      const x = touch.clientX - dragStartRef.current.x;
+      const y = touch.clientY - dragStartRef.current.y;
+      cropRef.current = { x, y };
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        if (imageRef.current) imageRef.current.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+      });
+    }
   }
 
-  function handleTouchEnd() { isDraggingRef.current = false; }
+  function handleTouchEnd() {
+    isDraggingRef.current = false;
+    initialPinchDistRef.current = null;
+  }
 
   function handleItemFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -421,8 +456,21 @@ export default function CreatePostPage() {
           <div className="relative flex-1 overflow-y-auto scrollbar-hide">
             <div className="flex flex-col items-center px-3 py-6 pb-20">
               <div className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-3" style={{ minHeight: '64vh', maxHeight: '66vh', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)' }}>
-                <div className="relative w-full h-full bg-black">
-                  <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                <div className="relative w-full h-full bg-black overflow-hidden">
+                  {/* Use same transform as step 1 so position/zoom matches exactly */}
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    className="absolute pointer-events-none"
+                    style={{
+                      transform: `translate(${cropRef.current.x}px, ${cropRef.current.y}px) scale(${zoom})`,
+                      transformOrigin: 'center center',
+                      objectFit: 'contain',
+                      maxWidth: 'none',
+                      height: '100%',
+                      willChange: 'transform',
+                    }}
+                  />
                   {showShopPreview && items.length > 0 && (
                     <div className="absolute inset-0 z-30 flex flex-col">
                       <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${imagePreview})`, filter: 'blur(50px) brightness(0.4)', transform: 'scale(1.2)' }}></div>
@@ -460,7 +508,7 @@ export default function CreatePostPage() {
                     {currentUserAvatar ? <img src={currentUserAvatar} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-white text-sm">👤</div>}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-white font-black text-lg tracking-wide" style={{ fontFamily: 'Bebas Neue' }}>{currentUsername || 'username'}</span>
+                    <span className="text-white font-black text-lg tracking-wide" style={{ fontFamily: 'Bebas Neue' }}>{currentUsername || ''}</span>
                     {isVerified && <svg className="w-4 h-4 text-blue-500 fill-current" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
                   </div>
                 </div>
