@@ -58,6 +58,7 @@ type LikedItem = {
   catalog_slug: string;
   like_count: number;
   created_at: string;
+  is_monetized: boolean;
 };
 
 type FeedPost = {
@@ -339,7 +340,7 @@ export default function ProfilePage() {
       const feedItemIds = feedPostLikes?.map(l => l.item_id) || [];
       const transformedItems: LikedItem[] = [];
       if (catalogItemIds.length > 0) {
-        const { data: catalogItemsData, error: catalogItemsError } = await supabase.from('catalog_items').select('id, title, image_url, product_url, price, seller, catalog_id, like_count').in('id', catalogItemIds);
+        const { data: catalogItemsData, error: catalogItemsError } = await supabase.from('catalog_items').select('id, title, image_url, product_url, price, seller, catalog_id, like_count, is_monetized').in('id', catalogItemIds);
         if (!catalogItemsError && catalogItemsData) {
           const catalogIds = [...new Set(catalogItemsData.map(i => i.catalog_id))];
           const { data: catalogsData } = await supabase.from('catalogs').select('id, name, owner_id, visibility, slug').in('id', catalogIds);
@@ -351,7 +352,7 @@ export default function ProfilePage() {
             const catalog = catalogsMap.get(item.catalog_id);
             const owner = catalog ? ownersMap.get(catalog.owner_id) : null;
             const like = catalogLikes?.find(l => l.item_id === item.id);
-            transformedItems.push({ id: item.id, title: item.title, image_url: item.image_url, product_url: item.product_url, price: item.price, seller: item.seller, catalog_id: item.catalog_id, catalog_name: catalog?.name || 'Unknown', catalog_owner: owner?.username || 'unknown', catalog_slug: catalog?.slug || '', like_count: item.like_count || 0, created_at: like?.created_at || '' });
+            transformedItems.push({ id: item.id, title: item.title, image_url: item.image_url, product_url: item.product_url, price: item.price, seller: item.seller, catalog_id: item.catalog_id, catalog_name: catalog?.name || 'Unknown', catalog_owner: owner?.username || 'unknown', catalog_slug: catalog?.slug || '', like_count: item.like_count || 0, created_at: like?.created_at || '', is_monetized: item.is_monetized || false });
           });
         }
       }
@@ -360,7 +361,7 @@ export default function ProfilePage() {
         if (!feedItemsError && feedItemsData) {
           feedItemsData.forEach(item => {
             const like = feedPostLikes?.find(l => l.item_id === item.id);
-            transformedItems.push({ id: item.id, title: item.title, image_url: item.image_url, product_url: item.product_url, price: item.price, seller: item.seller, catalog_id: item.feed_post_id, catalog_name: 'Feed Post', catalog_owner: 'feed', catalog_slug: item.feed_post_id, like_count: item.like_count || 0, created_at: like?.created_at || '' });
+            transformedItems.push({ id: item.id, title: item.title, image_url: item.image_url, product_url: item.product_url, price: item.price, seller: item.seller, catalog_id: item.feed_post_id, catalog_name: 'Feed Post', catalog_owner: 'feed', catalog_slug: item.feed_post_id, like_count: item.like_count || 0, created_at: like?.created_at || '', is_monetized: false });
           });
         }
       }
@@ -759,7 +760,7 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {/* Liked Items Tab */}
+            {/* Liked Items Tab — discover-style */}
             {activeTab === 'liked' && (
               <div className="space-y-6">
                 {likedItems.length === 0 ? (
@@ -768,19 +769,56 @@ export default function ProfilePage() {
                     <p className="text-sm tracking-wide opacity-30 mt-2">{isOwner ? "You haven't liked any items yet" : "This user hasn't liked any items yet"}</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
                     {likedItems.map(item => (
-                      <div key={item.id} className="border border-white/20 hover:border-white transition-all group">
-                        <div className="aspect-square bg-white/5 overflow-hidden cursor-pointer" onClick={() => setExpandedLikedItem(item)}>
-                          <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <div key={item.id} className="group border border-black/10 hover:border-black transition-all duration-150 bg-white">
+                        <div
+                          className="aspect-square bg-black/5 overflow-hidden cursor-pointer relative"
+                          onClick={() => setExpandedLikedItem(item)}
+                        >
+                          <img
+                            src={item.image_url}
+                            alt={item.title}
+                            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                            loading="lazy"
+                          />
+                          {item.is_monetized && (
+                            <div
+                              className="absolute top-2 right-2 w-5 h-5 bg-black/25 backdrop-blur-sm flex items-center justify-center"
+                              title="This item earns the creator a commission"
+                            >
+                              <span className="text-[9px] font-black text-white" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>$</span>
+                            </div>
+                          )}
+                          {item.catalog_name === 'Feed Post' && (
+                            <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/40 backdrop-blur-sm">
+                              <span className="text-[8px] tracking-[0.15em] text-white font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>POST</span>
+                            </div>
+                          )}
                         </div>
-                        <div className="p-3 space-y-2">
-                          <h3 className="text-xs md:text-sm font-black tracking-wide uppercase truncate leading-tight" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{item.title}</h3>
-                          {item.seller && <p className="text-[10px] md:text-xs opacity-60 truncate">{item.seller}</p>}
-                          {item.price && <p className="text-xs md:text-sm font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>${item.price}</p>}
-                          <div className="flex items-center justify-between text-[10px] opacity-60">
-                            <span>♥ {item.like_count}</span>
-                            <button onClick={(e) => { e.stopPropagation(); setExpandedLikedItem(item); }} className="hover:opacity-100 transition-opacity uppercase tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>VIEW</button>
+                        <div className="p-3 border-t border-black/10">
+                          <p className="text-[11px] font-black tracking-wide uppercase leading-tight truncate mb-1.5" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                            {item.title}
+                          </p>
+                          <div className="flex items-center justify-between text-[9px] tracking-wider opacity-40 mb-2">
+                            {item.seller && <span className="truncate mr-2">{item.seller}</span>}
+                            {item.price && <span className="flex-shrink-0 font-black">${item.price}</span>}
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleLike(item.id); }}
+                              className="flex-1 py-1.5 border bg-black text-white border-black text-[9px] tracking-wider font-black transition-all"
+                              style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                            >
+                              ♥ {item.like_count}
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setExpandedLikedItem(item); }}
+                              className="px-3 py-1.5 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-[9px] font-black tracking-wider"
+                              style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                            >
+                              VIEW
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -866,31 +904,102 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Expanded Liked Item Modal */}
+        {/* Liked Item Modal — discover-style bottom sheet */}
         {expandedLikedItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md" onClick={() => setExpandedLikedItem(null)}>
-            <div className="relative w-full max-w-sm md:max-w-3xl max-h-[85vh] md:max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-              <button onClick={() => setExpandedLikedItem(null)} className="absolute -top-8 md:-top-12 right-0 text-white text-xs tracking-[0.4em] hover:opacity-50" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>[ESC]</button>
-              <div className="bg-white border-2 border-white overflow-hidden">
-                <div className="grid md:grid-cols-2 gap-0">
-                  <div className="aspect-square bg-black/5 overflow-hidden cursor-pointer" onClick={() => { if (expandedLikedItem.product_url) window.open(expandedLikedItem.product_url, '_blank'); }}>
-                    <img src={expandedLikedItem.image_url} alt={expandedLikedItem.title} className="w-full h-full object-contain" />
+          <div
+            className="fixed inset-0 z-[500] flex items-end md:items-center justify-center"
+            style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
+            onClick={() => setExpandedLikedItem(null)}
+          >
+            <div
+              className="relative w-full md:w-auto md:min-w-[400px] md:max-w-lg bg-white shadow-2xl"
+              data-sheet="true"
+              style={{ maxHeight: "65vh", borderRadius: "14px 14px 0 0" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Drag handle — tap or swipe down to close */}
+              <div
+                className="flex justify-center items-center pt-2.5 pb-2 md:hidden cursor-pointer select-none"
+                onClick={() => setExpandedLikedItem(null)}
+                onTouchStart={(e) => {
+                  const startY = e.touches[0].clientY;
+                  function onMove(ev: TouchEvent) {
+                    if (ev.touches[0].clientY - startY > 40) { setExpandedLikedItem(null); cleanup(); }
+                  }
+                  function cleanup() {
+                    window.removeEventListener("touchmove", onMove);
+                    window.removeEventListener("touchend", cleanup);
+                  }
+                  window.addEventListener("touchmove", onMove);
+                  window.addEventListener("touchend", cleanup);
+                }}
+              >
+                <div className="w-10 h-1.5 bg-black/20 rounded-full hover:bg-black/40 transition-colors" />
+              </div>
+
+              {/* Close button */}
+              <button
+                onClick={() => setExpandedLikedItem(null)}
+                className="absolute top-2.5 right-3 z-10 w-7 h-7 flex items-center justify-center bg-black/8 hover:bg-black/15 transition-colors text-xs font-black rounded-full"
+                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+              >✕</button>
+
+              {/* Content */}
+              <div className="flex gap-0 overflow-hidden" style={{ maxHeight: "calc(65vh - 28px)" }}>
+                <div className="w-24 h-24 md:w-40 md:h-40 flex-shrink-0 bg-black/5 self-start m-3 mr-0">
+                  <img src={expandedLikedItem.image_url} alt={expandedLikedItem.title} className="w-full h-full object-cover" />
+                </div>
+                <div className="flex-1 p-3 overflow-y-auto flex flex-col gap-2" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+                  <div>
+                    <h2 className="text-sm md:text-lg font-black tracking-tighter leading-tight pr-6" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                      {expandedLikedItem.title}
+                    </h2>
+                    {expandedLikedItem.is_monetized && (
+                      <p className="text-[9px] tracking-[0.2em] font-black mt-1" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
+                        $ CREATOR EARNS A COMMISSION ON THIS ITEM
+                      </p>
+                    )}
                   </div>
-                  <div className="p-4 md:p-8 space-y-3 md:space-y-6">
-                    <h2 className="text-xl md:text-3xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>{expandedLikedItem.title}</h2>
-                    {expandedLikedItem.seller && <p className="text-xs md:text-sm tracking-wider opacity-60">SELLER: {expandedLikedItem.seller}</p>}
-                    {expandedLikedItem.price && <p className="text-lg md:text-2xl font-black tracking-wide" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>${expandedLikedItem.price}</p>}
-                    <div className="flex items-center gap-2 text-xs tracking-wider opacity-60"><span>♥ {expandedLikedItem.like_count} likes</span></div>
-                    <div className="space-y-2 md:space-y-3">
-                      {expandedLikedItem.product_url && (
-                        <button onClick={() => window.open(expandedLikedItem.product_url!, '_blank')} className="w-full py-2 md:py-3 bg-black text-white hover:bg-white hover:text-black hover:border-2 hover:border-black transition-all text-[10px] md:text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>VIEW PRODUCT ↗</button>
-                      )}
-                      {expandedLikedItem.catalog_name === 'Feed Post' ? (
-                        <button onClick={() => { setExpandedLikedItem(null); router.push(`/post/${expandedLikedItem.catalog_slug}`); }} className="w-full py-2 md:py-3 border-2 border-black hover:bg-black hover:text-white transition-all text-[10px] md:text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>VIEW POST →</button>
-                      ) : (
-                        <button onClick={() => { setExpandedLikedItem(null); router.push(`/${expandedLikedItem.catalog_owner}/${expandedLikedItem.catalog_slug}`); }} className="w-full py-2 md:py-3 border-2 border-black hover:bg-black hover:text-white transition-all text-[10px] md:text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>VIEW CATALOG: {expandedLikedItem.catalog_name}</button>
-                      )}
-                    </div>
+                  <div className="space-y-0.5">
+                    {expandedLikedItem.seller && <p className="text-[9px] tracking-wider opacity-40 uppercase">Seller: {expandedLikedItem.seller}</p>}
+                  </div>
+                  {expandedLikedItem.price && (
+                    <p className="text-base font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>${expandedLikedItem.price}</p>
+                  )}
+                  <div className="flex flex-col gap-1.5 pt-1 pb-2">
+                    <button
+                      onClick={() => toggleLike(expandedLikedItem.id)}
+                      className="w-full py-2 bg-black text-white border border-black text-[9px] tracking-[0.25em] font-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      ♥ LIKED ({expandedLikedItem.like_count})
+                    </button>
+                    {expandedLikedItem.product_url && (
+                      <button
+                        onClick={() => window.open(expandedLikedItem.product_url!, '_blank')}
+                        className="w-full py-2 bg-black text-white hover:bg-white hover:text-black border border-black transition-all text-[9px] tracking-[0.25em] font-black"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        VIEW PRODUCT ↗
+                      </button>
+                    )}
+                    {expandedLikedItem.catalog_name === 'Feed Post' ? (
+                      <button
+                        onClick={() => { setExpandedLikedItem(null); router.push(`/post/${expandedLikedItem.catalog_slug}`); }}
+                        className="w-full py-1.5 border border-black/15 hover:border-black/40 transition-all text-[8px] tracking-[0.2em] font-black opacity-60 hover:opacity-100"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        VIEW POST →
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { setExpandedLikedItem(null); router.push(`/${expandedLikedItem.catalog_owner}/${expandedLikedItem.catalog_slug}`); }}
+                        className="w-full py-1.5 border border-black/15 hover:border-black/40 transition-all text-[8px] tracking-[0.2em] font-black opacity-60 hover:opacity-100"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        IN: {expandedLikedItem.catalog_name}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
