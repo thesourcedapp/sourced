@@ -43,14 +43,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
     // OG image — just the avatar, full bleed square
     const ogImage = profile.avatar_url
-      ? `${BASE_URL}/api/og/profile?v=2&image=${encodeURIComponent(profile.avatar_url)}`
-      : `${BASE_URL}/api/og/profile?v=2`;
+      ? `${BASE_URL}/api/og/profile?v=1&image=${encodeURIComponent(profile.avatar_url)}`
+      : `${BASE_URL}/api/og/profile?v=1`;
 
     return {
       title,
-      description: `@${profile.username} on Sourced — curated fashion catalogs`,
       openGraph: {
-        type: "website",
+        type: "profile",
         url: pageUrl,
         siteName: "Sourced",
         title,
