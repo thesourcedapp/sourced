@@ -1,19 +1,14 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const [isExpanded, setIsExpanded] = useState(true);
 
-  // Don't show nav on onboarding pages
-  if (pathname.startsWith('/onboarding')) {
-    return null;
-  }
-
-  // No scroll behavior - only manual toggle
+  if (pathname.startsWith('/onboarding')) return null;
 
   const navItems = [
     {
@@ -44,15 +39,6 @@ export default function MobileBottomNav() {
       )
     },
     {
-      name: "Image Search",
-      path: "/image_search",
-      icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-        </svg>
-      )
-    },
-    {
       name: "Create",
       path: "/create",
       icon: (
@@ -75,7 +61,6 @@ export default function MobileBottomNav() {
       `}</style>
 
       <div className="flex justify-center px-4 pb-6">
-
         {!isExpanded ? (
           <button
             onClick={() => setIsExpanded(true)}
@@ -88,9 +73,7 @@ export default function MobileBottomNav() {
         ) : (
           <div
             className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg border border-black/5 transition-all duration-300 ease-out pointer-events-auto"
-            style={{
-              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06)'
-            }}
+            style={{ boxShadow: '0 10px 40px rgba(0,0,0,0.1), 0 2px 8px rgba(0,0,0,0.06)' }}
           >
             <div className="flex justify-center pt-1 pb-0.5">
               <button
@@ -112,15 +95,11 @@ export default function MobileBottomNav() {
                     isActive(item.path) ? 'bg-black/5' : 'hover:bg-black/5'
                   }`}
                 >
-                  <div className={`transition-colors duration-200 ${
-                    isActive(item.path) ? 'text-black' : 'text-black/40'
-                  }`}>
+                  <div className={`transition-colors duration-200 ${isActive(item.path) ? 'text-black' : 'text-black/40'}`}>
                     {item.icon}
                   </div>
                   <span
-                    className={`text-[8px] font-semibold tracking-tight transition-colors duration-200 ${
-                      isActive(item.path) ? 'text-black' : 'text-black/40'
-                    }`}
+                    className={`text-[8px] font-semibold tracking-tight transition-colors duration-200 ${isActive(item.path) ? 'text-black' : 'text-black/40'}`}
                     style={{ fontFamily: 'Inter, sans-serif' }}
                   >
                     {item.name}

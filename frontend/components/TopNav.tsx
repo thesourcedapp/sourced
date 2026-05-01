@@ -11,26 +11,9 @@ export default function TopNav({ mobile = false }: TopNavProps) {
   const router = useRouter();
 
   const navItems = [
-    {
-      name: "HOME",
-      path: "/",
-      icon: "⌂"
-    },
-    {
-      name: "DISCOVER",
-      path: "/discover",
-      icon: "◉"
-    },
-    {
-      name: "IMAGE SEARCH",
-      path: "/image_search",
-      icon: "⊕"
-    },
-    {
-      name: "CATALOGS",
-      path: "/catalogs",
-      icon: "▦"
-    }
+    { name: "HOME",     path: "/",         icon: "⌂" },
+    { name: "DISCOVER", path: "/discover",  icon: "◉" },
+    { name: "CATALOGS", path: "/catalogs",  icon: "▦" },
   ];
 
   const isActive = (path: string) => {
@@ -41,23 +24,15 @@ export default function TopNav({ mobile = false }: TopNavProps) {
   if (mobile) {
     return (
       <>
-        <style jsx global>{`
-          @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
-        `}</style>
-
-        {/* Mobile - Nothing (just SOURCED logo and profile handled by parent) */}
-        <div className="flex-1"></div>
+        <style jsx global>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');`}</style>
+        <div className="flex-1" />
       </>
     );
   }
 
-  // Desktop version - just buttons
   return (
     <>
-      <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
-      `}</style>
-
+      <style jsx global>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');`}</style>
       <div className="flex items-center gap-2 flex-1">
         {navItems.map((item) => (
           <button

@@ -14,12 +14,6 @@ type ProfileData = {
   full_name: string | null;
   avatar_url: string | null;
   bio: string | null;
-  banner_url: string | null;
-  social_instagram: string | null;
-  social_tiktok: string | null;
-  social_url: string | null;
-  subscription_price: number | null;
-  subscription_enabled: boolean;
   followers_count: number;
   following_count: number;
   is_following?: boolean;
@@ -38,18 +32,32 @@ type UserCatalog = {
   is_pinned?: boolean;
 };
 
-// Individual product item from catalog_items table
-type CatalogItem = {
+type BookmarkedCatalog = {
+  id: string;
+  name: string;
+  description: string | null;
+  image_url: string | null;
+  bookmark_count: number;
+  username: string;
+  full_name: string | null;
+  item_count: number;
+  created_at: string;
+  slug: string;
+};
+
+type LikedItem = {
   id: string;
   title: string;
   image_url: string;
   product_url: string | null;
   price: string | null;
   seller: string | null;
-  brand: string | null;
   catalog_id: string;
   catalog_name: string;
+  catalog_owner: string;
   catalog_slug: string;
+  like_count: number;
+  created_at: string;
   is_monetized: boolean;
 };
 
@@ -63,6 +71,16 @@ type FeedPost = {
   is_pinned?: boolean;
 };
 
+type SavedPost = {
+  id: string;
+  image_url: string;
+  caption: string | null;
+  like_count: number;
+  comment_count: number;
+  created_at: string;
+  saved_at: string;
+};
+
 type FollowUser = {
   id: string;
   username: string;
@@ -73,38 +91,48 @@ type FollowUser = {
   created_at: string;
 };
 
-async function uploadImageToStorage(file: File, userId: string, bucket = 'avatars'): Promise<{ url: string | null; error?: string }> {
+async function uploadImageToStorage(file: File, userId: string): Promise<{ url: string | null; error?: string }> {
   try {
     const fileExt = file.name.split('.').pop();
-    const fileName = `${bucket}-${userId}-${Date.now()}.${fileExt}`;
-    const { error } = await supabase.storage.from(bucket).upload(fileName, file, { cacheControl: '3600', upsert: true });
+    const fileName = `avatar-${userId}-${Date.now()}.${fileExt}`;
+    const { data, error } = await supabase.storage.from('avatars').upload(fileName, file, { cacheControl: '3600', upsert: true });
     if (error) return { url: null, error: error.message };
-    const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(fileName);
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
     return { url: publicUrl };
-  } catch (e: any) { return { url: null, error: e.message }; }
+  } catch (error: any) {
+    return { url: null, error: error.message };
+  }
 }
 
 function linkifyBio(text: string) {
-  const re = /(https?:\/\/[^\s]+)/g;
-  return text.split(re).map((part, i) =>
-    part.match(re)
-      ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', opacity: 0.5, textDecoration: 'underline' }} onClick={e => e.stopPropagation()}>{part}</a>
-      : part
-  );
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, index) => {
+    if (part.match(urlRegex)) {
+      return (
+        <a key={index} href={part} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70 transition-opacity" onClick={(e) => e.stopPropagation()}>
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
 }
 
-function getCroppedImg(src: string, crop: Area): Promise<Blob> {
-  return new Promise((res, rej) => {
-    const img = new Image(); img.src = src;
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      const ctx = c.getContext('2d');
-      if (!ctx) { rej(new Error('no ctx')); return; }
-      c.width = crop.width; c.height = crop.height;
-      ctx.drawImage(img, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
-      c.toBlob(b => b ? res(b) : rej(new Error('empty')), 'image/jpeg', 0.95);
+function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.src = imageSrc;
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('No 2d context')); return; }
+      canvas.width = pixelCrop.width;
+      canvas.height = pixelCrop.height;
+      ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
+      canvas.toBlob((blob) => { if (blob) resolve(blob); else reject(new Error('Canvas is empty')); }, 'image/jpeg', 0.95);
     };
-    img.onerror = rej;
+    image.onerror = reject;
   });
 }
 
@@ -113,19 +141,24 @@ export default function ProfilePage() {
   const params = useParams();
   const username = params.username as string;
   const [profileId, setProfileId] = useState<string | null>(null);
+
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [catalogs, setCatalogs] = useState<UserCatalog[]>([]);
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [bookmarkedCatalogs, setBookmarkedCatalogs] = useState<BookmarkedCatalog[]>([]);
+  const [likedItems, setLikedItems] = useState<LikedItem[]>([]);
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [savedPosts, setSavedPosts] = useState<SavedPost[]>([]);
   const [followers, setFollowers] = useState<FollowUser[]>([]);
   const [following, setFollowing] = useState<FollowUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [isSubscriber] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'items' | 'catalogs' | 'posts'>('items');
+  // Tabs — CATALOGS first, then POSTS
+  const [activeTab, setActiveTab] = useState<'catalogs' | 'posts' | 'bookmarks' | 'liked' | 'saved'>('catalogs');
+  const [expandedItem, setExpandedItem] = useState<LikedItem | null>(null);
+  const [expandedLikedItem, setExpandedLikedItem] = useState<LikedItem | null>(null);
 
-  // Edit modal
+  // Edit Profile Modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFullName, setEditFullName] = useState('');
   const [editBio, setEditBio] = useState('');
@@ -135,43 +168,62 @@ export default function ProfilePage() {
   const [uploadMethod, setUploadMethod] = useState<'url' | 'file'>('file');
   const [saving, setSaving] = useState(false);
   const [imageError, setImageError] = useState('');
+
+  // Avatar cropping
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [showCropper, setShowCropper] = useState(false);
 
-  // Customize drawer
-  const [showCustomizeDrawer, setShowCustomizeDrawer] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<'banner' | 'links' | 'subscription'>('banner');
-  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
-  const [bannerUploading, setBannerUploading] = useState(false);
-  const bannerInputRef = useRef<HTMLInputElement>(null);
-  const [editInstagram, setEditInstagram] = useState('');
-  const [editTiktok, setEditTiktok] = useState('');
-  const [editSocialUrl, setEditSocialUrl] = useState('');
-  const [savingLinks, setSavingLinks] = useState(false);
-  const [editSubPrice, setEditSubPrice] = useState('');
-  const [editSubEnabled, setEditSubEnabled] = useState(false);
-  const [savingSub, setSavingSub] = useState(false);
-
-  // Share / followers modal
+  // Followers/Following Modal
   const [showShareCopied, setShowShareCopied] = useState(false);
   const [showFollowersModal, setShowFollowersModal] = useState(false);
   const [followersModalType, setFollowersModalType] = useState<'followers' | 'following'>('followers');
-  const [followersSearch, setFollowersSearch] = useState('');
+  const [followersSearchQuery, setFollowersSearchQuery] = useState('');
   const [filteredFollowers, setFilteredFollowers] = useState<FollowUser[]>([]);
   const [filteredFollowing, setFilteredFollowing] = useState<FollowUser[]>([]);
 
   const isOwner = currentUserId === profileId;
 
-  useEffect(() => { async function init() { await loadCurrentUser(); if (username) await loadProfile(); } init(); }, [username]);
-  useEffect(() => { if (profileId) { loadUserCatalogs(); loadFeedPosts(); loadFollowers(); loadFollowing(); } }, [profileId, isOwner]);
-  useEffect(() => { if (currentUserId && username) loadProfile(); }, [currentUserId, username]);
   useEffect(() => {
-    const q = followersSearch.toLowerCase();
-    setFilteredFollowers(q ? followers.filter(u => u.username.toLowerCase().includes(q) || u.full_name?.toLowerCase().includes(q)) : followers);
-    setFilteredFollowing(q ? following.filter(u => u.username.toLowerCase().includes(q) || u.full_name?.toLowerCase().includes(q)) : following);
-  }, [followers, following, followersSearch]);
+    async function initProfile() {
+      await loadCurrentUser();
+      if (username) await loadProfile();
+    }
+    initProfile();
+  }, [username]);
+
+  useEffect(() => {
+    if (profileId) {
+      loadUserCatalogs();
+      loadBookmarkedCatalogs();
+      loadLikedItems();
+      loadFeedPosts();
+      if (isOwner) loadSavedPosts();
+      loadFollowers();
+      loadFollowing();
+    }
+  }, [profileId, isOwner]);
+
+  useEffect(() => {
+    if (currentUserId && username) loadProfile();
+  }, [currentUserId, username]);
+
+  useEffect(() => {
+    if (followersSearchQuery.trim()) {
+      setFilteredFollowers(followers.filter(user => user.username.toLowerCase().includes(followersSearchQuery.toLowerCase()) || (user.full_name && user.full_name.toLowerCase().includes(followersSearchQuery.toLowerCase()))));
+    } else {
+      setFilteredFollowers(followers);
+    }
+  }, [followers, followersSearchQuery]);
+
+  useEffect(() => {
+    if (followersSearchQuery.trim()) {
+      setFilteredFollowing(following.filter(user => user.username.toLowerCase().includes(followersSearchQuery.toLowerCase()) || (user.full_name && user.full_name.toLowerCase().includes(followersSearchQuery.toLowerCase()))));
+    } else {
+      setFilteredFollowing(following);
+    }
+  }, [following, followersSearchQuery]);
 
   async function loadCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -181,688 +233,779 @@ export default function ProfilePage() {
   async function loadProfile() {
     if (!username) return;
     try {
-      const { data, error } = await supabase.from('profiles')
-        .select('id,username,full_name,avatar_url,bio,banner_url,social_instagram,social_tiktok,social_url,subscription_price,subscription_enabled,followers_count,following_count')
-        .eq('username', username).single();
+      const { data, error } = await supabase.from('profiles').select('id, username, full_name, avatar_url, bio, followers_count, following_count').eq('username', username).single();
       if (!error && data) {
         setProfileId(data.id);
-        setBannerUrl(data.banner_url || null);
-        setEditInstagram(data.social_instagram || '');
-        setEditTiktok(data.social_tiktok || '');
-        setEditSocialUrl(data.social_url || '');
-        setEditSubPrice(data.subscription_price ? String(data.subscription_price) : '');
-        setEditSubEnabled(data.subscription_enabled || false);
-        let p = { ...data, is_following: false };
+        let profileWithFollowing = { ...data, is_following: false };
         if (currentUserId && currentUserId !== data.id) {
-          const { data: fd } = await supabase.from('followers').select('id').eq('follower_id', currentUserId).eq('following_id', data.id).single();
-          p.is_following = !!fd;
+          const { data: followData } = await supabase.from('followers').select('id').eq('follower_id', currentUserId).eq('following_id', data.id).single();
+          profileWithFollowing.is_following = !!followData;
         }
-        setProfile(p);
+        setProfile(profileWithFollowing);
         setEditFullName(data.full_name || '');
         setEditBio(data.bio || '');
         setEditAvatarUrl(data.avatar_url || '');
       }
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function loadUserCatalogs() {
     if (!profileId) return;
-    const { data, error } = await supabase.from('catalogs')
-      .select('id,name,description,image_url,created_at,bookmark_count,slug,owner_id,is_pinned,profiles!catalogs_owner_id_fkey(username),catalog_items(count)')
-      .eq('owner_id', profileId).eq('visibility', 'public')
-      .order('is_pinned', { ascending: false }).order('created_at', { ascending: false });
-    if (!error && data) {
-      const mapped = data.map(c => {
-        const o = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles;
-        return { ...c, item_count: c.catalog_items?.[0]?.count || 0, bookmark_count: c.bookmark_count || 0, owner_username: o?.username || 'unknown', is_pinned: c.is_pinned || false };
-      });
-      setCatalogs(mapped);
-      // Now load actual items from all public catalogs
-      if (mapped.length > 0) {
-        loadCatalogItems(mapped.map(c => c.id), mapped);
+    try {
+      const { data, error } = await supabase.from('catalogs').select(`id, name, description, image_url, created_at, bookmark_count, slug, owner_id, is_pinned, profiles!catalogs_owner_id_fkey(username), catalog_items(count)`).eq('owner_id', profileId).eq('visibility', 'public').order('is_pinned', { ascending: false }).order('created_at', { ascending: false });
+      if (!error && data) {
+        const catalogsWithCount = data.map(catalog => {
+          const owner = Array.isArray(catalog.profiles) ? catalog.profiles[0] : catalog.profiles;
+          return { ...catalog, item_count: catalog.catalog_items?.[0]?.count || 0, bookmark_count: catalog.bookmark_count || 0, owner_username: owner?.username || 'unknown', is_pinned: catalog.is_pinned || false };
+        });
+        setCatalogs(catalogsWithCount);
       }
-    }
-  }
-
-  async function loadCatalogItems(catalogIds: string[], catalogList: UserCatalog[]) {
-    const { data, error } = await supabase.from('catalog_items')
-      .select('id,title,image_url,product_url,price,seller,brand,catalog_id,is_monetized')
-      .in('catalog_id', catalogIds)
-      .order('created_at', { ascending: false });
-    if (!error && data) {
-      const catalogMap = new Map(catalogList.map(c => [c.id, c]));
-      setCatalogItems(data.map(item => {
-        const cat = catalogMap.get(item.catalog_id);
-        return {
-          id: item.id,
-          title: item.title,
-          image_url: item.image_url,
-          product_url: item.product_url,
-          price: item.price,
-          seller: item.seller,
-          brand: item.brand,
-          catalog_id: item.catalog_id,
-          catalog_name: cat?.name || '',
-          catalog_slug: cat?.slug || '',
-          is_monetized: item.is_monetized || false,
-        };
-      }));
-    }
+    } catch (error) { console.error('Error loading catalogs:', error); }
   }
 
   async function loadFeedPosts() {
     if (!profileId) return;
-    const { data, error } = await supabase.from('feed_posts')
-      .select('id,image_url,caption,like_count,comment_count,created_at,is_pinned')
-      .eq('owner_id', profileId)
-      .order('is_pinned', { ascending: false }).order('created_at', { ascending: false });
-    if (!error && data) setFeedPosts(data.map(p => ({ ...p, is_pinned: p.is_pinned || false })));
+    try {
+      const { data, error } = await supabase.from('feed_posts').select('id, image_url, caption, like_count, comment_count, created_at, is_pinned').eq('owner_id', profileId).order('is_pinned', { ascending: false }).order('created_at', { ascending: false });
+      if (!error && data) setFeedPosts(data.map(post => ({ ...post, is_pinned: post.is_pinned || false })));
+    } catch (error) { console.error('Error loading feed posts:', error); }
+  }
+
+  async function loadSavedPosts() {
+    if (!profileId || !isOwner) return;
+    try {
+      const { data: savedData, error } = await supabase.from('saved_feed_posts').select('feed_post_id, created_at').eq('user_id', profileId);
+      if (error || !savedData) return;
+      const postIds = savedData.map(s => s.feed_post_id);
+      if (postIds.length === 0) { setSavedPosts([]); return; }
+      const { data: postsData, error: postsError } = await supabase.from('feed_posts').select('id, image_url, caption, like_count, comment_count, created_at').in('id', postIds);
+      if (postsError || !postsData) return;
+      const transformedPosts: SavedPost[] = postsData.map(post => { const saved = savedData.find(s => s.feed_post_id === post.id); return { ...post, saved_at: saved?.created_at || '' }; }).sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
+      setSavedPosts(transformedPosts);
+    } catch (error) { console.error('Error loading saved posts:', error); }
+  }
+
+  async function togglePinCatalog(catalogId: string) {
+    if (!isOwner) return;
+    try {
+      const catalog = catalogs.find(c => c.id === catalogId);
+      if (!catalog) return;
+      await supabase.from('catalogs').update({ is_pinned: !catalog.is_pinned }).eq('id', catalogId);
+      await loadUserCatalogs();
+    } catch (error) { console.error('Error toggling pin catalog:', error); }
+  }
+
+  async function togglePinPost(postId: string) {
+    if (!isOwner) return;
+    try {
+      const post = feedPosts.find(p => p.id === postId);
+      if (!post) return;
+      await supabase.from('feed_posts').update({ is_pinned: !post.is_pinned }).eq('id', postId);
+      await loadFeedPosts();
+    } catch (error) { console.error('Error toggling pin post:', error); }
+  }
+
+  async function loadBookmarkedCatalogs() {
+    if (!profileId) return;
+    try {
+      const { data, error } = await supabase.from('bookmarked_catalogs').select('catalog_id, created_at').eq('user_id', profileId);
+      if (error || !data) return;
+      const catalogIds = data.map(b => b.catalog_id);
+      if (catalogIds.length === 0) { setBookmarkedCatalogs([]); return; }
+      const { data: catalogsData, error: catalogsError } = await supabase.from('catalogs').select('id, name, description, image_url, bookmark_count, owner_id, visibility, slug, catalog_items(count)').in('id', catalogIds);
+      if (catalogsError || !catalogsData) return;
+      const ownerIds = [...new Set(catalogsData.map(c => c.owner_id))];
+      const { data: ownersData } = await supabase.from('profiles').select('id, username, full_name').in('id', ownerIds);
+      const ownersMap = new Map(ownersData?.map(o => [o.id, o]) || []);
+      const transformedCatalogs: BookmarkedCatalog[] = catalogsData.filter(catalog => catalog.visibility === 'public').map(catalog => {
+        const owner = ownersMap.get(catalog.owner_id);
+        const bookmark = data.find(b => b.catalog_id === catalog.id);
+        return { id: catalog.id, name: catalog.name, description: catalog.description, image_url: catalog.image_url, bookmark_count: catalog.bookmark_count || 0, username: owner?.username || 'unknown', full_name: owner?.full_name, item_count: catalog.catalog_items?.[0]?.count || 0, created_at: bookmark?.created_at || '', slug: catalog.slug || '' };
+      }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setBookmarkedCatalogs(transformedCatalogs);
+    } catch (error) { console.error('Error loading bookmarked catalogs:', error); }
+  }
+
+  async function loadLikedItems() {
+    if (!profileId) return;
+    try {
+      const { data: catalogLikes, error: catalogError } = await supabase.from('liked_items').select('item_id, created_at').eq('user_id', profileId);
+      const { data: feedPostLikes, error: feedError } = await supabase.from('liked_feed_post_items').select('item_id, created_at').eq('user_id', profileId);
+      if (catalogError || feedError) return;
+      const catalogItemIds = catalogLikes?.map(l => l.item_id) || [];
+      const feedItemIds = feedPostLikes?.map(l => l.item_id) || [];
+      const transformedItems: LikedItem[] = [];
+      if (catalogItemIds.length > 0) {
+        const { data: catalogItemsData, error: catalogItemsError } = await supabase.from('catalog_items').select('id, title, image_url, product_url, price, seller, catalog_id, like_count, is_monetized').in('id', catalogItemIds);
+        if (!catalogItemsError && catalogItemsData) {
+          const catalogIds = [...new Set(catalogItemsData.map(i => i.catalog_id))];
+          const { data: catalogsData } = await supabase.from('catalogs').select('id, name, owner_id, visibility, slug').in('id', catalogIds);
+          const catalogsMap = new Map(catalogsData?.map(c => [c.id, c]) || []);
+          const ownerIds = [...new Set(catalogsData?.map(c => c.owner_id) || [])];
+          const { data: ownersData } = await supabase.from('profiles').select('id, username').in('id', ownerIds);
+          const ownersMap = new Map(ownersData?.map(o => [o.id, o]) || []);
+          catalogItemsData.filter(item => { const catalog = catalogsMap.get(item.catalog_id); return catalog?.visibility === 'public'; }).forEach(item => {
+            const catalog = catalogsMap.get(item.catalog_id);
+            const owner = catalog ? ownersMap.get(catalog.owner_id) : null;
+            const like = catalogLikes?.find(l => l.item_id === item.id);
+            transformedItems.push({ id: item.id, title: item.title, image_url: item.image_url, product_url: item.product_url, price: item.price, seller: item.seller, catalog_id: item.catalog_id, catalog_name: catalog?.name || 'Unknown', catalog_owner: owner?.username || 'unknown', catalog_slug: catalog?.slug || '', like_count: item.like_count || 0, created_at: like?.created_at || '', is_monetized: item.is_monetized || false });
+          });
+        }
+      }
+      if (feedItemIds.length > 0) {
+        const { data: feedItemsData, error: feedItemsError } = await supabase.from('feed_post_items').select('id, title, image_url, product_url, price, seller, feed_post_id, like_count').in('id', feedItemIds);
+        if (!feedItemsError && feedItemsData) {
+          feedItemsData.forEach(item => {
+            const like = feedPostLikes?.find(l => l.item_id === item.id);
+            transformedItems.push({ id: item.id, title: item.title, image_url: item.image_url, product_url: item.product_url, price: item.price, seller: item.seller, catalog_id: item.feed_post_id, catalog_name: 'Feed Post', catalog_owner: 'feed', catalog_slug: item.feed_post_id, like_count: item.like_count || 0, created_at: like?.created_at || '', is_monetized: false });
+          });
+        }
+      }
+      transformedItems.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setLikedItems(transformedItems);
+    } catch (error) { console.error('Error loading liked items:', error); }
   }
 
   async function loadFollowers() {
     if (!profileId) return;
-    const { data } = await supabase.from('followers').select('follower_id,created_at').eq('following_id', profileId).order('created_at', { ascending: false });
-    if (!data?.length) { setFollowers([]); return; }
-    const { data: pd } = await supabase.from('profiles').select('id,username,full_name,avatar_url,followers_count,following_count').in('id', data.map(f => f.follower_id));
-    const m = new Map(pd?.map(p => [p.id, p]) || []);
-    setFollowers(data.map(f => { const p = m.get(f.follower_id); if (!p) return null; return { id: p.id, username: p.username, full_name: p.full_name, avatar_url: p.avatar_url, followers_count: p.followers_count || 0, following_count: p.following_count || 0, created_at: f.created_at }; }).filter((f): f is FollowUser => f !== null));
+    try {
+      const { data, error } = await supabase.from('followers').select('follower_id, created_at').eq('following_id', profileId).order('created_at', { ascending: false });
+      if (error || !data || data.length === 0) { setFollowers([]); return; }
+      const followerIds = data.map(f => f.follower_id);
+      const { data: profilesData } = await supabase.from('profiles').select('id, username, full_name, avatar_url, followers_count, following_count').in('id', followerIds);
+      const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
+      setFollowers(data.map(follow => { const p = profilesMap.get(follow.follower_id); if (!p) return null; return { id: p.id, username: p.username, full_name: p.full_name, avatar_url: p.avatar_url, followers_count: p.followers_count || 0, following_count: p.following_count || 0, created_at: follow.created_at }; }).filter((f): f is FollowUser => f !== null));
+    } catch (error) { console.error('Error loading followers:', error); }
   }
 
   async function loadFollowing() {
     if (!profileId) return;
-    const { data } = await supabase.from('followers').select('following_id,created_at').eq('follower_id', profileId).order('created_at', { ascending: false });
-    if (!data?.length) { setFollowing([]); return; }
-    const { data: pd } = await supabase.from('profiles').select('id,username,full_name,avatar_url,followers_count,following_count').in('id', data.map(f => f.following_id));
-    const m = new Map(pd?.map(p => [p.id, p]) || []);
-    setFollowing(data.map(f => { const p = m.get(f.following_id); if (!p) return null; return { id: p.id, username: p.username, full_name: p.full_name, avatar_url: p.avatar_url, followers_count: p.followers_count || 0, following_count: p.following_count || 0, created_at: f.created_at }; }).filter((f): f is FollowUser => f !== null));
-  }
-
-  async function toggleFollow() {
-    if (!currentUserId || !profile) return;
-    if (profile.is_following) await supabase.from('followers').delete().eq('follower_id', currentUserId).eq('following_id', profileId);
-    else await supabase.from('followers').insert({ follower_id: currentUserId, following_id: profileId });
-    await new Promise(r => setTimeout(r, 200));
-    await loadProfile(); await loadFollowers(); await loadFollowing();
-  }
-
-  async function togglePinCatalog(id: string) {
-    if (!isOwner) return;
-    const c = catalogs.find(x => x.id === id); if (!c) return;
-    await supabase.from('catalogs').update({ is_pinned: !c.is_pinned }).eq('id', id);
-    await loadUserCatalogs();
-  }
-
-  async function togglePinPost(id: string) {
-    if (!isOwner) return;
-    const p = feedPosts.find(x => x.id === id); if (!p) return;
-    await supabase.from('feed_posts').update({ is_pinned: !p.is_pinned }).eq('id', id);
-    await loadFeedPosts();
+    try {
+      const { data, error } = await supabase.from('followers').select('following_id, created_at').eq('follower_id', profileId).order('created_at', { ascending: false });
+      if (error || !data || data.length === 0) { setFollowing([]); return; }
+      const followingIds = data.map(f => f.following_id);
+      const { data: profilesData } = await supabase.from('profiles').select('id, username, full_name, avatar_url, followers_count, following_count').in('id', followingIds);
+      const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
+      setFollowing(data.map(follow => { const p = profilesMap.get(follow.following_id); if (!p) return null; return { id: p.id, username: p.username, full_name: p.full_name, avatar_url: p.avatar_url, followers_count: p.followers_count || 0, following_count: p.following_count || 0, created_at: follow.created_at }; }).filter((f): f is FollowUser => f !== null));
+    } catch (error) { console.error('Error loading following:', error); }
   }
 
   async function handleShareProfile() {
     try {
-      if (navigator.share) await navigator.share({ url: window.location.href });
-      else { await navigator.clipboard.writeText(window.location.href); setShowShareCopied(true); setTimeout(() => setShowShareCopied(false), 2000); }
-    } catch (e) {
-      if (e instanceof Error && e.name !== 'AbortError') {
+      if (navigator.share) {
+        await navigator.share({ url: window.location.href });
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        setShowShareCopied(true);
+        setTimeout(() => setShowShareCopied(false), 2000);
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') {
         try { await navigator.clipboard.writeText(window.location.href); setShowShareCopied(true); setTimeout(() => setShowShareCopied(false), 2000); } catch {}
       }
     }
   }
 
-  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]; if (!f) return;
-    if (!f.type.startsWith('image/')) { setImageError('Please select an image file'); return; }
-    setSelectedFile(f); setImageError('');
-    const r = new FileReader();
-    r.onload = e => { setPreviewUrl(e.target?.result as string); setShowCropper(true); };
-    r.readAsDataURL(f);
+  async function toggleFollow() {
+    if (!currentUserId || !profile) return;
+    try {
+      if (profile.is_following) {
+        await supabase.from('followers').delete().eq('follower_id', currentUserId).eq('following_id', profileId);
+      } else {
+        await supabase.from('followers').insert({ follower_id: currentUserId, following_id: profileId });
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+      await loadProfile(); await loadFollowers(); await loadFollowing();
+    } catch (error) { console.error('Error toggling follow:', error); }
   }
 
-  const onCropComplete = (_: Area, cap: Area) => setCroppedAreaPixels(cap);
+  async function removeFollower(followerId: string) {
+    if (!currentUserId || !isOwner) return;
+    try {
+      await supabase.from('followers').delete().eq('follower_id', followerId).eq('following_id', profileId);
+      const follower = followers.find(f => f.id === followerId);
+      if (follower) await supabase.from('profiles').update({ following_count: Math.max(0, follower.following_count - 1) }).eq('id', followerId);
+      if (profile) await supabase.from('profiles').update({ followers_count: Math.max(0, profile.followers_count - 1) }).eq('id', profileId);
+      await loadProfile(); await loadFollowers();
+    } catch (error) { console.error('Error removing follower:', error); }
+  }
+
+  async function unfollow(followingId: string) {
+    if (!currentUserId || !isOwner) return;
+    try {
+      await supabase.from('followers').delete().eq('follower_id', currentUserId).eq('following_id', followingId);
+      const followedUser = following.find(f => f.id === followingId);
+      if (followedUser) await supabase.from('profiles').update({ followers_count: Math.max(0, followedUser.followers_count - 1) }).eq('id', followingId);
+      if (profile) await supabase.from('profiles').update({ following_count: Math.max(0, profile.following_count - 1) }).eq('id', currentUserId);
+      await loadProfile(); await loadFollowing();
+    } catch (error) { console.error('Error unfollowing user:', error); }
+  }
+
+  async function toggleBookmark(catalogId: string) {
+    if (!currentUserId) return;
+    try {
+      const { data: existingBookmark } = await supabase.from('bookmarked_catalogs').select('id').eq('user_id', currentUserId).eq('catalog_id', catalogId).single();
+      if (existingBookmark) {
+        await supabase.from('bookmarked_catalogs').delete().eq('user_id', currentUserId).eq('catalog_id', catalogId);
+        setBookmarkedCatalogs(prev => prev.filter(c => c.id !== catalogId));
+      } else {
+        await supabase.from('bookmarked_catalogs').insert({ user_id: currentUserId, catalog_id: catalogId });
+        await loadBookmarkedCatalogs();
+      }
+    } catch (error) { console.error('Error toggling bookmark:', error); }
+  }
+
+  async function toggleLike(itemId: string) {
+    if (!currentUserId) return;
+    try {
+      const { data: existingLike } = await supabase.from('liked_items').select('id').eq('user_id', currentUserId).eq('item_id', itemId).single();
+      if (existingLike) {
+        await supabase.from('liked_items').delete().eq('user_id', currentUserId).eq('item_id', itemId);
+        setLikedItems(prev => prev.filter(i => i.id !== itemId));
+      } else {
+        await supabase.from('liked_items').insert({ user_id: currentUserId, item_id: itemId });
+        await loadLikedItems();
+      }
+    } catch (error) { console.error('Error toggling like:', error); }
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setImageError('Please select an image file'); return; }
+    setSelectedFile(file); setImageError('');
+    const reader = new FileReader();
+    reader.onload = (e) => { setPreviewUrl(e.target?.result as string); setShowCropper(true); };
+    reader.readAsDataURL(file);
+  }
+
+  const onCropComplete = (croppedArea: Area, croppedAreaPixels: Area) => { setCroppedAreaPixels(croppedAreaPixels); };
 
   async function handleUpdateProfile(e: React.FormEvent) {
-    e.preventDefault(); if (!currentUserId) return;
+    e.preventDefault();
+    if (!currentUserId) return;
     setSaving(true); setImageError('');
     try {
-      let url = editAvatarUrl;
+      let finalAvatarUrl = editAvatarUrl;
       if (uploadMethod === 'file' && selectedFile && previewUrl && croppedAreaPixels) {
-        const blob = await getCroppedImg(previewUrl, croppedAreaPixels);
-        const f = new File([blob], selectedFile.name, { type: 'image/jpeg' });
-        const r = await uploadImageToStorage(f, currentUserId, 'avatars');
-        if (!r.url) { setImageError(r.error || 'Upload failed'); setSaving(false); return; }
-        url = r.url;
+        const croppedBlob = await getCroppedImg(previewUrl, croppedAreaPixels);
+        const croppedFile = new File([croppedBlob], selectedFile.name, { type: 'image/jpeg' });
+        const uploadResult = await uploadImageToStorage(croppedFile, currentUserId);
+        if (!uploadResult.url) { setImageError(uploadResult.error || "Failed to upload image"); setSaving(false); return; }
+        finalAvatarUrl = uploadResult.url;
         try {
-          const ctrl = new AbortController(); const tid = setTimeout(() => ctrl.abort(), 10000);
-          const res = await fetch('/api/check-image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url: url }), signal: ctrl.signal });
-          clearTimeout(tid);
-          if (res.ok) { const d = await res.json(); if (d.safe === false) { setImageError('Inappropriate content detected'); setSaving(false); return; } }
-        } catch {}
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const moderationResponse = await fetch("/api/check-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image_url: finalAvatarUrl }), signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (moderationResponse.ok) { const moderationData = await moderationResponse.json(); if (moderationData.safe === false) { setImageError("Image contains inappropriate content and cannot be used"); setSaving(false); return; } }
+        } catch (moderationError) { console.error("Image moderation error:", moderationError); }
+      } else if (uploadMethod === 'url' && editAvatarUrl) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const moderationResponse = await fetch("/api/check-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image_url: editAvatarUrl }), signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (moderationResponse.ok) { const moderationData = await moderationResponse.json(); if (moderationData.safe === false) { setImageError("Image contains inappropriate content and cannot be used"); setSaving(false); return; } }
+        } catch (moderationError) { console.error("Image moderation error:", moderationError); }
       }
-      const { error } = await supabase.from('profiles').update({ full_name: editFullName.trim() || null, bio: editBio.trim() || null, avatar_url: url.trim() || null }).eq('id', currentUserId);
+      const { error } = await supabase.from('profiles').update({ full_name: editFullName.trim() || null, bio: editBio.trim() || null, avatar_url: finalAvatarUrl.trim() || null }).eq('id', currentUserId);
       if (error) throw error;
-      await loadProfile(); setShowEditModal(false); setShowCropper(false);
-    } catch (e) { console.error(e); alert('Failed to update profile'); } finally { setSaving(false); }
+      await loadProfile();
+      setShowEditModal(false); setShowCropper(false);
+    } catch (error) { console.error('Error updating profile:', error); alert('Failed to update profile'); } finally { setSaving(false); }
   }
 
-  async function handleBannerUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]; if (!f || !currentUserId) return;
-    setBannerUploading(true);
-    const r = await uploadImageToStorage(f, currentUserId, 'banners');
-    if (r.url) { await supabase.from('profiles').update({ banner_url: r.url }).eq('id', currentUserId); setBannerUrl(r.url); }
-    setBannerUploading(false);
+  function openFollowersModal(type: 'followers' | 'following') {
+    setFollowersModalType(type); setFollowersSearchQuery(''); setShowFollowersModal(true);
   }
 
-  async function handleSaveLinks() {
-    if (!currentUserId) return; setSavingLinks(true);
-    await supabase.from('profiles').update({ social_instagram: editInstagram.trim() || null, social_tiktok: editTiktok.trim() || null, social_url: editSocialUrl.trim() || null }).eq('id', currentUserId);
-    await loadProfile(); setSavingLinks(false);
-  }
+  // CATALOGS first, then POSTS
+  const tabs = [
+    { id: 'catalogs' as const, label: 'CATALOGS', count: catalogs.length },
+    { id: 'posts' as const, label: 'POSTS', count: feedPosts.length },
+    { id: 'bookmarks' as const, label: 'BOOKMARKS', count: bookmarkedCatalogs.length },
+    { id: 'liked' as const, label: 'LIKED', count: likedItems.length },
+    ...(isOwner ? [{ id: 'saved' as const, label: 'SAVED', count: savedPosts.length }] : [])
+  ];
 
-  async function handleSaveSubscription() {
-    if (!currentUserId) return; setSavingSub(true);
-    await supabase.from('profiles').update({ subscription_price: editSubPrice ? parseFloat(editSubPrice) : null, subscription_enabled: editSubEnabled }).eq('id', currentUserId);
-    await loadProfile(); setSavingSub(false);
-  }
-
-  async function removeFollower(fId: string) {
-    if (!currentUserId || !isOwner) return;
-    await supabase.from('followers').delete().eq('follower_id', fId).eq('following_id', profileId);
-    const f = followers.find(x => x.id === fId);
-    if (f) await supabase.from('profiles').update({ following_count: Math.max(0, f.following_count - 1) }).eq('id', fId);
-    if (profile) await supabase.from('profiles').update({ followers_count: Math.max(0, profile.followers_count - 1) }).eq('id', profileId);
-    await loadProfile(); await loadFollowers();
-  }
-
-  async function unfollowUser(fId: string) {
-    if (!currentUserId || !isOwner) return;
-    await supabase.from('followers').delete().eq('follower_id', currentUserId).eq('following_id', fId);
-    const f = following.find(x => x.id === fId);
-    if (f) await supabase.from('profiles').update({ followers_count: Math.max(0, f.followers_count - 1) }).eq('id', fId);
-    if (profile) await supabase.from('profiles').update({ following_count: Math.max(0, profile.following_count - 1) }).eq('id', currentUserId);
-    await loadProfile(); await loadFollowing();
-  }
-
-  const pinnedCatalogs = catalogs.filter(c => c.is_pinned);
-  const subEnabled = profile?.subscription_enabled;
-  const subPrice = profile?.subscription_price;
-
-  const BB = "'Bebas Neue', sans-serif";
-  const AB = "'Archivo Black', sans-serif";
-  const AR = "'Archivo', sans-serif";
-
-  if (loading) return (
-    <>
-      <style jsx global>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');`}</style>
-      <div style={{ minHeight: '100vh', background: '#0c0c0c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontFamily: BB, fontSize: 13, letterSpacing: '0.4em', color: '#333' }}>LOADING...</span>
-      </div>
-    </>
-  );
-
-  if (!profile) return (
-    <>
-      <style jsx global>{`@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');`}</style>
-      <div style={{ minHeight: '100vh', background: '#0c0c0c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <h1 style={{ fontFamily: AB, fontSize: 40, color: '#fff', marginBottom: 16 }}>PROFILE NOT FOUND</h1>
-          <button onClick={() => router.back()} style={{ fontFamily: BB, fontSize: 12, letterSpacing: '0.4em', padding: '10px 24px', border: '2px solid #fff', background: 'transparent', color: '#fff', cursor: 'pointer' }}>GO BACK</button>
+  if (loading) {
+    return (
+      <>
+        <style jsx global>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');`}</style>
+        <div className="min-h-screen bg-white text-black flex items-center justify-center">
+          <p className="text-xs tracking-[0.4em]" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>LOADING...</p>
         </div>
-      </div>
-    </>
-  );
+      </>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <>
+        <style jsx global>{`@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');`}</style>
+        <div className="min-h-screen bg-white text-black flex items-center justify-center">
+          <div className="text-center">
+            <h1 className="text-4xl font-black tracking-tighter mb-4" style={{ fontFamily: 'Archivo Black, sans-serif' }}>PROFILE NOT FOUND</h1>
+            <button onClick={() => router.back()} className="px-6 py-2 border-2 border-black hover:bg-black hover:text-white transition-all text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>GO BACK</button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
-      {/* Scoped styles — no html/body overrides so nav is unaffected */}
-      <style jsx>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=Archivo:wght@400;500&display=swap');
-        .profile-page { background: #0c0c0c; }
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&display=swap');
         input, textarea, select { font-size: 16px !important; }
-        .cc:hover .pin-toggle { opacity: 1 !important; }
-        .cc:hover .cat-img img { transform: scale(1.03); }
-        .pc:hover img { transform: scale(1.04); }
-        .pc:hover .post-overlay { opacity: 1 !important; }
-        .pc:hover .post-pin-toggle { opacity: 1 !important; }
-        .pcard:hover { border-color: #3a3a3a !important; transform: translateY(-3px); }
-        .soc:hover { border-color: #555 !important; color: #ccc !important; }
-        .mu:hover { background: #131313 !important; }
-        .ic:hover .ii-img img { transform: scale(1.04); }
-        .stat-pill:hover { background: #1a1a1a !important; }
       `}</style>
 
-      <div className="profile-page" style={{ minHeight: '100vh', color: '#fff', fontFamily: AR }}>
-
-        {/* ── BANNER ── */}
-        <div style={{ position: 'relative', height: 200, background: '#0c0c0c', overflow: 'hidden' }}>
-          {bannerUrl
-            ? <img src={bannerUrl} alt="banner" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : <>
-                <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(90deg,transparent,transparent 59px,#151515 59px,#151515 60px),repeating-linear-gradient(0deg,transparent,transparent 59px,#151515 59px,#151515 60px)' }} />
-                <span style={{ position: 'absolute', top: 18, left: 20, fontFamily: BB, fontSize: 11, letterSpacing: '3px', color: '#222' }}>SOURCED / CREATOR</span>
-                <span style={{ position: 'absolute', top: 18, right: 20, fontFamily: BB, fontSize: 11, letterSpacing: '3px', color: '#222' }}>EST. 2024</span>
-              </>
-          }
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 100, background: 'linear-gradient(to top,#0c0c0c,transparent)' }} />
-          {isOwner && (
-            <>
-              <button onClick={() => bannerInputRef.current?.click()} disabled={bannerUploading}
-                style={{ position: 'absolute', bottom: 16, right: 16, background: 'rgba(0,0,0,0.75)', border: '1px solid #2a2a2a', color: '#666', padding: '6px 14px', fontFamily: BB, fontSize: 10, letterSpacing: '2px', cursor: 'pointer', backdropFilter: 'blur(6px)' }}>
-                {bannerUploading ? 'UPLOADING...' : '+ BANNER'}
-              </button>
-              <input ref={bannerInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
-            </>
-          )}
-        </div>
-
-        {/* ── IDENTITY ── */}
-        <div style={{ padding: '0 20px', marginTop: -52, position: 'relative', zIndex: 2, display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ width: 100, height: 100, borderRadius: '50%', background: '#1a1a1a', border: '4px solid #0c0c0c', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {profile.avatar_url
-              ? <img src={profile.avatar_url} alt={profile.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <span style={{ fontFamily: BB, fontSize: 36, color: '#fff', letterSpacing: 1 }}>{profile.username.slice(0, 2).toUpperCase()}</span>
-            }
-          </div>
-          <div style={{ flex: 1, minWidth: 200, paddingBottom: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block', flexShrink: 0 }} />
-              <span style={{ fontFamily: BB, fontSize: 10, letterSpacing: '2px', color: '#3a3a3a' }}>AFFILIATE CREATOR</span>
-            </div>
-            <h1 style={{ fontFamily: BB, fontSize: 42, color: '#fff', lineHeight: 1, letterSpacing: 1 }}>@{profile.username.toUpperCase()}</h1>
-            {profile.full_name && <p style={{ fontFamily: AR, fontSize: 13, color: '#555', marginTop: 4 }}>{profile.full_name}</p>}
-          </div>
-          <div style={{ display: 'flex', gap: 8, paddingBottom: 10, flexWrap: 'wrap' }}>
-            {isOwner
-              ? <>
-                  <button onClick={() => setShowEditModal(true)} style={{ padding: '10px 18px', background: 'transparent', color: '#888', border: '1px solid #2a2a2a', fontFamily: BB, fontSize: 11, letterSpacing: '2px', cursor: 'pointer' }}>EDIT</button>
-                  <button onClick={() => setShowCustomizeDrawer(true)} style={{ padding: '10px 18px', background: 'transparent', color: '#888', border: '1px solid #2a2a2a', fontFamily: BB, fontSize: 11, letterSpacing: '2px', cursor: 'pointer' }}>CUSTOMIZE</button>
-                </>
-              : currentUserId
-                ? <button onClick={toggleFollow} style={{ padding: '10px 28px', background: profile.is_following ? 'transparent' : '#fff', color: profile.is_following ? '#fff' : '#000', border: '1px solid #fff', fontFamily: BB, fontSize: 13, letterSpacing: '2px', cursor: 'pointer', transition: 'all .15s' }}>{profile.is_following ? 'UNFOLLOW' : 'FOLLOW'}</button>
-                : null
-            }
-            <button onClick={handleShareProfile} style={{ padding: '10px 16px', background: 'transparent', color: '#555', border: '1px solid #2a2a2a', fontFamily: BB, fontSize: 11, letterSpacing: '2px', cursor: 'pointer' }}>{showShareCopied ? 'COPIED!' : 'SHARE'}</button>
-          </div>
-        </div>
-
-        {/* ── BIO ── */}
-        <div style={{ padding: '18px 20px 0', maxWidth: 580 }}>
-          {profile.bio && <p style={{ fontSize: 13, color: '#777', lineHeight: 1.65 }}>{linkifyBio(profile.bio)}</p>}
-          {(profile.social_instagram || profile.social_tiktok || profile.social_url) && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              {profile.social_instagram && <a href={`https://instagram.com/${profile.social_instagram.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="soc" style={{ padding: '5px 14px', border: '1px solid #222', fontFamily: BB, fontSize: 10, letterSpacing: '2px', color: '#555', textDecoration: 'none', transition: 'all .15s' }}>INSTAGRAM</a>}
-              {profile.social_tiktok && <a href={`https://tiktok.com/@${profile.social_tiktok.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="soc" style={{ padding: '5px 14px', border: '1px solid #222', fontFamily: BB, fontSize: 10, letterSpacing: '2px', color: '#555', textDecoration: 'none', transition: 'all .15s' }}>TIKTOK</a>}
-              {profile.social_url && <a href={profile.social_url.startsWith('http') ? profile.social_url : `https://${profile.social_url}`} target="_blank" rel="noopener noreferrer" className="soc" style={{ padding: '5px 14px', border: '1px solid #222', fontFamily: BB, fontSize: 10, letterSpacing: '2px', color: '#555', textDecoration: 'none', transition: 'all .15s' }}>↗ LINK</a>}
-            </div>
-          )}
-        </div>
-
-        {/* ── STATS — pill style, no borders between ── */}
-        <div style={{ padding: '20px 20px 0', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {[
-            { num: profile.followers_count.toLocaleString(), label: 'followers', click: () => { setFollowersModalType('followers'); setShowFollowersModal(true); } },
-            { num: profile.following_count.toLocaleString(), label: 'following', click: () => { setFollowersModalType('following'); setShowFollowersModal(true); } },
-            { num: String(catalogs.length), label: 'catalogs', click: undefined },
-            { num: String(catalogItems.length), label: 'items', click: undefined },
-          ].map(s => (
-            <button key={s.label} className="stat-pill" onClick={s.click}
-              style={{ display: 'flex', alignItems: 'baseline', gap: 5, padding: '7px 14px', background: '#131313', border: '1px solid #1e1e1e', cursor: s.click ? 'pointer' : 'default', transition: 'background .15s' }}>
-              <span style={{ fontFamily: BB, fontSize: 20, color: '#fff', lineHeight: 1 }}>{s.num}</span>
-              <span style={{ fontFamily: AR, fontSize: 11, color: '#555' }}>{s.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* ── SUBSCRIPTION CTA ── */}
-        {subEnabled && subPrice && !isOwner && (
-          <div style={{ margin: '20px 20px 0', padding: '16px 20px', border: '1px solid #1e1e1e', background: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-            <div>
-              <div style={{ fontFamily: BB, fontSize: 15, letterSpacing: '2px', color: '#fff' }}>UNLOCK FULL ACCESS</div>
-              <div style={{ fontSize: 12, color: '#555', marginTop: 3 }}>Exclusive catalogs, styling guides &amp; drops</div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
-              <span style={{ fontFamily: BB, fontSize: 24, color: '#fff' }}>${subPrice}<span style={{ fontFamily: AR, fontSize: 11, color: '#555' }}>/mo</span></span>
-              <button style={{ padding: '10px 22px', background: '#fff', color: '#000', border: 'none', fontFamily: BB, fontSize: 12, letterSpacing: '2px', cursor: 'pointer' }}>SUBSCRIBE</button>
-            </div>
-          </div>
-        )}
-        {subEnabled && subPrice && isOwner && (
-          <div style={{ margin: '20px 20px 0', padding: '12px 20px', border: '1px dashed #222', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: 0.5 }}>
-            <span style={{ fontFamily: BB, fontSize: 11, letterSpacing: '2px', color: '#555' }}>SUBSCRIPTION ACTIVE — ${subPrice}/MO</span>
-            <span style={{ fontFamily: BB, fontSize: 9, letterSpacing: '2px', color: '#333' }}>PREVIEW</span>
-          </div>
-        )}
-
-        {/* ── PINNED CATALOGS — bigger cards ── */}
-        {pinnedCatalogs.length > 0 && (
-          <>
-            <div style={{ padding: '28px 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontFamily: BB, fontSize: 18, letterSpacing: '3px', color: '#fff' }}>PINNED CATALOGS</span>
-              <span onClick={() => setActiveTab('catalogs')} style={{ fontFamily: BB, fontSize: 11, letterSpacing: '2px', color: '#444', cursor: 'pointer' }}>VIEW ALL →</span>
-            </div>
-            <div style={{ display: 'flex', gap: 14, padding: '0 20px 28px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-              {pinnedCatalogs.map((c, i) => (
-                <div key={c.id} className="pcard" onClick={() => router.push(`/${c.owner_username}/${c.slug}`)}
-                  style={{ flexShrink: 0, width: 200, border: '1px solid #1e1e1e', background: '#0f0f0f', overflow: 'hidden', cursor: 'pointer', transition: 'all .2s', position: 'relative' }}>
-                  {/* Image — taller than before */}
-                  <div style={{ height: 220, background: '#111', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                    {c.image_url
-                      ? <img src={c.image_url} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform .3s' }} />
-                      : <span style={{ fontSize: 48, opacity: 0.06, color: '#fff' }}>✦</span>
-                    }
-                    {/* Badge */}
-                    {i === 0 && (
-                      <span style={{ position: 'absolute', top: 10, left: 10, background: '#fff', color: '#000', fontFamily: BB, fontSize: 9, letterSpacing: '1.5px', padding: '3px 9px' }}>HOT</span>
-                    )}
-                    {i === pinnedCatalogs.length - 1 && pinnedCatalogs.length > 1 && (
-                      <span style={{ position: 'absolute', top: 10, left: 10, background: '#fff', color: '#000', fontFamily: BB, fontSize: 9, letterSpacing: '1.5px', padding: '3px 9px' }}>NEW</span>
-                    )}
+      <div className="min-h-screen bg-white text-black">
+        {/* Header */}
+        <div className="border-b border-black/20 p-6 md:p-10">
+          <div className="max-w-7xl mx-auto">
+            <button onClick={() => router.back()} className="mb-6 text-xs tracking-wider opacity-60 hover:opacity-100 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>← BACK</button>
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+              <div className="w-32 h-32 rounded-full border-2 border-black overflow-hidden flex-shrink-0">
+                {profile.avatar_url ? (
+                  <img src={profile.avatar_url} alt={profile.username} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-black/5 flex items-center justify-center"><span className="text-6xl opacity-20">👤</span></div>
+                )}
+              </div>
+              <div className="flex-1 space-y-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div>
+                    <h1 className="text-4xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>@{profile.username}</h1>
+                    {profile.full_name && <p className="text-lg tracking-wider opacity-60 mt-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{profile.full_name}</p>}
                   </div>
-                  <div style={{ padding: '12px 14px', borderTop: '1px solid #1a1a1a' }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
-                    <div style={{ fontSize: 11, color: '#555', marginTop: 3 }}>{c.item_count} items</div>
+                  <div className="flex gap-2">
+                    <button onClick={handleShareProfile} className="px-4 py-2 border border-black hover:bg-black hover:text-white transition-all text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                      {showShareCopied ? 'COPIED!' : 'SHARE'}
+                    </button>
+                    {isOwner ? (
+                      <button onClick={() => setShowEditModal(true)} className="px-4 py-2 border border-black hover:bg-black hover:text-white transition-all text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>EDIT PROFILE</button>
+                    ) : currentUserId ? (
+                      <button onClick={toggleFollow} className={`px-4 py-2 border-2 transition-all text-xs tracking-[0.4em] font-black ${profile.is_following ? 'border-black text-black hover:bg-black hover:text-white' : 'bg-black text-white hover:bg-white hover:text-black border-black'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                        {profile.is_following ? 'UNFOLLOW' : 'FOLLOW'}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
+                {profile.bio && <div className="max-w-2xl"><p className="text-sm leading-relaxed opacity-80">{linkifyBio(profile.bio)}</p></div>}
+                <div className="flex items-center gap-6 text-sm">
+                  <button onClick={() => openFollowersModal('followers')} className="hover:opacity-70 transition-opacity font-black tracking-wider" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{profile.followers_count} FOLLOWERS</button>
+                  <button onClick={() => openFollowersModal('following')} className="hover:opacity-70 transition-opacity font-black tracking-wider" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{profile.following_count} FOLLOWING</button>
+                  <span className="opacity-60 tracking-wider" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{feedPosts.length} POSTS</span>
+                  <span className="opacity-60 tracking-wider" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{catalogs.length} CATALOGS</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="border-b border-black/20">
+          <div className="max-w-7xl mx-auto px-6 md:px-10">
+            <div className="flex overflow-x-auto">
+              {tabs.map((tab) => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`py-4 px-6 text-sm tracking-wider font-black border-b-2 transition-all whitespace-nowrap ${activeTab === tab.id ? 'border-black text-black' : 'border-transparent text-black/40 hover:text-black/70'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                  {tab.label} ({tab.count})
+                </button>
               ))}
             </div>
-          </>
-        )}
-
-        {/* ── TABS ── */}
-        <div style={{ borderBottom: '1px solid #1a1a1a', display: 'flex', padding: '0 20px' }}>
-          {[
-            { id: 'items' as const, label: 'ITEMS', count: catalogItems.length },
-            { id: 'catalogs' as const, label: 'CATALOGS', count: catalogs.length },
-            { id: 'posts' as const, label: 'POSTS', count: feedPosts.length },
-          ].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              style={{ padding: '13px 18px', fontFamily: BB, fontSize: 11, letterSpacing: '2px', color: activeTab === tab.id ? '#fff' : '#333', background: 'none', border: 'none', borderBottom: `2px solid ${activeTab === tab.id ? '#fff' : 'transparent'}`, cursor: 'pointer', transition: 'all .15s' }}>
-              {tab.label} ({tab.count})
-            </button>
-          ))}
+          </div>
         </div>
 
-        {/* ── ITEMS GRID — actual catalog_items ── */}
-        {activeTab === 'items' && (
-          catalogItems.length === 0
-            ? <div style={{ padding: '80px 20px', textAlign: 'center' }}><span style={{ fontFamily: BB, fontSize: 16, letterSpacing: '3px', color: '#2a2a2a' }}>NO ITEMS YET</span></div>
-            : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 2, background: '#1a1a1a' }}>
-                {catalogItems.map(item => (
-                  <div key={item.id} className="ic" style={{ background: '#0c0c0c', cursor: 'pointer', position: 'relative' }}
-                    onClick={() => item.product_url ? window.open(item.product_url, '_blank') : router.push(`/${profile.username}/${item.catalog_slug}`)}>
-                    <div className="ii-img" style={{ aspectRatio: '1', background: '#111', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {item.image_url
-                        ? <img src={item.image_url} alt={item.title} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform .3s' }} />
-                        : <span style={{ fontSize: 32, opacity: 0.06, color: '#fff' }}>✦</span>
-                      }
-                      {/* Monetized dot */}
-                      {item.is_monetized && (
-                        <span style={{ position: 'absolute', top: 8, right: 8, width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'block' }} />
-                      )}
-                    </div>
-                    <div style={{ padding: '9px 12px', borderTop: '1px solid #1a1a1a' }}>
-                      <div style={{ fontSize: 12, fontWeight: 500, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 }}>
-                        <span style={{ fontSize: 11, color: '#444', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%' }}>{item.seller || item.brand || item.catalog_name}</span>
-                        {item.price && <span style={{ fontFamily: BB, fontSize: 13, color: '#888', flexShrink: 0 }}>${item.price}</span>}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {/* Locked shells for non-subscribers */}
-                {subEnabled && !isSubscriber && !isOwner && [1, 2, 3].map(i => (
-                  <div key={`locked-${i}`} style={{ background: '#0c0c0c', opacity: 0.4 }}>
-                    <div style={{ aspectRatio: '1', background: '#111', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                      <svg width="18" height="18" fill="none" stroke="#444" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-                      <span style={{ fontFamily: BB, fontSize: 9, letterSpacing: '2px', color: '#333' }}>SUBSCRIBERS ONLY</span>
-                    </div>
-                    <div style={{ padding: '9px 12px', borderTop: '1px solid #1a1a1a' }}><div style={{ fontSize: 12, color: '#2a2a2a' }}>Private item</div></div>
-                  </div>
-                ))}
-              </div>
-        )}
+        {/* Content */}
+        <div className="p-6 md:p-10">
+          <div className="max-w-7xl mx-auto">
 
-        {/* ── CATALOGS GRID ── */}
-        {activeTab === 'catalogs' && (
-          catalogs.length === 0
-            ? <div style={{ padding: '80px 20px', textAlign: 'center' }}><span style={{ fontFamily: BB, fontSize: 16, letterSpacing: '3px', color: '#2a2a2a' }}>NO CATALOGS YET</span></div>
-            : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 2, background: '#1a1a1a' }}>
-                {catalogs.map(c => (
-                  <div key={c.id} className="cc" style={{ background: '#0c0c0c', position: 'relative', cursor: 'pointer' }}>
-                    {c.is_pinned && <span style={{ position: 'absolute', top: 8, left: 8, zIndex: 1, background: '#f59e0b', color: '#000', fontFamily: BB, fontSize: 9, letterSpacing: '1px', padding: '2px 6px' }}>PINNED</span>}
-                    {isOwner && <button className="pin-toggle" onClick={e => { e.stopPropagation(); togglePinCatalog(c.id); }}
-                      style={{ position: 'absolute', top: 8, right: 8, zIndex: 1, background: 'rgba(0,0,0,0.9)', color: '#777', border: '1px solid #2a2a2a', fontFamily: BB, fontSize: 9, letterSpacing: '1px', padding: '3px 8px', cursor: 'pointer', opacity: 0, transition: 'opacity .15s' }}>
-                      {c.is_pinned ? 'UNPIN' : 'PIN'}
-                    </button>}
-                    <div className="cat-img" style={{ aspectRatio: '1', background: '#111', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => router.push(`/${c.owner_username}/${c.slug}`)}>
-                      {c.image_url
-                        ? <img src={c.image_url} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform .3s' }} />
-                        : <span style={{ fontSize: 36, opacity: 0.06, color: '#fff' }}>✦</span>
-                      }
-                    </div>
-                    <div onClick={() => router.push(`/${c.owner_username}/${c.slug}`)} style={{ padding: '10px 12px', borderTop: '1px solid #1a1a1a' }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
-                      <div style={{ fontSize: 11, color: '#444', marginTop: 2 }}>{c.item_count} items</div>
-                    </div>
+            {/* Catalogs Tab — now first */}
+            {activeTab === 'catalogs' && (
+              <div className="space-y-6">
+                {catalogs.length === 0 ? (
+                  <div className="text-center py-20">
+                    <p className="text-lg tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO PUBLIC CATALOGS YET</p>
+                    <p className="text-sm tracking-wide opacity-30 mt-2">{isOwner ? "You haven't created any public catalogs yet" : "This user hasn't created any public catalogs yet"}</p>
                   </div>
-                ))}
-              </div>
-        )}
-
-        {/* ── POSTS GRID ── */}
-        {activeTab === 'posts' && (
-          feedPosts.length === 0
-            ? <div style={{ padding: '80px 20px', textAlign: 'center' }}><span style={{ fontFamily: BB, fontSize: 16, letterSpacing: '3px', color: '#2a2a2a' }}>NO POSTS YET</span></div>
-            : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 2, background: '#1a1a1a' }}>
-                {feedPosts.map(p => (
-                  <div key={p.id} className="pc" style={{ aspectRatio: '3/4', position: 'relative', overflow: 'hidden', cursor: 'pointer', background: '#111' }} onClick={() => router.push(`/post/${p.id}`)}>
-                    <img src={p.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform .3s', display: 'block' }} />
-                    {p.is_pinned && <span style={{ position: 'absolute', top: 8, left: 8, background: '#f59e0b', color: '#000', fontFamily: BB, fontSize: 9, padding: '2px 6px' }}>PINNED</span>}
-                    {isOwner && <button className="post-pin-toggle" onClick={e => { e.stopPropagation(); togglePinPost(p.id); }}
-                      style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.9)', color: '#777', border: 'none', fontFamily: BB, fontSize: 9, letterSpacing: '1px', padding: '3px 8px', cursor: 'pointer', opacity: 0, transition: 'opacity .15s' }}>
-                      {p.is_pinned ? 'UNPIN' : 'PIN'}
-                    </button>}
-                    <div className="post-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', opacity: 0, transition: 'opacity .2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#fff', fontFamily: BB, fontSize: 15 }}>
-                        <svg width="14" height="14" fill="#fff" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-                        {p.like_count}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#fff', fontFamily: BB, fontSize: 15 }}>
-                        <svg width="14" height="14" fill="#fff" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-                        {p.comment_count}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-        )}
-
-        {/* ── CUSTOMIZE DRAWER ── */}
-        {showCustomizeDrawer && (
-          <>
-            <div onClick={() => setShowCustomizeDrawer(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 100, backdropFilter: 'blur(4px)' }} />
-            <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 360, maxWidth: '100vw', background: '#0e0e0e', borderLeft: '1px solid #1a1a1a', zIndex: 101, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '18px 20px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: BB, fontSize: 16, letterSpacing: '3px', color: '#fff' }}>CUSTOMIZE PAGE</span>
-                <button onClick={() => setShowCustomizeDrawer(false)} style={{ background: 'none', border: 'none', color: '#444', fontSize: 18, cursor: 'pointer' }}>✕</button>
-              </div>
-              <div style={{ display: 'flex', borderBottom: '1px solid #1a1a1a' }}>
-                {(['banner', 'links', 'subscription'] as const).map(t => (
-                  <button key={t} onClick={() => setDrawerTab(t)}
-                    style={{ flex: 1, padding: '11px 6px', fontFamily: BB, fontSize: 10, letterSpacing: '1.5px', color: drawerTab === t ? '#fff' : '#3a3a3a', background: 'none', border: 'none', borderBottom: `2px solid ${drawerTab === t ? '#fff' : 'transparent'}`, cursor: 'pointer', transition: 'all .15s' }}>
-                    {t.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
-                {drawerTab === 'banner' && (
-                  <>
-                    <div>
-                      <div style={{ fontFamily: BB, fontSize: 10, letterSpacing: '2px', color: '#3a3a3a', marginBottom: 8 }}>CURRENT BANNER</div>
-                      <div style={{ width: '100%', height: 100, background: '#111', border: '1px solid #1a1a1a', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
-                        {bannerUrl ? <img src={bannerUrl} alt="banner" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontFamily: BB, fontSize: 11, letterSpacing: 2, color: '#2a2a2a' }}>NO BANNER SET</span>}
-                      </div>
-                      <button onClick={() => bannerInputRef.current?.click()} disabled={bannerUploading}
-                        style={{ width: '100%', padding: 12, background: '#fff', color: '#000', border: 'none', fontFamily: BB, fontSize: 11, letterSpacing: '2px', cursor: 'pointer', opacity: bannerUploading ? 0.4 : 1 }}>
-                        {bannerUploading ? 'UPLOADING...' : '+ UPLOAD BANNER'}
-                      </button>
-                    </div>
-                    {bannerUrl && <button onClick={async () => { await supabase.from('profiles').update({ banner_url: null }).eq('id', currentUserId!); setBannerUrl(null); }}
-                      style={{ padding: 10, background: 'transparent', border: '1px solid #1a1a1a', color: '#3a3a3a', fontFamily: BB, fontSize: 10, letterSpacing: '2px', cursor: 'pointer' }}>REMOVE BANNER</button>}
-                    <p style={{ fontSize: 11, color: '#3a3a3a', lineHeight: 1.6 }}>Recommended 1500×500px. This is the first thing people see — make it yours.</p>
-                  </>
-                )}
-                {drawerTab === 'links' && (
-                  <>
-                    {[['INSTAGRAM', editInstagram, setEditInstagram, '@yourhandle'], ['TIKTOK', editTiktok, setEditTiktok, '@yourhandle'], ['PERSONAL LINK', editSocialUrl, setEditSocialUrl, 'https://yoursite.com']].map(([label, val, setter, ph]) => (
-                      <div key={label as string}>
-                        <div style={{ fontFamily: BB, fontSize: 10, letterSpacing: '2px', color: '#3a3a3a', marginBottom: 6 }}>{label as string}</div>
-                        <input value={val as string} onChange={e => (setter as any)(e.target.value)} placeholder={ph as string}
-                          style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '1px solid #1a1a1a', color: '#fff', padding: '8px 0', fontSize: 13, outline: 'none' }} />
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {catalogs.map((catalog) => (
+                      <div key={catalog.id} className="group border border-black/20 hover:border-black hover:scale-105 transform transition-all duration-200 relative">
+                        {catalog.is_pinned && <div className="absolute top-4 left-4 z-10 bg-yellow-400 text-black px-3 py-1 text-xs font-black" style={{ fontFamily: 'Bebas Neue' }}>📌 PINNED</div>}
+                        {isOwner && (
+                          <button onClick={(e) => { e.stopPropagation(); togglePinCatalog(catalog.id); }} className="absolute top-4 right-4 z-10 bg-white/90 backdrop-blur-sm text-black px-3 py-1 text-xs font-black hover:bg-white transition-all" style={{ fontFamily: 'Bebas Neue' }}>
+                            {catalog.is_pinned ? 'UNPIN' : 'PIN'}
+                          </button>
+                        )}
+                        <div className="cursor-pointer" onClick={() => router.push(`/${catalog.owner_username}/${catalog.slug}`)}>
+                          <div className="aspect-square bg-white overflow-hidden">
+                            {catalog.image_url ? <img src={catalog.image_url} alt={catalog.name} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-black/5 flex items-center justify-center"><span className="text-6xl opacity-20">✦</span></div>}
+                          </div>
+                          <div className="p-4 border-t border-black/20">
+                            <h3 className="text-lg font-black tracking-wide uppercase truncate mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{catalog.name}</h3>
+                            {catalog.description && <p className="text-xs opacity-60 mb-3 leading-relaxed line-clamp-2">{catalog.description}</p>}
+                            <div className="flex items-center justify-between text-xs tracking-wider opacity-60">
+                              <span>🔖 {catalog.bookmark_count} bookmarks</span>
+                              <span>{catalog.item_count} items</span>
+                            </div>
+                            <div className="mt-3 text-[10px] tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>CREATED {new Date(catalog.created_at).toLocaleDateString()}</div>
+                          </div>
+                        </div>
                       </div>
                     ))}
-                    <button onClick={handleSaveLinks} disabled={savingLinks}
-                      style={{ width: '100%', padding: 12, background: '#fff', color: '#000', border: 'none', fontFamily: BB, fontSize: 11, letterSpacing: '2px', cursor: 'pointer', opacity: savingLinks ? 0.4 : 1 }}>
-                      {savingLinks ? 'SAVING...' : 'SAVE LINKS'}
-                    </button>
-                  </>
-                )}
-                {drawerTab === 'subscription' && (
-                  <>
-                    <div style={{ fontSize: 11, color: '#444', background: '#111', border: '1px solid #1a1a1a', padding: 12, lineHeight: 1.6 }}>
-                      ⚡ Payments coming soon. Set your price now — goes live once Stripe is connected.
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #1a1a1a' }}>
-                      <span style={{ fontFamily: BB, fontSize: 13, letterSpacing: '1px', color: '#fff' }}>ENABLE SUBSCRIPTIONS</span>
-                      <button onClick={() => setEditSubEnabled(!editSubEnabled)}
-                        style={{ width: 42, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative', background: editSubEnabled ? '#fff' : '#222', transition: 'background .2s' }}>
-                        <div style={{ position: 'absolute', top: 3, left: editSubEnabled ? 23 : 3, width: 16, height: 16, borderRadius: '50%', background: editSubEnabled ? '#000' : '#666', transition: 'left .2s' }} />
-                      </button>
-                    </div>
-                    <div>
-                      <div style={{ fontFamily: BB, fontSize: 10, letterSpacing: '2px', color: '#3a3a3a', marginBottom: 6 }}>MONTHLY PRICE (USD)</div>
-                      <input type="number" value={editSubPrice} onChange={e => setEditSubPrice(e.target.value)} placeholder="9.99" min="1" max="99" step="0.01"
-                        style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '1px solid #1a1a1a', color: '#fff', padding: '8px 0', fontSize: 13, outline: 'none' }} />
-                    </div>
-                    <p style={{ fontSize: 11, color: '#3a3a3a', lineHeight: 1.6 }}>You keep 80% of all subscription revenue. Suggested: $5–$15/month.</p>
-                    <button onClick={handleSaveSubscription} disabled={savingSub}
-                      style={{ width: '100%', padding: 12, background: '#fff', color: '#000', border: 'none', fontFamily: BB, fontSize: 11, letterSpacing: '2px', cursor: 'pointer', opacity: savingSub ? 0.4 : 1 }}>
-                      {savingSub ? 'SAVING...' : 'SAVE'}
-                    </button>
-                  </>
+                  </div>
                 )}
               </div>
-            </div>
-          </>
-        )}
+            )}
 
-        {/* ── EDIT PROFILE MODAL ── */}
-        {showEditModal && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(12px)' }}>
-            <div style={{ position: 'relative', width: '100%', maxWidth: 500 }}>
-              <button onClick={() => { setShowEditModal(false); setShowCropper(false); }}
-                style={{ position: 'absolute', top: -36, right: 0, background: 'none', border: 'none', color: '#333', fontFamily: BB, fontSize: 11, letterSpacing: '3px', cursor: 'pointer' }}>[ESC] CLOSE</button>
-              <div style={{ background: '#000', border: '2px solid #fff', padding: 36, maxHeight: '85vh', overflowY: 'auto' }}>
-                <div style={{ fontFamily: BB, fontSize: 10, letterSpacing: '5px', color: '#222', marginBottom: 4 }}>SOURCED / PROFILE</div>
-                <h2 style={{ fontFamily: AB, fontSize: 36, color: '#fff', lineHeight: 1, marginBottom: 28 }}>EDIT PROFILE</h2>
-                <form onSubmit={handleUpdateProfile} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                  <div>
-                    <label style={{ display: 'block', fontFamily: BB, fontSize: 10, letterSpacing: '2px', color: '#3a3a3a', marginBottom: 6 }}>FULL NAME</label>
-                    <input type="text" value={editFullName} onChange={e => setEditFullName(e.target.value)} placeholder="Your display name"
-                      style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '2px solid #222', color: '#fff', padding: '8px 0', fontSize: 14, outline: 'none' }} />
+            {/* Posts Tab */}
+            {activeTab === 'posts' && (
+              <div className="space-y-6">
+                {feedPosts.length === 0 ? (
+                  <div className="text-center py-20">
+                    <p className="text-lg tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO POSTS YET</p>
+                    <p className="text-sm tracking-wide opacity-30 mt-2">{isOwner ? "You haven't created any posts yet" : "This user hasn't created any posts yet"}</p>
                   </div>
-                  <div>
-                    <label style={{ display: 'block', fontFamily: BB, fontSize: 10, letterSpacing: '2px', color: '#3a3a3a', marginBottom: 6 }}>BIO</label>
-                    <textarea value={editBio} onChange={e => setEditBio(e.target.value)} rows={4} maxLength={300} placeholder="Tell us about your style..."
-                      style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '2px solid #222', color: '#fff', padding: '8px 0', fontSize: 14, outline: 'none', resize: 'none' }} />
-                    <div style={{ fontSize: 10, color: '#333', marginTop: 3 }}>{editBio.length}/300</div>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontFamily: BB, fontSize: 10, letterSpacing: '2px', color: '#3a3a3a', marginBottom: 8 }}>AVATAR</label>
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                      {(['file', 'url'] as const).map(m => (
-                        <button key={m} type="button" onClick={() => setUploadMethod(m)}
-                          style={{ padding: '5px 14px', fontFamily: BB, fontSize: 10, letterSpacing: '1.5px', cursor: 'pointer', border: '1px solid', borderColor: uploadMethod === m ? '#fff' : '#2a2a2a', background: uploadMethod === m ? '#fff' : 'transparent', color: uploadMethod === m ? '#000' : '#444', transition: 'all .15s' }}>
-                          {m === 'file' ? 'UPLOAD FILE' : 'IMAGE URL'}
-                        </button>
-                      ))}
-                    </div>
-                    {uploadMethod === 'file'
-                      ? <input type="file" accept="image/*" onChange={handleFileSelect} style={{ width: '100%', borderBottom: '1px solid #1a1a1a', color: '#fff', padding: '8px 0', fontSize: 13 }} />
-                      : <input type="url" value={editAvatarUrl} onChange={e => setEditAvatarUrl(e.target.value)} placeholder="https://example.com/avatar.jpg"
-                          style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '2px solid #222', color: '#fff', padding: '8px 0', fontSize: 14, outline: 'none' }} />
-                    }
-                  </div>
-                  {showCropper && previewUrl && (
-                    <div>
-                      <label style={{ display: 'block', fontFamily: BB, fontSize: 10, letterSpacing: '2px', color: '#3a3a3a', marginBottom: 8 }}>CROP AVATAR</label>
-                      <div style={{ position: 'relative', width: '100%', height: 220, background: '#111', overflow: 'hidden' }}>
-                        <Cropper image={previewUrl} crop={crop} zoom={zoom} aspect={1} cropShape="round" showGrid={false} onCropChange={setCrop} onZoomChange={setZoom} onCropComplete={onCropComplete} />
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {feedPosts.map(post => (
+                      <div key={post.id} className="relative cursor-pointer post-card-hover group bg-black rounded-2xl overflow-hidden border border-white/10" style={{ aspectRatio: '3/4' }} onClick={() => router.push(`/post/${post.id}`)}>
+                        {post.is_pinned && <div className="absolute top-3 left-3 z-10 bg-yellow-400 text-black px-2 py-1 text-xs font-black rounded-lg" style={{ fontFamily: 'Bebas Neue' }}>📌 PINNED</div>}
+                        {isOwner && (
+                          <button onClick={(e) => { e.stopPropagation(); togglePinPost(post.id); }} className="absolute top-3 right-3 z-10 bg-black/80 backdrop-blur-sm text-white px-3 py-1.5 text-xs font-black rounded-lg hover:bg-black transition-all" style={{ fontFamily: 'Bebas Neue' }}>
+                            {post.is_pinned ? 'UNPIN' : 'PIN'}
+                          </button>
+                        )}
+                        <div className="w-full h-full overflow-hidden">
+                          <img src={post.image_url} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                        </div>
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6">
+                          <div className="flex items-center gap-2 text-white">
+                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                            <span className="text-lg font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.like_count}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-white">
+                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                            <span className="text-lg font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.comment_count}</span>
+                          </div>
+                        </div>
+                        {post.caption && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <p className="text-white text-xs line-clamp-2">{post.caption}</p>
+                          </div>
+                        )}
                       </div>
-                      <input type="range" min={1} max={3} step={0.1} value={zoom} onChange={e => setZoom(Number(e.target.value))} style={{ width: '100%', marginTop: 10 }} />
-                    </div>
-                  )}
-                  {imageError && <div style={{ padding: 10, border: '1px solid #ef4444', color: '#ef4444', fontSize: 12 }}>{imageError}</div>}
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button type="button" onClick={() => { setShowEditModal(false); setShowCropper(false); }}
-                      style={{ flex: 1, padding: 14, background: 'transparent', color: '#fff', border: '2px solid #222', fontFamily: BB, fontSize: 11, letterSpacing: '2px', cursor: 'pointer' }}>CANCEL</button>
-                    <button type="submit" disabled={saving}
-                      style={{ flex: 1, padding: 14, background: '#fff', color: '#000', border: '2px solid #fff', fontFamily: BB, fontSize: 11, letterSpacing: '2px', cursor: 'pointer', opacity: saving ? 0.4 : 1 }}>
-                      {saving ? 'SAVING...' : 'SAVE'}
-                    </button>
+                    ))}
                   </div>
-                </form>
+                )}
+              </div>
+            )}
+
+            {/* Saved Posts Tab */}
+            {activeTab === 'saved' && isOwner && (
+              <div className="space-y-6">
+                {savedPosts.length === 0 ? (
+                  <div className="text-center py-20">
+                    <p className="text-lg tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO SAVED POSTS YET</p>
+                    <p className="text-sm tracking-wide opacity-30 mt-2">Save posts to view them here</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {savedPosts.map(post => (
+                      <div key={post.id} className="relative cursor-pointer post-card-hover group bg-black rounded-2xl overflow-hidden border border-white/10" style={{ aspectRatio: '3/4' }} onClick={() => router.push(`/post/${post.id}`)}>
+                        <div className="w-full h-full overflow-hidden"><img src={post.image_url} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" /></div>
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6">
+                          <div className="flex items-center gap-2 text-white"><svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg><span className="text-lg font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.like_count}</span></div>
+                          <div className="flex items-center gap-2 text-white"><svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg><span className="text-lg font-black" style={{ fontFamily: 'Bebas Neue' }}>{post.comment_count}</span></div>
+                        </div>
+                        {post.caption && <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-3 opacity-0 group-hover:opacity-100 transition-opacity"><p className="text-white text-xs line-clamp-2">{post.caption}</p></div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Bookmarked Catalogs Tab */}
+            {activeTab === 'bookmarks' && (
+              <div className="space-y-6">
+                {bookmarkedCatalogs.length === 0 ? (
+                  <div className="text-center py-20">
+                    <p className="text-lg tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO BOOKMARKED CATALOGS YET</p>
+                    <p className="text-sm tracking-wide opacity-30 mt-2">{isOwner ? "You haven't bookmarked any catalogs yet" : "This user hasn't bookmarked any catalogs yet"}</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                    {bookmarkedCatalogs.map(catalog => (
+                      <div key={catalog.id} className="border border-white/20 hover:border-white transition-all cursor-pointer group" onClick={() => router.push(`/${catalog.username}/${catalog.slug}`)}>
+                        <div className="aspect-square bg-white/5 overflow-hidden">
+                          {catalog.image_url ? <img src={catalog.image_url} alt={catalog.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" /> : <div className="w-full h-full flex items-center justify-center"><span className="text-4xl md:text-6xl opacity-10">✦</span></div>}
+                        </div>
+                        <div className="p-3 md:p-4 space-y-2">
+                          <h3 className="text-sm md:text-base font-black tracking-wide uppercase truncate" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{catalog.name}</h3>
+                          <div className="flex items-center gap-2 text-xs opacity-60"><span>@{catalog.username}</span></div>
+                          <div className="flex items-center justify-between text-xs opacity-60"><span>{catalog.item_count} items</span><span>🔖 {catalog.bookmark_count}</span></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Liked Items Tab — discover-style */}
+            {activeTab === 'liked' && (
+              <div className="space-y-6">
+                {likedItems.length === 0 ? (
+                  <div className="text-center py-20">
+                    <p className="text-lg tracking-wider opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO LIKED ITEMS YET</p>
+                    <p className="text-sm tracking-wide opacity-30 mt-2">{isOwner ? "You haven't liked any items yet" : "This user hasn't liked any items yet"}</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+                    {likedItems.map(item => (
+                      <div key={item.id} className="group border border-black/10 hover:border-black transition-all duration-150 bg-white">
+                        <div
+                          className="aspect-square bg-black/5 overflow-hidden cursor-pointer relative"
+                          onClick={() => setExpandedLikedItem(item)}
+                        >
+                          <img
+                            src={item.image_url}
+                            alt={item.title}
+                            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                            loading="lazy"
+                          />
+                          {item.is_monetized && (
+                            <div
+                              className="absolute top-2 right-2 w-5 h-5 bg-black/25 backdrop-blur-sm flex items-center justify-center"
+                              title="This item earns the creator a commission"
+                            >
+                              <span className="text-[9px] font-black text-white" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>$</span>
+                            </div>
+                          )}
+                          {item.catalog_name === 'Feed Post' && (
+                            <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/40 backdrop-blur-sm">
+                              <span className="text-[8px] tracking-[0.15em] text-white font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>POST</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-3 border-t border-black/10">
+                          <p className="text-[11px] font-black tracking-wide uppercase leading-tight truncate mb-1.5" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                            {item.title}
+                          </p>
+                          <div className="flex items-center justify-between text-[9px] tracking-wider opacity-40 mb-2">
+                            {item.seller && <span className="truncate mr-2">{item.seller}</span>}
+                            {item.price && <span className="flex-shrink-0 font-black">${item.price}</span>}
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleLike(item.id); }}
+                              className="flex-1 py-1.5 border bg-black text-white border-black text-[9px] tracking-wider font-black transition-all"
+                              style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                            >
+                              ♥ {item.like_count}
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setExpandedLikedItem(item); }}
+                              className="px-3 py-1.5 border border-black/20 hover:border-black hover:bg-black/5 transition-all text-[9px] font-black tracking-wider"
+                              style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                            >
+                              VIEW
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+          </div>
+        </div>
+
+        {/* Edit Profile Modal */}
+        {showEditModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <div className="w-full max-w-md md:max-w-2xl relative max-h-[85vh] md:max-h-[80vh]">
+              <button onClick={() => { setShowEditModal(false); setShowCropper(false); }} className="absolute -top-10 md:-top-16 right-0 text-[10px] tracking-[0.4em] text-white hover:opacity-50 transition-opacity" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>[ESC]</button>
+              <div className="border-2 border-white p-6 md:p-12 bg-black relative text-white overflow-y-auto max-h-[85vh] md:max-h-[80vh]">
+                <div className="space-y-6 md:space-y-8">
+                  <div className="space-y-2">
+                    <div className="text-[10px] tracking-[0.5em] opacity-40" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>EDIT PROFILE</div>
+                    <h2 className="text-3xl md:text-5xl font-black tracking-tighter" style={{ fontFamily: 'Archivo Black, sans-serif' }}>UPDATE</h2>
+                  </div>
+                  <form onSubmit={handleUpdateProfile} className="space-y-4 md:space-y-6">
+                    <div className="space-y-2">
+                      <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>FULL NAME (OPTIONAL)</label>
+                      <input type="text" value={editFullName} onChange={(e) => setEditFullName(e.target.value)} className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40" style={{ fontSize: '16px' }} />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>BIO (OPTIONAL)</label>
+                      <textarea value={editBio} onChange={(e) => setEditBio(e.target.value)} rows={4} maxLength={300} className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40 resize-none" placeholder="Tell us about yourself..." style={{ fontSize: '16px' }} />
+                      <p className="text-[9px] tracking-wider opacity-40">{editBio.length}/300 characters</p>
+                    </div>
+                    <div className="space-y-3">
+                      <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>AVATAR (OPTIONAL)</label>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setUploadMethod('file')} className={`px-3 md:px-4 py-1.5 md:py-2 text-xs tracking-wider font-black transition-all ${uploadMethod === 'file' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>UPLOAD FILE</button>
+                        <button type="button" onClick={() => setUploadMethod('url')} className={`px-3 md:px-4 py-1.5 md:py-2 text-xs tracking-wider font-black transition-all ${uploadMethod === 'url' ? 'bg-white text-black' : 'border border-white text-white hover:bg-white/10'}`} style={{ fontFamily: 'Bebas Neue, sans-serif' }}>IMAGE URL</button>
+                      </div>
+                    </div>
+                    {uploadMethod === 'file' && (
+                      <div className="space-y-3">
+                        <input type="file" accept="image/*" onChange={handleFileSelect} className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none text-white file:mr-4 file:py-1 file:px-3 file:border-0 file:bg-white file:text-black file:text-xs file:tracking-wider file:font-black" style={{ fontSize: '16px' }} />
+                        <p className="text-[9px] tracking-wider opacity-40">JPG, PNG, or GIF. Max size 5MB.</p>
+                      </div>
+                    )}
+                    {uploadMethod === 'url' && (
+                      <div className="space-y-3">
+                        <input type="url" value={editAvatarUrl} onChange={(e) => setEditAvatarUrl(e.target.value)} placeholder="https://example.com/image.jpg" className="w-full px-0 py-2 md:py-3 bg-transparent border-b-2 border-white focus:outline-none transition-all text-white placeholder-white/40" style={{ fontSize: '16px' }} />
+                        <p className="text-[9px] tracking-wider opacity-40">Paste a link to your avatar image</p>
+                      </div>
+                    )}
+                    {showCropper && previewUrl && (
+                      <div className="space-y-4">
+                        <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>CROP YOUR AVATAR</label>
+                        <div className="relative w-full h-64 bg-neutral-900 rounded-lg overflow-hidden">
+                          <Cropper image={previewUrl} crop={crop} zoom={zoom} aspect={1} cropShape="round" showGrid={false} onCropChange={setCrop} onZoomChange={setZoom} onCropComplete={onCropComplete} />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-xs tracking-wider opacity-60">ZOOM</label>
+                          <input type="range" min={1} max={3} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-full" />
+                        </div>
+                      </div>
+                    )}
+                    {((uploadMethod === 'url' && editAvatarUrl && !showCropper) || (uploadMethod === 'file' && !showCropper && editAvatarUrl)) && (
+                      <div className="space-y-3">
+                        <label className="block text-sm tracking-wider font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>PREVIEW</label>
+                        <div className="flex items-center gap-4 p-3 md:p-4 border border-white/20">
+                          <img src={editAvatarUrl} alt="Preview" className="w-12 h-12 md:w-16 md:h-16 rounded-full border-2 border-white object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                          <div className="text-xs opacity-60">Avatar preview</div>
+                        </div>
+                      </div>
+                    )}
+                    {imageError && <div className="p-3 border border-red-400 text-red-400 text-xs tracking-wide">{imageError}</div>}
+                    <div className="flex gap-3 md:gap-4 pt-4">
+                      <button type="button" onClick={() => { setShowEditModal(false); setShowCropper(false); }} className="flex-1 py-3 md:py-4 border-2 border-white text-white hover:bg-white hover:text-black transition-all text-xs tracking-[0.4em] font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>CANCEL</button>
+                      <button type="submit" disabled={saving} className="flex-1 py-3 md:py-4 bg-white text-black hover:bg-black hover:text-white hover:border-white border-2 border-white transition-all text-xs tracking-[0.4em] font-black disabled:opacity-30 disabled:cursor-not-allowed" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{saving ? 'SAVING...' : 'SAVE'}</button>
+                    </div>
+                  </form>
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* ── FOLLOWERS MODAL ── */}
-        {showFollowersModal && (
-          <div onClick={() => setShowFollowersModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(8px)' }}>
-            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: '#0e0e0e', border: '1px solid #1a1a1a', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', gap: 20 }}>
-                  {(['followers', 'following'] as const).map(t => (
-                    <button key={t} onClick={() => setFollowersModalType(t)}
-                      style={{ fontFamily: BB, fontSize: 14, letterSpacing: '1px', color: followersModalType === t ? '#fff' : '#3a3a3a', background: 'none', border: 'none', borderBottom: `2px solid ${followersModalType === t ? '#fff' : 'transparent'}`, padding: '0 0 4px', cursor: 'pointer' }}>
-                      {t === 'followers' ? `FOLLOWERS (${followers.length})` : `FOLLOWING (${following.length})`}
-                    </button>
-                  ))}
-                </div>
-                <button onClick={() => setShowFollowersModal(false)} style={{ background: 'none', border: 'none', color: '#3a3a3a', fontSize: 18, cursor: 'pointer' }}>✕</button>
+        {/* Liked Item Modal — discover-style bottom sheet */}
+        {expandedLikedItem && (
+          <div
+            className="fixed inset-0 z-[500] flex items-end md:items-center justify-center"
+            style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
+            onClick={() => setExpandedLikedItem(null)}
+          >
+            <div
+              className="relative w-full md:w-auto md:min-w-[400px] md:max-w-lg bg-white shadow-2xl"
+              data-sheet="true"
+              style={{ maxHeight: "65vh", borderRadius: "14px 14px 0 0" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Drag handle — tap or swipe down to close */}
+              <div
+                className="flex justify-center items-center pt-2.5 pb-2 md:hidden cursor-pointer select-none"
+                onClick={() => setExpandedLikedItem(null)}
+                onTouchStart={(e) => {
+                  const startY = e.touches[0].clientY;
+                  function onMove(ev: TouchEvent) {
+                    if (ev.touches[0].clientY - startY > 40) { setExpandedLikedItem(null); cleanup(); }
+                  }
+                  function cleanup() {
+                    window.removeEventListener("touchmove", onMove);
+                    window.removeEventListener("touchend", cleanup);
+                  }
+                  window.addEventListener("touchmove", onMove);
+                  window.addEventListener("touchend", cleanup);
+                }}
+              >
+                <div className="w-10 h-1.5 bg-black/20 rounded-full hover:bg-black/40 transition-colors" />
               </div>
-              <input placeholder="SEARCH..." value={followersSearch} onChange={e => setFollowersSearch(e.target.value)}
-                style={{ margin: '10px 20px', padding: '8px 0', background: 'transparent', border: 'none', borderBottom: '1px solid #1a1a1a', color: '#fff', fontSize: 13, outline: 'none', width: 'calc(100% - 40px)' }} />
-              <div style={{ overflowY: 'auto', flex: 1 }}>
-                {(followersModalType === 'followers' ? filteredFollowers : filteredFollowing).map(user => (
-                  <div key={user.id} className="mu" onClick={() => { setShowFollowersModal(false); router.push(`/@${user.username}`); }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: '1px solid #111', cursor: 'pointer', transition: 'background .1s' }}>
-                    <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#1a1a1a', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: BB, color: '#3a3a3a', fontSize: 14 }}>
-                      {user.avatar_url ? <img src={user.avatar_url} alt={user.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : user.username[0].toUpperCase()}
-                    </div>
-                    <div>
-                      <div style={{ fontFamily: BB, fontSize: 14, letterSpacing: 1, color: '#fff' }}>@{user.username}</div>
-                      {user.full_name && <div style={{ fontSize: 11, color: '#3a3a3a', marginTop: 1 }}>{user.full_name}</div>}
-                    </div>
-                    {isOwner && (
-                      <button onClick={e => { e.stopPropagation(); followersModalType === 'followers' ? removeFollower(user.id) : unfollowUser(user.id); }}
-                        style={{ marginLeft: 'auto', padding: '4px 10px', border: '1px solid #1a1a1a', background: 'transparent', color: '#3a3a3a', fontFamily: BB, fontSize: 9, letterSpacing: '1px', cursor: 'pointer' }}>
-                        {followersModalType === 'followers' ? 'REMOVE' : 'UNFOLLOW'}
+
+              {/* Close button */}
+              <button
+                onClick={() => setExpandedLikedItem(null)}
+                className="absolute top-2.5 right-3 z-10 w-7 h-7 flex items-center justify-center bg-black/8 hover:bg-black/15 transition-colors text-xs font-black rounded-full"
+                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+              >✕</button>
+
+              {/* Content */}
+              <div className="flex gap-0 overflow-hidden" style={{ maxHeight: "calc(65vh - 28px)" }}>
+                <div className="w-24 h-24 md:w-40 md:h-40 flex-shrink-0 bg-black/5 self-start m-3 mr-0">
+                  <img src={expandedLikedItem.image_url} alt={expandedLikedItem.title} className="w-full h-full object-cover" />
+                </div>
+                <div className="flex-1 p-3 overflow-y-auto flex flex-col gap-2" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+                  <div>
+                    <h2 className="text-sm md:text-lg font-black tracking-tighter leading-tight pr-6" style={{ fontFamily: 'Archivo Black, sans-serif' }}>
+                      {expandedLikedItem.title}
+                    </h2>
+                    {expandedLikedItem.is_monetized && (
+                      <p className="text-[9px] tracking-[0.2em] font-black mt-1" style={{ fontFamily: 'Bebas Neue, sans-serif', color: '#000000' }}>
+                        $ CREATOR EARNS A COMMISSION ON THIS ITEM
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-0.5">
+                    {expandedLikedItem.seller && <p className="text-[9px] tracking-wider opacity-40 uppercase">Seller: {expandedLikedItem.seller}</p>}
+                  </div>
+                  {expandedLikedItem.price && (
+                    <p className="text-base font-black" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>${expandedLikedItem.price}</p>
+                  )}
+                  <div className="flex flex-col gap-1.5 pt-1 pb-2">
+                    <button
+                      onClick={() => toggleLike(expandedLikedItem.id)}
+                      className="w-full py-2 bg-black text-white border border-black text-[9px] tracking-[0.25em] font-black"
+                      style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                    >
+                      ♥ LIKED ({expandedLikedItem.like_count})
+                    </button>
+                    {expandedLikedItem.product_url && (
+                      <button
+                        onClick={() => window.open(expandedLikedItem.product_url!, '_blank')}
+                        className="w-full py-2 bg-black text-white hover:bg-white hover:text-black border border-black transition-all text-[9px] tracking-[0.25em] font-black"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        VIEW PRODUCT ↗
+                      </button>
+                    )}
+                    {expandedLikedItem.catalog_name === 'Feed Post' ? (
+                      <button
+                        onClick={() => { setExpandedLikedItem(null); router.push(`/post/${expandedLikedItem.catalog_slug}`); }}
+                        className="w-full py-1.5 border border-black/15 hover:border-black/40 transition-all text-[8px] tracking-[0.2em] font-black opacity-60 hover:opacity-100"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        VIEW POST →
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { setExpandedLikedItem(null); router.push(`/${expandedLikedItem.catalog_owner}/${expandedLikedItem.catalog_slug}`); }}
+                        className="w-full py-1.5 border border-black/15 hover:border-black/40 transition-all text-[8px] tracking-[0.2em] font-black opacity-60 hover:opacity-100"
+                        style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                      >
+                        IN: {expandedLikedItem.catalog_name}
                       </button>
                     )}
                   </div>
-                ))}
-                {(followersModalType === 'followers' ? filteredFollowers : filteredFollowing).length === 0 && (
-                  <div style={{ padding: '40px 20px', textAlign: 'center', fontFamily: BB, fontSize: 14, letterSpacing: 2, color: '#2a2a2a' }}>
-                    {followersSearch ? 'NO RESULTS' : followersModalType === 'followers' ? 'NO FOLLOWERS YET' : 'NOT FOLLOWING ANYONE'}
-                  </div>
-                )}
+                </div>
               </div>
             </div>
           </div>
         )}
-
       </div>
     </>
   );
