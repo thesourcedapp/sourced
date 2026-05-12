@@ -143,14 +143,16 @@ export default function ProfilePage(){
   async function loadProfile(){
     if(!username)return;
     try{
-      const{data,error}=await supabase.from('profiles').select('id,username,full_name,avatar_url,bio,theme,social_instagram,social_tiktok,social_url,contact_email,followers_count,following_count').eq('username',username).single();
+      const{data,error}=await supabase.from('profiles').select('id,username,full_name,avatar_url,bio,theme,social_instagram,social_tiktok,social_url,followers_count,following_count').eq('username',username).single();
       if(error){console.error('loadProfile:',error);return;}
       if(data){
         setProfileId(data.id);
         let p={...data,is_following:false,collab_status:null,collab_types:null};
         if(currentUserId&&currentUserId!==data.id){const{data:fd}=await supabase.from('followers').select('id').eq('follower_id',currentUserId).eq('following_id',data.id).single();p.is_following=!!fd;}
         setProfile(p);setEditFullName(data.full_name||'');setEditBio(data.bio||'');
-        setEditInstagram(data.social_instagram||'');setEditTiktok(data.social_tiktok||'');setEditSocialUrl(data.social_url||'');setEditEmail(data.contact_email||'');
+        setEditInstagram(data.social_instagram||'');setEditTiktok(data.social_tiktok||'');setEditSocialUrl(data.social_url||'');
+        // contact_email fetched separately — column may not exist yet
+        try{const{data:em}=await supabase.from('profiles').select('contact_email').eq('id',data.id).single();if(em?.contact_email){setEditEmail(em.contact_email);p.contact_email=em.contact_email;setProfile({...p});}}catch{}
         setSelectedTheme((data.theme as ThemeKey)||'opium');
       }
     }catch(e){console.error(e);}finally{setLoading(false);}
@@ -346,10 +348,10 @@ export default function ProfilePage(){
         <div className="flex items-center justify-between px-5 md:px-10 pt-5">
           <button onClick={()=>router.back()} style={{fontFamily:'Bebas Neue, sans-serif',color:T.muted,background:'none',border:'none'}} className="text-[10px] tracking-[0.35em] font-black opacity-50 hover:opacity-100 transition-opacity">← BACK</button>
           {/* Hamburger — always visible, opens different content for owner vs visitor */}
-          <button onClick={()=>setShowMenu(true)} style={{background:'none',border:'none'}} className="flex flex-col gap-1.5 p-1 opacity-60 hover:opacity-100 transition-opacity">
-            <span className="block w-5 h-0.5" style={{backgroundColor:T.text}}/>
-            <span className="block w-5 h-0.5" style={{backgroundColor:T.text}}/>
-            <span className="block w-3.5 h-0.5 ml-auto" style={{backgroundColor:T.text}}/>
+          <button onClick={()=>setShowMenu(true)} style={{background:'none',border:'none'}} className="flex flex-col gap-[5px] p-2 opacity-80 hover:opacity-100 transition-opacity">
+            <span className="block w-6 h-[2px]" style={{backgroundColor:T.text}}/>
+            <span className="block w-6 h-[2px]" style={{backgroundColor:T.text}}/>
+            <span className="block w-4 h-[2px] ml-auto" style={{backgroundColor:T.text}}/>
           </button>
         </div>
 
@@ -407,33 +409,27 @@ export default function ProfilePage(){
                     {(profile.social_instagram||profile.social_tiktok||profile.social_url||profile.contact_email)&&(
                       <div className="flex flex-wrap gap-2 mb-6">
                         {profile.social_instagram&&(
-                          <a href={`https://instagram.com/${profile.social_instagram.replace('@','')}`} target="_blank" rel="noopener noreferrer" style={{fontFamily:'Bebas Neue, sans-serif',borderColor:T.border,color:T.muted,textDecoration:'none'}} className="flex items-center gap-1.5 px-3 py-1.5 text-[9px] tracking-[0.2em] font-black border transition-all hover:opacity-100 opacity-60"
-                            onMouseEnter={e=>{const el=e.currentTarget as HTMLAnchorElement;el.style.borderColor=T.text;el.style.color=T.text;}}
-                            onMouseLeave={e=>{const el=e.currentTarget as HTMLAnchorElement;el.style.borderColor=T.border;el.style.color=T.muted;}}>
+                          <a href={`https://instagram.com/${profile.social_instagram.replace('@','')}`} target="_blank" rel="noopener noreferrer" style={{fontFamily:'Bebas Neue, sans-serif',border:'2px solid #E1306C',color:'#E1306C',textDecoration:'none',backgroundColor:'transparent',padding:'6px 12px',display:'flex',alignItems:'center',gap:'6px',fontSize:'9px',letterSpacing:'0.2em',fontWeight:'900',transition:'opacity 0.2s',cursor:'pointer'}} className="hover:opacity-70">
                             <svg width="11" height="11" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
                             @{profile.social_instagram.replace('@','')}
                           </a>
                         )}
                         {profile.social_tiktok&&(
-                          <a href={`https://tiktok.com/@${profile.social_tiktok.replace('@','')}`} target="_blank" rel="noopener noreferrer" style={{fontFamily:'Bebas Neue, sans-serif',borderColor:T.border,color:T.muted,textDecoration:'none'}} className="flex items-center gap-1.5 px-3 py-1.5 text-[9px] tracking-[0.2em] font-black border transition-all hover:opacity-100 opacity-60"
-                            onMouseEnter={e=>{const el=e.currentTarget as HTMLAnchorElement;el.style.borderColor=T.text;el.style.color=T.text;}}
-                            onMouseLeave={e=>{const el=e.currentTarget as HTMLAnchorElement;el.style.borderColor=T.border;el.style.color=T.muted;}}>
+                          <a href={`https://tiktok.com/@${profile.social_tiktok.replace('@','')}`} target="_blank" rel="noopener noreferrer" style={{fontFamily:'Bebas Neue, sans-serif',border:'2px solid #00f2ea',color:'#00f2ea',textDecoration:'none',backgroundColor:'transparent',padding:'6px 12px',display:'flex',alignItems:'center',gap:'6px',fontSize:'9px',letterSpacing:'0.2em',fontWeight:'900',transition:'opacity 0.2s',cursor:'pointer'}} className="hover:opacity-70">
                             <svg width="11" height="11" fill="currentColor" viewBox="0 0 24 24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
                             @{profile.social_tiktok.replace('@','')}
                           </a>
                         )}
                         {profile.social_url&&(
-                          <a href={profile.social_url.startsWith('http')?profile.social_url:`https://${profile.social_url}`} target="_blank" rel="noopener noreferrer" style={{fontFamily:'Bebas Neue, sans-serif',borderColor:T.border,color:T.muted,textDecoration:'none'}} className="flex items-center gap-1.5 px-3 py-1.5 text-[9px] tracking-[0.2em] font-black border transition-all hover:opacity-100 opacity-60"
-                            onMouseEnter={e=>{const el=e.currentTarget as HTMLAnchorElement;el.style.borderColor=T.text;el.style.color=T.text;}}
-                            onMouseLeave={e=>{const el=e.currentTarget as HTMLAnchorElement;el.style.borderColor=T.border;el.style.color=T.muted;}}>
+                          <a href={profile.social_url.startsWith('http')?profile.social_url:`https://${profile.social_url}`} target="_blank" rel="noopener noreferrer" style={{fontFamily:'Bebas Neue, sans-serif',border:`2px solid ${T.accent}`,color:T.accent,textDecoration:'none',backgroundColor:'transparent',padding:'6px 12px',display:'flex',alignItems:'center',gap:'6px',fontSize:'9px',letterSpacing:'0.2em',fontWeight:'900',transition:'opacity 0.2s',cursor:'pointer'}} className="hover:opacity-70">
                             <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
                             {profile.social_url.replace(/^https?:\/\//,'').split('/')[0]}
                           </a>
                         )}
                         {profile.contact_email&&(
-                          <a href={`mailto:${profile.contact_email}`} style={{fontFamily:'Bebas Neue, sans-serif',borderColor:T.accent,color:T.accent,textDecoration:'none'}} className="flex items-center gap-1.5 px-3 py-1.5 text-[9px] tracking-[0.2em] font-black border-2 transition-all hover:opacity-80">
+                          <a href={`mailto:${profile.contact_email}`} style={{fontFamily:'Bebas Neue, sans-serif',backgroundColor:T.accent,color:T.accentText,textDecoration:'none',border:'none',padding:'8px 16px',display:'flex',alignItems:'center',gap:'8px',fontSize:'9px',letterSpacing:'0.25em',fontWeight:'900',transition:'opacity 0.2s',cursor:'pointer'}} className="hover:opacity-80">
                             <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                            EMAIL
+                            EMAIL ME
                           </a>
                         )}
                       </div>
@@ -613,7 +609,7 @@ export default function ProfilePage(){
 
             {/* POSTS — portrait grid, clearly different from catalogs */}
             {activeTab==='posts'&&(feedPosts.length===0
-              ?<div className="text-center py-20"><p className="text-2xl font-black opacity-20" style={{fontFamily:'Bebas Neue, sans-serif',color:T.text}}>NO POSTS YET</p>{isOwner&&<button onClick={()=>router.push('/posts/new')} className="mt-4 px-6 py-3 text-[10px] tracking-[0.4em] font-black border-2" style={{fontFamily:'Bebas Neue, sans-serif',borderColor:T.accent,color:T.accent,backgroundColor:'transparent'}}>+ CREATE POST</button>}</div>
+              ?<div className="text-center py-20"><p className="text-2xl font-black opacity-20" style={{fontFamily:'Bebas Neue, sans-serif',color:T.text}}>NO POSTS YET</p>{isOwner&&<button onClick={()=>router.push('/create/post')} className="mt-4 px-6 py-3 text-[10px] tracking-[0.4em] font-black border-2" style={{fontFamily:'Bebas Neue, sans-serif',borderColor:T.accent,color:T.accent,backgroundColor:'transparent'}}>+ CREATE POST</button>}</div>
               :<div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 md:gap-2">
                 {feedPosts.map(post=>(
                   <div key={post.id} className="hover-group relative group cursor-pointer overflow-hidden" style={{aspectRatio:'9/16',backgroundColor:T.surface}} onClick={()=>router.push(`/post/${post.id}`)}>
@@ -638,7 +634,7 @@ export default function ProfilePage(){
             Owner: create + analytics + liked + saved
             Visitor: basic links
         ══════════════════════════ */}
-        <div className="fixed inset-0 z-50 pointer-events-none" style={{visibility:showMenu?'visible':'hidden'}}>
+        <div className="fixed inset-0 z-[60] pointer-events-none" style={{visibility:showMenu?'visible':'hidden'}}>
           <div className="absolute inset-0 transition-opacity duration-300" style={{backgroundColor:'rgba(0,0,0,0.6)',opacity:showMenu?1:0,pointerEvents:showMenu?'auto':'none'}} onClick={()=>setShowMenu(false)}/>
           <div className={`menu-in${showMenu?' open':''} absolute right-0 top-0 bottom-0 w-72 overflow-y-auto`} style={{backgroundColor:T.bg,borderLeft:`1px solid ${T.border}`,pointerEvents:'auto'}}>
             <div className="flex items-center justify-between p-5">
@@ -655,7 +651,7 @@ export default function ProfilePage(){
                     <svg width="14" height="14" fill="none" stroke={T.accent} strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
                     <span className="text-[11px] font-black tracking-wider" style={{fontFamily:'Bebas Neue, sans-serif',color:T.text}}>NEW CATALOG</span>
                   </button>
-                  <button onClick={()=>{setShowMenu(false);router.push('/posts/new');}} className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all hover:opacity-70" style={{border:`1px solid ${T.border}`,backgroundColor:T.cardBg}}>
+                  <button onClick={()=>{setShowMenu(false);router.push('/create/post');}} className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all hover:opacity-70" style={{border:`1px solid ${T.border}`,backgroundColor:T.cardBg}}>
                     <svg width="14" height="14" fill="none" stroke={T.accent} strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
                     <span className="text-[11px] font-black tracking-wider" style={{fontFamily:'Bebas Neue, sans-serif',color:T.text}}>NEW POST</span>
                   </button>
