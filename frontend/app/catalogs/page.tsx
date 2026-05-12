@@ -143,16 +143,14 @@ export default function ProfilePage(){
   async function loadProfile(){
     if(!username)return;
     try{
-      const{data,error}=await supabase.from('profiles').select('id,username,full_name,avatar_url,bio,theme,social_instagram,social_tiktok,social_url,followers_count,following_count').eq('username',username).single();
+      const{data,error}=await supabase.from('profiles').select('id,username,full_name,avatar_url,bio,theme,social_instagram,social_tiktok,social_url,contact_email,followers_count,following_count').eq('username',username).single();
       if(error){console.error('loadProfile:',error);return;}
       if(data){
         setProfileId(data.id);
-        let p={...data,is_following:false,collab_status:null,collab_types:null,contact_email:data.contact_email||null};
+        let p={...data,is_following:false,collab_status:null,collab_types:null,contact_email:(data as any).contact_email||null};
         if(currentUserId&&currentUserId!==data.id){const{data:fd}=await supabase.from('followers').select('id').eq('follower_id',currentUserId).eq('following_id',data.id).single();p.is_following=!!fd;}
         setProfile(p);setEditFullName(data.full_name||'');setEditBio(data.bio||'');
-        setEditInstagram(data.social_instagram||'');setEditTiktok(data.social_tiktok||'');setEditSocialUrl(data.social_url||'');
-        // contact_email fetched separately — column may not exist yet
-        try{const{data:em}=await supabase.from('profiles').select('contact_email').eq('id',data.id).single();if(em?.contact_email){setEditEmail(em.contact_email);p.contact_email=em.contact_email;setProfile({...p});}}catch{}
+        setEditInstagram(data.social_instagram||'');setEditTiktok(data.social_tiktok||'');setEditSocialUrl(data.social_url||'');setEditEmail((data as any).contact_email||'');
         setSelectedTheme((data.theme as ThemeKey)||'opium');
       }
     }catch(e){console.error(e);}finally{setLoading(false);}
