@@ -643,7 +643,7 @@ export default function ProfilePage(){
           <div className={`menu-in${showMenu?' open':''} absolute right-0 top-0 bottom-0 w-72 overflow-y-auto`} style={{backgroundColor:T.bg,borderLeft:`1px solid ${T.border}`,pointerEvents:'auto'}}>
             <div className="flex items-center justify-between p-5">
               <p className="text-[9px] tracking-[0.5em] font-black" style={{fontFamily:'Bebas Neue, sans-serif',color:T.muted}}>MENU</p>
-              <button onClick={()=>setShowMenu(false)} style={{background:'none',border:'none',color:T.muted}} className="text-[9px] tracking-[0.35em] font-black" style={{fontFamily:'Bebas Neue, sans-serif',color:T.muted}}>✕</button>
+              <button onClick={()=>setShowMenu(false)} style={{background:'none',border:'none',color:T.muted,fontFamily:'Bebas Neue, sans-serif'}} className="text-[9px] tracking-[0.35em] font-black">✕</button>
             </div>
 
             <div className="px-5 space-y-1 pb-8">
