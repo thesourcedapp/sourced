@@ -670,54 +670,6 @@ export default function ProfilePage() {
                 </div>
             )}
 
-            {/* ARCHIVE */}
-            {activeTab==='saved'&&isOwner&&(savedPosts.length===0
-              ? <EmptyState text="NOTHING ARCHIVED" theme={T}/>
-              : <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
-                  {savedPosts.map(post=>(
-                    <div key={post.id} className="reveal-wrap relative group cursor-pointer overflow-hidden" style={{aspectRatio:'3/4',backgroundColor:T.surface}} onClick={()=>router.push(`/post/${post.id}`)}>
-                      <img src={post.image_url} alt="" className="item-img w-full h-full object-cover"/>
-                      <div className="reveal-overlay absolute inset-0 flex items-center justify-center" style={{backgroundColor:'rgba(0,0,0,0.55)'}}><span className="text-white text-sm font-black" style={{fontFamily:'Bebas Neue'}}>♥ {post.like_count}</span></div>
-                    </div>
-                  ))}
-                </div>
-            )}
-
-            {/* BOOKMARKS */}
-            {activeTab==='bookmarks'&&(bookmarkedCatalogs.length===0
-              ? <EmptyState text="NO SAVED CATALOGS" theme={T}/>
-              : <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
-                  {bookmarkedCatalogs.map(catalog=>(
-                    <div key={catalog.id} className="group cursor-pointer" onClick={()=>router.push(`/${catalog.username}/${catalog.slug}`)}>
-                      <div className="relative overflow-hidden" style={{paddingBottom:'100%',backgroundColor:T.surface,border:`1px solid ${T.border}`}}>
-                        <div className="absolute inset-0">{catalog.image_url?<img src={catalog.image_url} alt={catalog.name} className="item-img w-full h-full object-cover"/>:<div className="w-full h-full flex items-center justify-center"><span className="text-4xl opacity-10" style={{color:T.text}}>✦</span></div>}</div>
-                      </div>
-                      <div className="pt-2.5"><p className="text-sm font-black tracking-wide uppercase truncate" style={{fontFamily:'Bebas Neue, sans-serif',color:T.text}}>{catalog.name}</p><p className="text-[9px] mt-0.5" style={{color:T.muted}}>@{catalog.username} · {catalog.item_count} items</p></div>
-                    </div>
-                  ))}
-                </div>
-            )}
-
-            {/* LIKED */}
-            {activeTab==='liked'&&(likedItems.length===0
-              ? <EmptyState text="NO LIKED ITEMS" theme={T}/>
-              : <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
-                  {likedItems.map(item=>(
-                    <div key={item.id} className="item-card group cursor-pointer" style={{border:`1px solid ${T.border}`,backgroundColor:T.cardBg}} onClick={()=>setExpandedItem(item)}>
-                      <div className="relative overflow-hidden" style={{paddingBottom:'100%',backgroundColor:T.surface}}>
-                        <div className="absolute inset-0">
-                          <img src={item.image_url} alt={item.title} className="item-img w-full h-full object-cover" loading="lazy"/>
-                          {item.is_monetized&&<div className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center" style={{backgroundColor:'rgba(0,0,0,0.4)'}}><span className="text-[8px] font-black text-white" style={{fontFamily:'Bebas Neue, sans-serif'}}>$</span></div>}
-                        </div>
-                      </div>
-                      <div className="p-2.5" style={{borderTopColor:T.border,borderTopWidth:1,borderTopStyle:'solid'}}>
-                        <p className="text-[10px] font-black tracking-wide uppercase leading-tight truncate mb-1" style={{fontFamily:'Bebas Neue, sans-serif',color:T.text}}>{item.title}</p>
-                        <div className="flex items-center justify-between text-[8px] tracking-wider" style={{color:T.muted}}>{item.seller&&<span className="truncate mr-1">{item.seller}</span>}{item.price&&<span className="flex-shrink-0 font-black">${item.price}</span>}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-            )}
 
           </div>
         </div>
