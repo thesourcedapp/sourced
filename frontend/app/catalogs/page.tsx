@@ -147,7 +147,7 @@ export default function ProfilePage(){
       if(error){console.error('loadProfile:',error);return;}
       if(data){
         setProfileId(data.id);
-        let p={...data,is_following:false,collab_status:null,collab_types:null};
+        let p={...data,is_following:false,collab_status:null,collab_types:null,contact_email:data.contact_email||null};
         if(currentUserId&&currentUserId!==data.id){const{data:fd}=await supabase.from('followers').select('id').eq('follower_id',currentUserId).eq('following_id',data.id).single();p.is_following=!!fd;}
         setProfile(p);setEditFullName(data.full_name||'');setEditBio(data.bio||'');
         setEditInstagram(data.social_instagram||'');setEditTiktok(data.social_tiktok||'');setEditSocialUrl(data.social_url||'');
